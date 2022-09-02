@@ -1,0 +1,6 @@
+pyautogui
+pydirectinput
+torch
+torchvision
+torchaudio
+easyocr
