@@ -1,5 +1,4 @@
-from itertools import combinations
-
+import re
 
 LINE_DELIMITER = "\n"
 INTERVAL_CLICK = 70
@@ -7,6 +6,24 @@ INTERVAL_JUMP = 70
 INTERVAL_DOUBLE_JUMP_LANDING = 550  # 同层跳跃落地间隔
 INTERVAL_SLASH = 220  # 穿刺动作长度
 INTERVAL_SLASH_END = 600  # 魔剑共鸣动作长度
+
+PATTERN_DELAY = "DELAY : ([0-9]+)\n"
+
+
+def countDuration(command):
+    result = re.findall(PATTERN_DELAY, command)
+    count = 0
+    for delay in result:
+        count += int(delay)
+    return count
+
+
+def forLoop(times, commandStr):
+    return join([
+        f"REPEAT : {times} : 0 : 0 : Enter the number of iterations: : 0 : 0",
+        commandStr,
+        "ENDREPEAT",
+    ])
 
 
 def join(commands):
@@ -136,6 +153,15 @@ def jumpFront():
     return join(combination)
 
 
+def jumpFrontNoAttack():
+    return join([
+        jump(),
+        wait(INTERVAL_JUMP),
+        jump(),
+        wait(INTERVAL_CLICK),
+    ])
+
+
 def jumpFarFront():
     combination = [
         jump(),
@@ -248,13 +274,10 @@ def returnLeft(jumps=5):
 
 def returnRight(jumps=5):
     combination = [
-        wait(100),
         rightClick(),
-        wait(100)
     ]
     for i in range(jumps):
         combination.append(jumpFront())
-        combination.append(wait(INTERVAL_DOUBLE_JUMP_LANDING))
     return join(combination)
 
 
@@ -334,4 +357,10 @@ def shard():
     return join([
         click("Z"),
         wait(700)
+    ])
+
+
+def recall():
+    return join([
+        click("A"),
     ])

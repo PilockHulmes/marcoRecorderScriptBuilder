@@ -126,36 +126,42 @@ combination = [
     clib.click("Right"),
 ]
 
-for i in range(10):
-    combination.append(clib.start())
-    loop1 = clib.join([
-        loopSword(),
-        loopInfinity(),
-        loopDestroy(),
-        loopMagicBlast(),
-    ])
-    loop2 = clib.join([
-        loopSword(),
-        loopNormal(),
-        loopNormal(),
-        loopNormal(),
-    ])
-    loop3 = clib.join([
-        loopSword(),
-        loopNormal(),
-        loopDestroy(),
-        loopMagicBlast(),
-    ])
-    loop4 = clib.join([
-        loopSword(),
-        loopNormal(),
-        loopNormal(),
-        loopNormal(),
-    ])
-    combination.append(loop1)
-    combination.append(loop2)
-    combination.append(loop3)
-    combination.append(loop4)
+loop1 = clib.join([
+    loopSword(),
+    loopInfinity(),
+    loopDestroy(),
+    loopMagicBlast(),
+])
+loop2 = clib.join([
+    loopSword(),
+    loopNormal(),
+    loopNormal(),
+    loopNormal(),
+])
+loop3 = clib.join([
+    loopSword(),
+    loopNormal(),
+    loopDestroy(),
+    loopMagicBlast(),
+])
+loop4 = clib.join([
+    loopSword(),
+    loopNormal(),
+    loopNormal(),
+    loopNormal(),
+])
+combination.append(
+    clib.forLoop(
+        20,
+        clib.join([
+            clib.start(),
+            loop1,
+            loop2,
+            loop3,
+            loop4
+        ])
+    )
+)
 
 
 with open("adele-meso-world-ending.mcr", "w", encoding="utf-8") as file:

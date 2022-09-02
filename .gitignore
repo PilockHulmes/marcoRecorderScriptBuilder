@@ -1,5 +1,5 @@
-# 测试用脚本
-script.mcr
+# ignore all the generated scripts
+*.mcr
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
