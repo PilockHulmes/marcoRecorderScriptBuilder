@@ -8,6 +8,18 @@ combination = [
     clib.leftClick(),
 ]
 
+commonLoopSecondHalf = clib.join([
+    clib.slashUp(),
+    clib.recall(),
+    clib.rightClick(),
+    clib.jumpFarFarRight(),
+    clib.jumpFarFarRight(),
+    clib.flower(),
+    clib.jumpFront(),
+    clib.jumpRightLeftAttack(),
+    clib.wait(600)
+])
+
 shardLoop = clib.join([
     clib.leftClick(),
     clib.jumpFront(),
@@ -15,35 +27,20 @@ shardLoop = clib.join([
     clib.shard(),
     clib.jumpFront(),
     clib.jumpFront(),
-    clib.slashUp(),
-    clib.recall(),
-    clib.rightClick(),
-    clib.jumpFront(),
-    clib.jumpFront(),
-    clib.flower(),
-    clib.jumpFront(),
-    clib.jumpFront(),
-    clib.jumpRightLeftAttack(),
-    clib.wait(600)
+    commonLoopSecondHalf
 ])
 
 shardSummonLoop = clib.join([
     clib.leftClick(),
     clib.jumpFront(),
+    clib.summonSword(),
     clib.jumpFront(),
+    clib.summonSword(),
     clib.shard(),
     clib.jumpFront(),
+    clib.summonSword(),
     clib.jumpFront(),
-    clib.slashUp(),
-    clib.recall(),
-    clib.rightClick(),
-    clib.jumpFront(),
-    clib.jumpFront(),
-    clib.flower(),
-    clib.jumpFront(),
-    clib.jumpFront(),
-    clib.jumpRightLeftAttack(),
-    clib.wait(600)
+    commonLoopSecondHalf
 ])
 
 zoneLoop = clib.join([
@@ -53,16 +50,7 @@ zoneLoop = clib.join([
     clib.swordZone(),
     clib.jumpFront(),
     clib.jumpFront(),
-    clib.slashUp(),
-    clib.recall(),
-    clib.rightClick(),
-    clib.jumpFront(),
-    clib.jumpFront(),
-    clib.flower(),
-    clib.jumpFront(),
-    clib.jumpFront(),
-    clib.jumpRightLeftAttack(),
-    clib.wait(600)
+    commonLoopSecondHalf
 ])
 
 zoneSummonLoop = clib.join([
@@ -75,16 +63,7 @@ zoneSummonLoop = clib.join([
     clib.jumpFront(),
     clib.summonSword(),
     clib.jumpFront(),
-    clib.slashUp(),
-    clib.recall(),
-    clib.rightClick(),
-    clib.jumpFront(),
-    clib.jumpFront(),
-    clib.flower(),
-    clib.jumpFront(),
-    clib.jumpFront(),
-    clib.jumpRightLeftAttack(),
-    clib.wait(600)
+    commonLoopSecondHalf
 ])
 
 infinityLoop = clib.join([
@@ -94,16 +73,7 @@ infinityLoop = clib.join([
     clib.infinity(),
     clib.jumpFront(),
     clib.jumpFront(),
-    clib.slashUp(),
-    clib.recall(),
-    clib.rightClick(),
-    clib.jumpFront(),
-    clib.jumpFront(),
-    clib.flower(),
-    clib.jumpFront(),
-    clib.jumpFront(),
-    clib.jumpRightLeftAttack(),
-    clib.wait(600)
+    commonLoopSecondHalf
 ])
 
 infinitySummonLoop = clib.join([
@@ -116,16 +86,7 @@ infinitySummonLoop = clib.join([
     clib.jumpFront(),
     clib.summonSword(),
     clib.jumpFront(),
-    clib.slashUp(),
-    clib.recall(),
-    clib.rightClick(),
-    clib.jumpFront(),
-    clib.jumpFront(),
-    clib.flower(),
-    clib.jumpFront(),
-    clib.jumpFront(),
-    clib.jumpRightLeftAttack(),
-    clib.wait(600)
+    commonLoopSecondHalf
 ])
 
 destroyLoop = clib.join([
@@ -135,16 +96,7 @@ destroyLoop = clib.join([
     clib.destroy(),
     clib.jumpFront(),
     clib.jumpFront(),
-    clib.slashUp(),
-    clib.recall(),
-    clib.rightClick(),
-    clib.jumpFront(),
-    clib.jumpFront(),
-    clib.flower(),
-    clib.jumpFront(),
-    clib.jumpFront(),
-    clib.jumpRightLeftAttack(),
-    clib.wait(600)
+    commonLoopSecondHalf
 ])
 
 destroySummonLoop = clib.join([
@@ -157,16 +109,7 @@ destroySummonLoop = clib.join([
     clib.jumpFront(),
     clib.summonSword(),
     clib.jumpFront(),
-    clib.slashUp(),
-    clib.recall(),
-    clib.rightClick(),
-    clib.jumpFront(),
-    clib.jumpFront(),
-    clib.flower(),
-    clib.jumpFront(),
-    clib.jumpFront(),
-    clib.jumpRightLeftAttack(),
-    clib.wait(600)
+    commonLoopSecondHalf
 ])
 
 magicBlastLoop = clib.join([
@@ -176,16 +119,7 @@ magicBlastLoop = clib.join([
     clib.magicBlast(),
     clib.jumpFront(),
     clib.jumpFront(),
-    clib.slashUp(),
-    clib.recall(),
-    clib.rightClick(),
-    clib.jumpFront(),
-    clib.jumpFront(),
-    clib.flower(),
-    clib.jumpFront(),
-    clib.jumpFront(),
-    clib.jumpRightLeftAttack(),
-    clib.wait(600)
+    commonLoopSecondHalf
 ])
 
 magicBlastSummonLoop = clib.join([
@@ -198,16 +132,7 @@ magicBlastSummonLoop = clib.join([
     clib.jumpFront(),
     clib.summonSword(),
     clib.jumpFront(),
-    clib.slashUp(),
-    clib.recall(),
-    clib.rightClick(),
-    clib.jumpFront(),
-    clib.jumpFront(),
-    clib.flower(),
-    clib.jumpFront(),
-    clib.jumpFront(),
-    clib.jumpRightLeftAttack(),
-    clib.wait(600)
+    commonLoopSecondHalf
 ])
 
 print("infinityLoop:        ", clib.countDuration(infinityLoop))

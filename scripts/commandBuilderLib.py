@@ -173,6 +173,17 @@ def jumpFarFront():
     return join(combination)
 
 
+def jumpFarFarRight():
+    combination = [
+        jump(),
+        wait(100),
+        jump(),
+        wait(INTERVAL_CLICK),
+        baseAttack(),
+    ]
+    return holding("Right", then=join(combination))
+
+
 def jumpRightLeftAttack():
     combination = [
         click("Right"),
