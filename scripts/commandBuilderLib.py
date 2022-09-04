@@ -138,6 +138,16 @@ def baseAttack():
     ])
 
 
+def attackBothLeft():
+    return join([
+        leftClick(),
+        baseAttack(),
+        rightClick(),
+        baseAttack(),
+        leftClick()
+    ])
+
+
 def jump():
     return click("G")
 
@@ -182,6 +192,17 @@ def jumpFarFarRight():
         baseAttack(),
     ]
     return holding("Right", then=join(combination))
+
+
+def jumpFarFarLeft():
+    combination = [
+        jump(),
+        wait(100),
+        jump(),
+        wait(INTERVAL_CLICK),
+        baseAttack(),
+    ]
+    return holding("Left", then=join(combination))
 
 
 def jumpRightLeftAttack():

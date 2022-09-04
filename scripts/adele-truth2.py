@@ -15,9 +15,12 @@ commonLoopSecondHalf = clib.join([
     clib.jumpFarFarRight(),
     clib.jumpFarFarRight(),
     clib.flower(),
+    clib.leftClick(),
+    clib.baseAttack(),
+    clib.rightClick(),
     clib.jumpFront(),
     clib.jumpRightLeftAttack(),
-    clib.wait(600)
+    clib.wait(300)
 ])
 
 shardLoop = clib.join([
