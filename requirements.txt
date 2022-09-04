@@ -4,4 +4,5 @@ torch
 torchvision
 torchaudio
 easyocr
-cv
+scikit-image
+numpy
