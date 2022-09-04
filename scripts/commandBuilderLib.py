@@ -185,6 +185,7 @@ def jumpFarFront():
 
 def jumpFarFarRight():
     combination = [
+        wait(INTERVAL_CLICK),
         jump(),
         wait(100),
         jump(),
@@ -196,6 +197,7 @@ def jumpFarFarRight():
 
 def jumpFarFarLeft():
     combination = [
+        wait(INTERVAL_CLICK),
         jump(),
         wait(100),
         jump(),

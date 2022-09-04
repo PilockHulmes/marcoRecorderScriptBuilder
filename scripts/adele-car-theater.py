@@ -16,7 +16,6 @@ jumpBack = clib.join([
 baseLoop = clib.join([
     clib.jumpFarFarLeft(),
     clib.baseAttack(),
-    clib.wait(clib.INTERVAL_CLICK),
     clib.jumpFarFarRight(),
     clib.baseAttack(),
 ])
@@ -28,10 +27,17 @@ tenSecondsLoop = clib.join([
     clib.jumpFarFarLeft(),
     clib.baseAttack(),
     clib.recall(),
-    clib.wait(clib.INTERVAL_CLICK),
     clib.jumpFarFarRight(),
     clib.baseAttack(),
     clib.flower(),
+])
+
+reset = clib.join([
+    clib.jumpFront(),
+    clib.jumpRightLeftAttack(),
+    clib.leftClick(),
+    clib.jumpFront(),
+    clib.slashLeftUp()
 ])
 
 tenSecondsSummonLoop = clib.join([
@@ -50,6 +56,7 @@ tenSecondsSummonLoop = clib.join([
     clib.flower(),
 ])
 
+
 routine = clib.join([
     jumpBack,
     clib.start(),
@@ -63,18 +70,21 @@ routine = clib.join([
         clib.destroy(),
         tenSecondsLoop,
         clib.swordZone(),
+        reset,
         tenSecondsSummonLoop,
         tenSecondsLoop,
         tenSecondsLoop,
         clib.swordZone(),
         tenSecondsLoop,
         clib.magicBlast(),
+        reset,
         tenSecondsSummonLoop,
         clib.destroy(),
         tenSecondsLoop,
         clib.swordZone(),
         tenSecondsLoop,
         tenSecondsLoop,
+        reset,
         tenSecondsSummonLoop,
         clib.swordZone(),
         tenSecondsLoop,
@@ -83,6 +93,7 @@ routine = clib.join([
         clib.destroy(),
         tenSecondsLoop,
         clib.swordZone(),
+        reset,
         tenSecondsSummonLoop,
         tenSecondsLoop,
     ]))
