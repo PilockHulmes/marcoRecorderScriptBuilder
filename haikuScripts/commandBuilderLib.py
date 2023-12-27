@@ -15,6 +15,16 @@ def keyboardClick(button, interval = INTERVAL_CLICK):
     pydirectinput.keyUp(button)
     time.sleep(interval)
 
+def inputAt():
+    pydirectinput.keyDown("shift")
+    time.sleep(INTERVAL_CLICK)
+    pydirectinput.keyDown("2")
+    time.sleep(INTERVAL_CLICK)
+    pydirectinput.keyUp("2")
+    time.sleep(INTERVAL_CLICK)
+    pydirectinput.keyUp("shift")
+    time.sleep(INTERVAL_CLICK)
+
 def jump():
     keyboardClick("g")
 
@@ -28,10 +38,32 @@ def right():
     keyboardClick("right")
 
 def doubleJump():
-    keyboardClick("g", 0.05)
-    keyboardClick("g", 0.05)
+    keyboardClick("g", 0.04)
+    keyboardClick("g", 0.04)
 
 def jumpAttack():
     doubleJump()
     slash()
-    time.sleep(0.4)
+    time.sleep(0.35)
+
+def sellAllEquips():
+    keyboardClick("enter")
+    time.sleep(0.1)
+    inputAt()
+    keyboardClick("s")
+    keyboardClick("e")
+    keyboardClick("l")
+    keyboardClick("l")
+    keyboardClick("enter")
+    time.sleep(0.2)
+    keyboardClick("alt")
+    time.sleep(0.2)
+    keyboardClick("alt")
+    time.sleep(0.2)
+    keyboardClick("left")
+    time.sleep(0.2)
+    keyboardClick("left")
+    time.sleep(0.2)
+    keyboardClick("enter")
+    time.sleep(0.2)
+    keyboardClick("alt")
