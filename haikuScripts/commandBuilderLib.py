@@ -29,7 +29,7 @@ def jump():
     keyboardClick("g")
 
 def slash():
-    keyboardClick("f", 0.06)
+    keyboardClick("f", 0.04)
 
 def left():
     keyboardClick("left")
@@ -38,8 +38,9 @@ def right():
     keyboardClick("right")
 
 def doubleJump():
-    keyboardClick("g", 0.04)
-    keyboardClick("g", 0.04)
+    keyboardClick("g", 0.035)
+    keyboardClick("g", 0.035)
+
 
 def jumpAttack():
     doubleJump()
