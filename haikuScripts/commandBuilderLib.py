@@ -38,8 +38,8 @@ def right():
     keyboardClick("right")
 
 def doubleJump():
-    keyboardClick("g", 0.035)
-    keyboardClick("g", 0.035)
+    keyboardClick("g", 0.02)
+    keyboardClick("g", 0.02)
 
 
 def jumpAttack():
