@@ -38,14 +38,14 @@ def right():
     keyboardClick("right")
 
 def doubleJump():
-    keyboardClick("g", 0.02)
-    keyboardClick("g", 0.02)
+    keyboardClick("g", 0.016)
+    keyboardClick("g", 0.016)
 
 
 def jumpAttack():
     doubleJump()
     slash()
-    time.sleep(0.35)
+    time.sleep(0.3)
 
 def sellAllEquips():
     keyboardClick("enter")
