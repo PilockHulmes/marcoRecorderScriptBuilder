@@ -22,6 +22,12 @@ def keyboardClick(button, interval = INTERVAL_CLICK):
     pydirectinput.keyUp(button)
     delay(interval)
 
+def keyboardClickRapid(button):
+    pydirectinput.keyDown(button)
+    delay(0.008)
+    pydirectinput.keyUp(button)
+    delay(0.008)
+
 def keyboardPress(button, interval = INTERVAL_CLICK):
     pydirectinput.keyDown(button)
     delay(interval)
@@ -43,7 +49,7 @@ def inputAt():
 def jump():
     keyboardClick("g")
 
-def slash():
+def cleave():
     keyboardClick("f")
     delay(0.1)
 
@@ -69,24 +75,36 @@ def highJump():
     keyboardClick("g")
     keyboardRelease("up")
 
+def doubleHighJump():
+    keyboardPress("up")
+    keyboardClickRapid("g")
+    keyboardClickRapid("g")
+    keyboardClickRapid("g")
+    keyboardRelease("up")
+
 def jumpAttack():
     jump()
-    slash()
+    cleave()
     delay(0.2)
 
 def highJumpAttack():
     highJump()
-    slash()
+    cleave()
     delay(0.4)
+
+def doubleHighJumpAttact():
+    doubleHighJump()
+    cleave()
+    delay(0.5)
 
 def doubleJumpAttack():
     doubleJump()
-    slash()
+    cleave()
     delay(0.28)
 
 def doubleJumpAttackHuntingDecree():
     doubleJump()
-    slash()
+    cleave()
     huntingDecree()
     delay(0.12)
 

@@ -9,10 +9,10 @@ while True:
     for i in range(10):
         lib.keyboardPress("right")
         lib.jumpAttack()
-        lib.slash()
+        lib.cleave()
         lib.keyboardRelease("right")
         lib.keyboardPress("left")
         lib.jumpAttack()
-        lib.slash()
+        lib.cleave()
         lib.keyboardRelease("left")
     lib.sellAllEquips()

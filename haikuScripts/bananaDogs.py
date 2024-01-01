@@ -9,8 +9,8 @@ while True:
     lib.totem()
     for i in range(10):
         lib.right()
-        lib.doubleJumpAttack()
-        lib.doubleJumpAttack()
+        lib.doubleJumpAttackHuntingDecree()
+        lib.doubleJumpAttackHuntingDecree()
         lib.doubleJumpAttack()
         lib.doubleJumpAttack()
         lib.doubleJumpAttack()
@@ -25,3 +25,4 @@ while True:
         lib.doubleJumpAttack()
         lib.doubleJumpAttack()
     lib.sellAllEquips()
+    lib.delay(0.5)
