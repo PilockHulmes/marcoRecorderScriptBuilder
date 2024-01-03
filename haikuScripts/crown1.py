@@ -5,34 +5,37 @@ import commandBuilderLib as lib
 
 time.sleep(3)
 
-# lib.doubleJump()
-# time.sleep(1)
-# lib.doubleJump()
-# time.sleep(1)
-# lib.doubleJump()
-# time.sleep(1)
+BUFF_LOOP = 11
+LOOT_LOOP = 4
+loopCounter = 0
 
+lib.totem()
 while True:
-    lib.totem()
-    for i in range(10):
-        lib.left()
-        lib.doubleJumpAttackHuntingDecree()
-        lib.doubleJumpAttackHuntingDecree()
-        lib.doubleJumpAttack()
-        lib.doubleJumpAttack()
-        lib.doubleJumpAttack()
-        lib.doubleJumpAttack()
-        lib.right()
-        lib.doubleJumpAttack()
-        lib.left()
-        lib.doubleHighJumpAttact()
-        lib.right()
-        lib.doubleJumpAttack()
-        lib.doubleJumpAttack()
-        lib.doubleJumpAttack()
-        lib.aetherBloom()
-        lib.doubleJumpAttack()
-        lib.doubleJumpAttack()
-        # wait for landing
-        lib.delay(0.2)
-    lib.sellAllEquips()
+    if loopCounter % BUFF_LOOP == 0:
+        lib.buffSharpEyes()
+        lib.buffDsi()
+        # lib.buffHs()
+    if loopCounter % LOOT_LOOP == 0:
+        lib.sellAllEquips()
+    loopCounter += 1
+    lib.left()
+    lib.doubleJumpAttackHuntingDecree()
+    lib.doubleJumpAttackHuntingDecree()
+    lib.doubleJumpAttack()
+    lib.doubleJumpAttack()
+    lib.doubleJumpAttack()
+    lib.doubleJumpAttack()
+    lib.right()
+    lib.doubleJumpAttack()
+    lib.left()
+    lib.doubleHighJumpAttact()
+    lib.right()
+    lib.groundAttack()
+    lib.doubleJumpAttack()
+    lib.doubleJumpAttack()
+    lib.doubleJumpAttack()
+    lib.aetherBloom()
+    lib.doubleJumpAttack()
+    lib.doubleJumpAttack()
+    # wait for landing
+    lib.delay(0.2)

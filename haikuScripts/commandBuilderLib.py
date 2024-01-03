@@ -82,6 +82,10 @@ def doubleHighJump():
     keyboardClickRapid("g")
     keyboardRelease("up")
 
+def groundAttack():
+    cleave()
+    delay(0.3)
+
 def jumpAttack():
     jump()
     cleave()
@@ -160,7 +164,20 @@ def sellAllEquips():
     keyboardClick("enter")
     delay(0.2)
     keyboardClick("alt")
+    delay(0.3)
 
 def totem():
     keyboardClick("6")
-    delay(0.3)
+    delay(0.6)
+
+def buffSharpEyes():
+    keyboardClick("3")
+    delay(1)
+
+def buffDsi():
+    keyboardClick("4")
+    delay(1)
+
+def buffHs():
+    keyboardClick("5")
+    delay(1)
