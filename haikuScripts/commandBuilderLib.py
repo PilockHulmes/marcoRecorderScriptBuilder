@@ -167,6 +167,33 @@ def upImpale():
     keyboardRelease("up")
     delay(0.3)
 
+def rush():
+    keyboardClick("d")
+
+def leftUpImpaleRush():
+    pydirectinput.keyDown("up")
+    pydirectinput.keyDown("left")
+    pydirectinput.keyDown("h")
+    pydirectinput.keyUp("h")
+    delay(0.02)
+    pydirectinput.keyDown("d")
+    pydirectinput.keyUp("d")
+    pydirectinput.keyDown("d")
+    pydirectinput.keyUp("d")
+    pydirectinput.keyUp("left")
+    pydirectinput.keyUp("up")
+
+def upImpaleRush():
+    pydirectinput.keyDown("up")
+    pydirectinput.keyDown("h")
+    pydirectinput.keyUp("h")
+    delay(0.02)
+    pydirectinput.keyDown("d")
+    pydirectinput.keyUp("d")
+    pydirectinput.keyDown("d")
+    pydirectinput.keyUp("d")
+    pydirectinput.keyUp("up")
+
 def sellAllEquips():
     keyboardClick("enter")
     delay(0.1)
