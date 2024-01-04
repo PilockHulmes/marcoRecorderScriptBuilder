@@ -28,7 +28,7 @@ while True:
     lib.right()
     lib.doubleJumpAttack()
     lib.left()
-    lib.doubleHighJumpAttact()
+    lib.doubleHighJumpAttack()
     lib.right()
     lib.groundAttack()
     lib.doubleJumpAttack()

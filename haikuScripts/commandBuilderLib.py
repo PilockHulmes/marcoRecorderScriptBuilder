@@ -18,13 +18,13 @@ def delay(ms):
 
 def keyboardClick(button, interval = INTERVAL_CLICK):
     pydirectinput.keyDown(button)
-    delay(INTERVAL_KEYUP)
+    # delay(INTERVAL_KEYUP)
     pydirectinput.keyUp(button)
     delay(interval)
 
 def keyboardClickRapid(button):
     pydirectinput.keyDown(button)
-    delay(0.008)
+    # delay(0.008)
     pydirectinput.keyUp(button)
     delay(0.008)
 
@@ -56,16 +56,26 @@ def cleave():
 def left():
     keyboardClick("left")
 
+def immediatelyLeft():
+    pydirectinput.keyDown("left")
+    pydirectinput.keyUp("left")
+    delay(0.01)
+
 def right():
     keyboardClick("right")
 
-def rightStep():
+def rightStep(interval = 0.2):
     keyboardPress("right")
-    delay(0.2)
+    delay(interval)
     keyboardRelease("right")
     delay(INTERVAL_KEYUP)
 
 def doubleJump():
+    keyboardClick("g")
+    keyboardClick("g")
+
+def tribleJump():
+    keyboardClick("g")
     keyboardClick("g")
     keyboardClick("g")
 
@@ -82,6 +92,11 @@ def doubleHighJump():
     keyboardClickRapid("g")
     keyboardRelease("up")
 
+def downJump():
+    keyboardPress("down")
+    keyboardClickRapid("g")
+    keyboardRelease("down")
+
 def groundAttack():
     cleave()
     delay(0.3)
@@ -96,7 +111,7 @@ def highJumpAttack():
     cleave()
     delay(0.4)
 
-def doubleHighJumpAttact():
+def doubleHighJumpAttack():
     doubleHighJump()
     cleave()
     delay(0.5)
@@ -110,7 +125,16 @@ def doubleJumpAttackHuntingDecree():
     doubleJump()
     cleave()
     huntingDecree()
-    delay(0.12)
+
+def tribleJumpAttack():
+    tribleJump()
+    cleave()
+    delay(0.25)
+
+def downJumpAttack():
+    downJump()
+    delay(0.1)
+    cleave()
 
 def huntingDecree():
     keyboardClick("e")
