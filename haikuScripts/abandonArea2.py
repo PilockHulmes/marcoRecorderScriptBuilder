@@ -5,8 +5,8 @@ import commandBuilderLib as lib
 
 time.sleep(3)
 
-BUFF_LOOP = 13
-LOOT_LOOP = 5
+BUFF_LOOP = 12
+LOOT_LOOP = 3
 loopCounter = 0
 
 lib.totem()
@@ -18,26 +18,24 @@ while True:
         lib.sellAllEquips()
     loopCounter += 1
     lib.right()
+    lib.flashJumpAttack()
+    lib.flashJumpAttack()
     lib.doubleJumpAttack()
-    lib.doubleJumpAttackHuntingDecree()
     lib.doubleJumpAttack()
-    # old routine
-    # lib.doubleJumpAttack()
-    # lib.doubleJumpAttack()
-    # lib.leftUpImpaleRush()
-    # new routine
-    lib.rightUpImpaleRush()
-    # wait landing
-    lib.delay(0.3)
-    if loopCounter % 2 == 0:
-        lib.aetherBloom()
-    else:
-        lib.nobleSummons()
-    lib.leftStep()
+    lib.tribleJumpAttack()
+    lib.tribleJumpAttack()
+    lib.tribleJumpAttack()
     lib.doubleJumpAttack()
     lib.groundAttack()
+    lib.left()
+    lib.flashJumpAttack()
+    # landing
+    lib.delay(0.2)
+    lib.tribleJumpAttack()
+    lib.tribleJumpAttack()
+    lib.tribleJumpAttack()
     lib.doubleJumpAttack()
     lib.doubleJumpAttack()
     lib.doubleJumpAttack()
-    # wait landing
-    lib.delay(0.5)
+    lib.flashJumpAttack()
+    lib.delay(0.2)

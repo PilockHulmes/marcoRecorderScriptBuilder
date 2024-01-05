@@ -53,8 +53,17 @@ def cleave():
     keyboardClick("f")
     delay(0.1)
 
+def plummet():
+    keyboardClick("y")
+
 def left():
     keyboardClick("left")
+
+def leftStep(interval = 0.1):
+    keyboardPress("left")
+    delay(interval)
+    keyboardRelease("left")
+    delay(INTERVAL_KEYUP)
 
 def immediatelyLeft():
     pydirectinput.keyDown("left")
@@ -69,6 +78,13 @@ def rightStep(interval = 0.2):
     delay(interval)
     keyboardRelease("right")
     delay(INTERVAL_KEYUP)
+
+def fastJump():
+    pydirectinput.keyDown("g")
+    pydirectinput.keyDown("b")
+    pydirectinput.keyUp("g")
+    pydirectinput.keyUp("b")
+    delay(INTERVAL_CLICK)
 
 def doubleJump():
     keyboardClick("g")
@@ -106,6 +122,25 @@ def jumpAttack():
     cleave()
     delay(0.2)
 
+def flashJumpAttack():
+    pydirectinput.keyDown("g")
+    pydirectinput.keyDown("b")
+    pydirectinput.keyDown("f")
+    pydirectinput.keyUp("g")
+    pydirectinput.keyUp("b")
+    pydirectinput.keyUp("f")
+    delay(0.2)
+
+def slowerFlashJumpAttack():
+    pydirectinput.keyDown("g")
+    delay(0.05)
+    pydirectinput.keyDown("b")
+    pydirectinput.keyDown("f")
+    pydirectinput.keyUp("g")
+    pydirectinput.keyUp("b")
+    pydirectinput.keyUp("f")
+    delay(0.15)
+
 def highJumpAttack():
     highJump()
     cleave()
@@ -139,6 +174,9 @@ def downJumpAttack():
 def huntingDecree():
     keyboardClick("e")
 
+def nobleSummons():
+    keyboardClick("a")
+
 def aetherBloom():
     keyboardClick("s")
     delay(0.5)
@@ -170,6 +208,18 @@ def upImpale():
 def rush():
     keyboardClick("d")
 
+def leftImpaleRush():
+    pydirectinput.keyDown("left")
+    pydirectinput.keyDown("h")
+    pydirectinput.keyDown("h")
+    pydirectinput.keyUp("h")
+    delay(0.02)
+    pydirectinput.keyDown("d")
+    pydirectinput.keyUp("d")
+    pydirectinput.keyDown("d")
+    pydirectinput.keyUp("d")
+    pydirectinput.keyUp("left")
+
 def leftUpImpaleRush():
     pydirectinput.keyDown("up")
     pydirectinput.keyDown("left")
@@ -181,6 +231,37 @@ def leftUpImpaleRush():
     pydirectinput.keyDown("d")
     pydirectinput.keyUp("d")
     pydirectinput.keyUp("left")
+    pydirectinput.keyUp("up")
+
+def leftDownImpaleRush():
+    pydirectinput.keyDown("down")
+    pydirectinput.keyDown("left")
+    pydirectinput.keyDown("h")
+    pydirectinput.keyUp("h")
+    delay(0.02)
+    pydirectinput.keyDown("d")
+    pydirectinput.keyUp("d")
+    pydirectinput.keyDown("d")
+    pydirectinput.keyUp("d")
+    pydirectinput.keyUp("left")
+    pydirectinput.keyUp("down")
+
+def jumpLeftUpImpaleRush():
+    pydirectinput.keyDown("g")
+    pydirectinput.keyUp("g")
+    leftUpImpaleRush()
+
+def rightUpImpaleRush():
+    pydirectinput.keyDown("up")
+    pydirectinput.keyDown("right")
+    pydirectinput.keyDown("h")
+    pydirectinput.keyUp("h")
+    delay(0.02)
+    pydirectinput.keyDown("d")
+    pydirectinput.keyUp("d")
+    pydirectinput.keyDown("d")
+    pydirectinput.keyUp("d")
+    pydirectinput.keyUp("right")
     pydirectinput.keyUp("up")
 
 def upImpaleRush():
