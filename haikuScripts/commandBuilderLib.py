@@ -133,7 +133,7 @@ def flashJumpAttack():
 
 def slowerFlashJumpAttack():
     pydirectinput.keyDown("g")
-    delay(0.05)
+    delay(0.1)
     pydirectinput.keyDown("b")
     pydirectinput.keyDown("f")
     pydirectinput.keyUp("g")
@@ -219,6 +219,18 @@ def leftImpaleRush():
     pydirectinput.keyDown("d")
     pydirectinput.keyUp("d")
     pydirectinput.keyUp("left")
+
+def rightImpaleRush():
+    pydirectinput.keyDown("right")
+    pydirectinput.keyDown("h")
+    pydirectinput.keyDown("h")
+    pydirectinput.keyUp("h")
+    delay(0.02)
+    pydirectinput.keyDown("d")
+    pydirectinput.keyUp("d")
+    pydirectinput.keyDown("d")
+    pydirectinput.keyUp("d")
+    pydirectinput.keyUp("right")
 
 def leftUpImpaleRush():
     pydirectinput.keyDown("up")
