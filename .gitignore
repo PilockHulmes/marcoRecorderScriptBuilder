@@ -1,6 +1,9 @@
 samples/
 testImages/
 
+venv
+.git
+
 # ignore all the generated scripts
 *.mcr
 

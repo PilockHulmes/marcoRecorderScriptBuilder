@@ -129,7 +129,16 @@ def flashJumpAttack():
     pydirectinput.keyUp("g")
     pydirectinput.keyUp("b")
     pydirectinput.keyUp("f")
-    delay(0.2)
+    delay(0.1)
+
+def flashJumpAttackHuntingDecree():
+    pydirectinput.keyDown("g")
+    pydirectinput.keyDown("b")
+    pydirectinput.keyDown("f")
+    pydirectinput.keyUp("g")
+    pydirectinput.keyUp("b")
+    pydirectinput.keyUp("f")
+    huntingDecree()
 
 def slowerFlashJumpAttack():
     pydirectinput.keyDown("g")
@@ -308,7 +317,7 @@ def sellAllEquips():
     keyboardClick("enter")
     delay(0.2)
     keyboardClick("alt")
-    delay(0.3)
+    delay(0.4)
 
 def totem():
     keyboardClick("6")

@@ -398,3 +398,21 @@ def recall():
     return join([
         click("A"),
     ])
+
+def buff(button, interval = 700):
+    return join([
+        click(button),
+        wait(interval)
+    ])
+
+def buff1():
+    return buff("1")
+
+def buff2():
+    return buff("2")
+
+def buff3():
+    return buff("3")
+
+def buff4():
+    return buff("4")

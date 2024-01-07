@@ -1,8 +1,9 @@
 pyautogui
 pydirectinput
-torch
-torchvision
-torchaudio
-easyocr
-scikit-image
-numpy
+pynewinput
+# torch
+# torchvision
+# torchaudio
+# easyocr
+# scikit-image
+# numpy
