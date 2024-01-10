@@ -6,15 +6,19 @@ import commandBuilderLib as lib
 time.sleep(3)
 
 BUFF_LOOP = 13
-LOOT_LOOP = 5
+LOOT_LOOP_LOW = 5
+LOOT_LOOP_HIGH = 6
 loopCounter = 0
 
 lib.totem()
+
+sellOrNot = lib.sellRandomly(LOOT_LOOP_LOW, LOOT_LOOP_HIGH)
+
 while True:
     if loopCounter % BUFF_LOOP == 0:
         lib.buffSharpEyes()
         lib.buffDsi()
-    if loopCounter % LOOT_LOOP == 0:
+    if sellOrNot():
         lib.sellAllEquips()
     loopCounter += 1
     lib.right()

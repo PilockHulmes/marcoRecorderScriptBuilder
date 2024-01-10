@@ -6,7 +6,7 @@ import commandBuilderLib as lib
 time.sleep(3)
 
 BUFF_LOOP = 19
-LOOT_LOOP = 12
+LOOT_LOOP = 11
 HUNTING_DECREE_LOOP = 2
 loopCounter = 0
 
@@ -26,11 +26,11 @@ while True:
         lib.doubleJumpAttack()
     lib.downJumpAttack()
     # landing
-    lib.delay(0.1)
+    # lib.delay(0.1)
     lib.downJumpAttack()
     # landing
-    lib.delay(0.2)
+    lib.delay(0.1)
     lib.right()
     lib.downJumpAttack()
     # return
-    lib.delay(0.25)
+    lib.delay(0.15)

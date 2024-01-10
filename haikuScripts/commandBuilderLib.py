@@ -1,6 +1,7 @@
 import pyautogui
 import pydirectinput
 import time
+import random
 
 LINE_DELIMITER = "\n"
 INTERVAL_KEYUP = 0.01
@@ -109,9 +110,10 @@ def doubleHighJump():
     keyboardRelease("up")
 
 def downJump():
-    keyboardPress("down")
-    keyboardClickRapid("g")
-    keyboardRelease("down")
+    pydirectinput.keyDown("down")
+    pydirectinput.keyDown("g")
+    pydirectinput.keyUp("g")
+    pydirectinput.keyUp("down")
 
 def groundAttack():
     cleave()
@@ -137,8 +139,9 @@ def flashJumpAttackHuntingDecree():
     pydirectinput.keyDown("f")
     pydirectinput.keyUp("g")
     pydirectinput.keyUp("b")
+    pydirectinput.keyDown("e")
     pydirectinput.keyUp("f")
-    huntingDecree()
+    pydirectinput.keyUp("e")
 
 def slowerFlashJumpAttack():
     pydirectinput.keyDown("g")
@@ -299,6 +302,10 @@ def upImpaleRush():
 def sellAllEquips():
     keyboardClick("enter")
     delay(0.1)
+    keyboardClick("/")
+    keyboardClick("s")
+    keyboardClick("enter")
+    delay(0.1)
     inputAt()
     keyboardClick("s")
     keyboardClick("e")
@@ -334,3 +341,21 @@ def buffDsi():
 def buffHs():
     keyboardClick("5")
     delay(1)
+
+def sellRandomly(start, end):
+    count = 0
+    choosed = None
+    between = range(start, end + 1)
+    def choose():
+        nonlocal choosed
+        nonlocal count
+        if choosed is None:
+            choosed = random.choice(between)
+            print("next sell at ", choosed)
+        result = count % choosed == 0
+        count = count + 1
+        if result:
+            choosed = None
+            count = 1
+        return result 
+    return choose
