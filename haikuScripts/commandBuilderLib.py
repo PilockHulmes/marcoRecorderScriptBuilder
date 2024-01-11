@@ -17,6 +17,13 @@ def delay(ms):
     while time.perf_counter() < end_time:
         pass
 
+delayTreshold = 0.07
+def delayRandomly(ms):
+    start_time = time.perf_counter()
+    end_time = start_time + ms + random.uniform(0, delayTreshold)
+    while time.perf_counter() < end_time:
+        pass
+
 def keyboardClick(button, interval = INTERVAL_CLICK):
     pydirectinput.keyDown(button)
     # delay(INTERVAL_KEYUP)
@@ -126,19 +133,19 @@ def jumpAttack():
 
 def flashJumpAttack():
     pydirectinput.keyDown("g")
-    pydirectinput.keyDown("b")
+    pydirectinput.keyDown("w")
     pydirectinput.keyDown("f")
     pydirectinput.keyUp("g")
-    pydirectinput.keyUp("b")
+    pydirectinput.keyUp("w")
     pydirectinput.keyUp("f")
     delay(0.1)
 
 def flashJumpAttackHuntingDecree():
     pydirectinput.keyDown("g")
-    pydirectinput.keyDown("b")
+    pydirectinput.keyDown("w")
     pydirectinput.keyDown("f")
     pydirectinput.keyUp("g")
-    pydirectinput.keyUp("b")
+    pydirectinput.keyUp("w")
     pydirectinput.keyDown("e")
     pydirectinput.keyUp("f")
     pydirectinput.keyUp("e")
@@ -146,10 +153,10 @@ def flashJumpAttackHuntingDecree():
 def slowerFlashJumpAttack():
     pydirectinput.keyDown("g")
     delay(0.1)
-    pydirectinput.keyDown("b")
+    pydirectinput.keyDown("w")
     pydirectinput.keyDown("f")
     pydirectinput.keyUp("g")
-    pydirectinput.keyUp("b")
+    pydirectinput.keyUp("w")
     pydirectinput.keyUp("f")
     delay(0.15)
 
