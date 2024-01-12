@@ -5,8 +5,8 @@ import ctypes
 import mss
 import mss.windows
 import numpy as np
-import utils
-import config
+import src.utils as utils 
+import src.config as config
 
 from ctypes import wintypes
 user32 = ctypes.windll.user32
@@ -80,7 +80,7 @@ class Capture:
                 while True:
                     if not self.calibrated:
                         print("not calibrated properly, redo it")
-                        self.calibrate()
+                        break
                     
                     # Take screenshot
                     self.frame = self.screenshot()
@@ -102,13 +102,23 @@ class Capture:
                     rune = utils.multi_match(filtered, RUNE_TEMPLATE, threshold=0.9)
                     if rune:
                         config.rune_position = utils.convert_to_relative(rune[0], minimap)
+                        config.rune_active = True
                     else:
                         config.rune_position = (0, 0)
+                        config.rune_active = False
                     
                     # Determin the other players' positions
                     filtered = utils.filter_color(minimap, OTHER_RANGES)
                     others_count = len(utils.multi_match(filtered, OTHER_TEMPLATE, threshold=0.5))
                     config.map_invaded = others_count > 0
+
+                    # Determin if there is unexpected blackscreen (like dc or something)
+                    gray = cv2.cvtColor(self.frame, cv2.COLOR_BGR2GRAY)
+                    height, width, _ = self.frame.shape
+                    room_change_threshold = 0.9
+                    config.blackscreened = np.count_nonzero(gray < 15) / height / width > room_change_threshold
+
+                    time.sleep(0.05)
 
 
     def calibrate(self):
@@ -130,18 +140,23 @@ class Capture:
             return
         tl, _ = utils.single_match(self.frame, MINIMAP_TOPLEFT_TEMPLATE)
         _, br = utils.single_match(self.frame, MINIMAP_BOTTOMRIGHT_TEMPLATE)
-        print(utils.single_match(self.frame, MINIMAP_TOPLEFT_TEMPLATE))
-        print(utils.single_match(self.frame, MINIMAP_BOTTOMRIGHT_TEMPLATE))
+        print("============")
+        print(tl ,br )
+        print("============")
         self.minimap_topleft_position = (
             tl[0] + MINIMAP_BOTTOM_BORDER,
             tl[1] + MINIMAP_TOP_BORDER
         )
-        self.minimap_bottomright_position = {
+        self.minimap_bottomright_position = (
             max(self.minimap_topleft_position[0] + PLAYERER_TEMPLATE_WIDTH, br[0] - MINIMAP_BOTTOM_BORDER),
             max(self.minimap_topleft_position[1] + PLAYER_TEMPLATE_HEIGHT, br[1] - MINIMAP_BOTTOM_BORDER)
-        }
-        self.minimap_ratio = (self.mm_br[0] - self.mm_tl[0]) / (self.mm_br[1] - self.mm_tl[1])
-        self.minimap_sample = self.frame[self.mm_tl[1]:self.mm_br[1], self.mm_tl[0]:self.mm_br[0]]
+        )
+        print(self.minimap_bottomright_position)
+        print(self.minimap_topleft_position)
+        print(self.minimap_bottomright_position[0] - self.minimap_topleft_position[0])
+        print(self.minimap_bottomright_position[1] - self.minimap_topleft_position[1])
+        self.minimap_ratio = (self.minimap_bottomright_position[0] - self.minimap_topleft_position[0]) / (self.minimap_bottomright_position[1] - self.minimap_topleft_position[1])
+        self.minimap_sample = self.frame[self.minimap_topleft_position[1]:self.minimap_bottomright_position[1], self.minimap_topleft_position[0]:self.minimap_bottomright_position[0]]
         self.calibrated = True
 
     def screenshot(self, delay=1):
