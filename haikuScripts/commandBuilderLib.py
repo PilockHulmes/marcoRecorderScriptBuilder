@@ -251,6 +251,19 @@ def rightImpaleRush():
     pydirectinput.keyUp("d")
     pydirectinput.keyUp("right")
 
+def rightDownImpaleRush():
+    pydirectinput.keyDown("right")
+    pydirectinput.keyDown("down")
+    pydirectinput.keyDown("h")
+    pydirectinput.keyUp("h")
+    delay(0.02)
+    pydirectinput.keyDown("d")
+    pydirectinput.keyUp("d")
+    pydirectinput.keyDown("d")
+    pydirectinput.keyUp("d")
+    pydirectinput.keyUp("down")
+    pydirectinput.keyUp("right")
+
 def leftUpImpaleRush():
     pydirectinput.keyDown("up")
     pydirectinput.keyDown("left")
@@ -281,6 +294,11 @@ def jumpLeftUpImpaleRush():
     pydirectinput.keyDown("g")
     pydirectinput.keyUp("g")
     leftUpImpaleRush()
+
+def jumpRightDownImpaleRush():
+    pydirectinput.keyDown("g")
+    pydirectinput.keyUp("g")
+    rightDownImpaleRush()
 
 def rightUpImpaleRush():
     pydirectinput.keyDown("up")
