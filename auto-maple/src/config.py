@@ -11,6 +11,8 @@ rune_active = False
 map_invaded = False
 # If there is blackscree
 blackscreened = False
+# The image of minimap
+minimap = None
 
 
 #############################

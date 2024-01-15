@@ -89,6 +89,7 @@ class Capture:
 
                     # Crop the frame to only show the minimap
                     minimap = self.frame[self.minimap_topleft_position[1]:self.minimap_bottomright_position[1], self.minimap_topleft_position[0]:self.minimap_bottomright_position[0]]
+                    config.minimap = minimap
 
                     # Determine the player's position
                     player = utils.multi_match(minimap, PLAYER_TEMPLATE, threshold=0.8)
@@ -140,9 +141,6 @@ class Capture:
             return
         tl, _ = utils.single_match(self.frame, MINIMAP_TOPLEFT_TEMPLATE)
         _, br = utils.single_match(self.frame, MINIMAP_BOTTOMRIGHT_TEMPLATE)
-        print("============")
-        print(tl ,br )
-        print("============")
         self.minimap_topleft_position = (
             tl[0] + MINIMAP_BOTTOM_BORDER,
             tl[1] + MINIMAP_TOP_BORDER
@@ -151,10 +149,6 @@ class Capture:
             max(self.minimap_topleft_position[0] + PLAYERER_TEMPLATE_WIDTH, br[0] - MINIMAP_BOTTOM_BORDER),
             max(self.minimap_topleft_position[1] + PLAYER_TEMPLATE_HEIGHT, br[1] - MINIMAP_BOTTOM_BORDER)
         )
-        print(self.minimap_bottomright_position)
-        print(self.minimap_topleft_position)
-        print(self.minimap_bottomright_position[0] - self.minimap_topleft_position[0])
-        print(self.minimap_bottomright_position[1] - self.minimap_topleft_position[1])
         self.minimap_ratio = (self.minimap_bottomright_position[0] - self.minimap_topleft_position[0]) / (self.minimap_bottomright_position[1] - self.minimap_topleft_position[1])
         self.minimap_sample = self.frame[self.minimap_topleft_position[1]:self.minimap_bottomright_position[1], self.minimap_topleft_position[0]:self.minimap_bottomright_position[0]]
         self.calibrated = True

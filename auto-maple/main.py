@@ -1,11 +1,14 @@
 from src.capture import Capture
+from src.displayer import Displayer
 import src.config as config
 import time 
 
 
 c = Capture()
-
 c.start()
+
+d = Displayer()
+d.start()
 
 while True:
     print("Rune active:", config.rune_active)

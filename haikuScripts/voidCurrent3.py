@@ -7,7 +7,7 @@ import time
 time.sleep(3)
 
 BUFF_LOOP = 3
-LOOT_LOOP = 2
+LOOT_LOOP = 3
 loopCounter = 0
 
 lib.totem()
