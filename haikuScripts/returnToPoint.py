@@ -8,8 +8,8 @@ import pydirectinput
 DOUBLE_JUMP = 0.15
 TRIPLE_JUMP = 0.25
 
-UPPER_JUMP = 0.08
-DOUBLE_UPPER_JUMP = 0.18
+UPPER_JUMP = 0.05
+DOUBLE_UPPER_JUMP = 0.15
 
 WALKING_PER_SECOND = 0.097 # roughly tested, with 150 character speed
 

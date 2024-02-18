@@ -44,6 +44,20 @@ def multi_match(frame, template, threshold=0.95):
         results.append((x, y))
     return results
 
+def convert_to_absolute(point, frame):
+    """
+    Converts POINT into absolute coordinates (in pixels) based on FRAME.
+    Normalizes the units of the vertical axis to equal those of the horizontal
+    axis by using config.mm_ratio.
+    :param point:   The point in relative coordinates.
+    :param frame:   The image to use as a reference.
+    :return:        The given point in absolute coordinates.
+    """
+
+    x = int(round(point[0] * frame.shape[1]))
+    y = int(round(point[1] * config.capture.minimap_ratio * frame.shape[0]))
+    return x, y
+
 def filter_color(img, ranges):
     """
     Returns a filtered copy of IMG that only contains pixels within the given RANGES.
@@ -77,3 +91,13 @@ def convert_to_relative(point, frame):
     x = point[0] / frame.shape[1]
     y = point[1] / config.capture.minimap_ratio / frame.shape[0]
     return x, y
+
+def distance(a, b):
+    """
+    Applies the distance formula to two points.
+    :param a:   The first point.
+    :param b:   The second point.
+    :return:    The distance between the two points.
+    """
+
+    return math.sqrt((a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2)

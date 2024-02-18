@@ -10,18 +10,22 @@ import time
 class Displayer():
 
     def __init__(self):
-
         self.WIDTH = 400
         self.HEIGHT = 300
-        self.canvas = tk.Canvas(self, bg='black',
-                                width=self.WIDTH, height=self.HEIGHT,
-                                borderwidth=0, highlightthickness=0)
-        self.canvas.pack(expand=True, fill='both', padx=5, pady=5)
+        self.window = None
+        self.canvas = None
         self.container = None
         self.thread = threading.Thread(target=self._main)
         self.thread.daemon = True
+        self.display_thread = threading.Thread(target=self._loop_display)
+        self.display_thread.daemon = True
     
     def _main(self):
+        self.init_window()
+        self.display_thread.start()
+        self.window.mainloop()
+
+    def _loop_display(self):
         delay = 1 / 30 # the framerate
         while True:
             self.display_minimap()
@@ -33,28 +37,34 @@ class Displayer():
 
     def init_window(self):
         print("start the canvas window")
-        tk_window = tk.Tk()
-        tk_window.title('Minimap')
-        tk_window.geometry("800x600")
-        tk_window.resizable(False, False)
-        tk_window.config(menu=self.init_menu(tk_window))
-    
+        self.window = tk.Tk()
+        self.window.title('Minimap')
+        self.window.geometry("400x500")
+        self.window.resizable(False, False)
+        self.window.config(menu=self.init_menu(self.window))
+        self.init_canvas(self.window)
+        
+
     def init_menu(self, gui):
         menu = tk.Menu(gui)
-        function_item = tk.Menu(gui)
-        function_item.add_cascade(label="function")
+        function_item = tk.Menu(menu, tearoff=0)
+        menu.add_cascade(label="function", menu=function_item)
         def uncalibrate():
             config.capture.calibrated=False
         function_item.add_command(label='Recalibrate', command=uncalibrate)
         return menu
        
-    def init_minimap(self):
-        minimap = ttk.LabelFrame
+    def init_canvas(self, gui):
+        self.canvas = tk.Canvas(gui, bg='black',
+                                 width=self.WIDTH, height=self.HEIGHT,
+                                 borderwidth=0, highlightthickness=0)
+        self.canvas.pack(expand=True, fill='both', padx=5, pady=5)
 
 
     def display_minimap(self):
-        if not config.capture or not config.capture.calibrate:
+        if not config.capture or not config.capture.calibrate or config.minimap is None:
             print("screen no calibrated, skip")
+            return
         rune_active = config.rune_active
         rune_position = config.rune_position
         player_pos = config.player_position

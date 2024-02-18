@@ -39,6 +39,8 @@ RUNE_RANGES = (
 rune_filtered = utils.filter_color(cv2.imread('assets/rune_template.png'), RUNE_RANGES)
 RUNE_TEMPLATE = cv2.cvtColor(rune_filtered, cv2.COLOR_BGR2GRAY)
 
+RUNE_BUFF_TEMPLATE = cv2.imread('assets/rune_buff_template.jpg', 0)
+
 # Other players' symbols on the minimap
 OTHER_RANGES = (
     ((0, 245, 215), (10, 255, 255)),
@@ -105,8 +107,8 @@ class Capture:
                         config.rune_position = utils.convert_to_relative(rune[0], minimap)
                         config.rune_active = True
                     else:
-                        config.rune_position = (0, 0)
-                        config.rune_active = False
+                        # do nothing to inactive the rune, inactive will be done by rune solver class
+                        pass
                     
                     # Determin the other players' positions
                     filtered = utils.filter_color(minimap, OTHER_RANGES)
@@ -118,6 +120,19 @@ class Capture:
                     height, width, _ = self.frame.shape
                     room_change_threshold = 0.9
                     config.blackscreened = np.count_nonzero(gray < 15) / height / width > room_change_threshold
+
+                    # Determin if there is rune buff activated
+                    rune_buff = utils.multi_match(self.frame[:self.frame.shape[0] // 8, :],
+                                RUNE_BUFF_TEMPLATE,
+                                threshold=0.9)
+                    if rune_buff:
+                        position_in_name = min(rune_buff, key=lambda p: p[0])
+                        config.rune_buff_position = (
+                            position_in_name[0] + self.window['left'],
+                            position_in_name[1] + self.window['top']
+                        )
+                    else:
+                        config.rune_buff_position = None
 
                     time.sleep(0.05)
 
