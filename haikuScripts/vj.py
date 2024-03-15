@@ -5,8 +5,11 @@ import commandBuilderLib as lib
 
 time.sleep(3)
 
+totemInterval = 480 # 8 mins
+totem = lib.callWithInterval(lib.totem, totemInterval)
+
 while True:
-    lib.totem()
+    totem()
     for i in range(9):
         lib.right()
         lib.doubleJumpAttackHuntingDecree()
@@ -22,5 +25,5 @@ while True:
         lib.doubleJumpAttack()
         lib.doubleJumpAttack()
         lib.doubleJumpAttack()
-    lib.sellAllEquips()
-    time.sleep(1)
+    # lib.sellAllEquips()
+    time.sleep(0.5)

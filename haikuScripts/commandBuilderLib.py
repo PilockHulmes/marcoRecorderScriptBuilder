@@ -133,30 +133,31 @@ def jumpAttack():
 
 def flashJumpAttack():
     pydirectinput.keyDown("g")
-    pydirectinput.keyDown("w")
+    pydirectinput.keyDown("j")
     pydirectinput.keyDown("f")
     pydirectinput.keyUp("g")
-    pydirectinput.keyUp("w")
+    pydirectinput.keyUp("j")
     pydirectinput.keyUp("f")
-    delay(0.1)
+    delay(0.2)
 
 def flashJumpAttackHuntingDecree():
     pydirectinput.keyDown("g")
-    pydirectinput.keyDown("w")
+    pydirectinput.keyDown("j")
     pydirectinput.keyDown("f")
     pydirectinput.keyUp("g")
-    pydirectinput.keyUp("w")
+    pydirectinput.keyUp("j")
     pydirectinput.keyDown("e")
     pydirectinput.keyUp("f")
     pydirectinput.keyUp("e")
+    delay(0.1)
 
 def slowerFlashJumpAttack():
     pydirectinput.keyDown("g")
     delay(0.1)
-    pydirectinput.keyDown("w")
+    pydirectinput.keyDown("j")
     pydirectinput.keyDown("f")
     pydirectinput.keyUp("g")
-    pydirectinput.keyUp("w")
+    pydirectinput.keyUp("j")
     pydirectinput.keyUp("f")
     delay(0.15)
 
@@ -178,6 +179,7 @@ def doubleJumpAttack():
 def doubleJumpAttackHuntingDecree():
     doubleJump()
     cleave()
+    delay(0.05)
     huntingDecree()
 
 def tribleJumpAttack():
@@ -192,6 +194,7 @@ def downJumpAttack():
 
 def huntingDecree():
     keyboardClick("e")
+    delay(0.1)
 
 def nobleSummons():
     keyboardClick("a")
@@ -269,7 +272,8 @@ def leftUpImpaleRush():
     pydirectinput.keyDown("left")
     pydirectinput.keyDown("h")
     pydirectinput.keyUp("h")
-    delay(0.02)
+    pydirectinput.keyDown("d")
+    pydirectinput.keyUp("d")
     pydirectinput.keyDown("d")
     pydirectinput.keyUp("d")
     pydirectinput.keyDown("d")
@@ -352,7 +356,8 @@ def sellAllEquips():
     delay(0.4)
 
 def totem():
-    keyboardClick("6")
+    delay(0.2) # make sure the previous action was stoped (landing e.t.c.)
+    keyboardClick("2")
     delay(0.6)
 
 def buffSharpEyes():
@@ -384,3 +389,28 @@ def sellRandomly(start, end):
             count = 1
         return result 
     return choose
+
+def callWithInterval(func, intervalInSeconds):
+    start = None
+    def innerfunc():
+        nonlocal start
+        if start is None:
+            start = time.time()
+            func()
+            return
+        if time.time() - start >= intervalInSeconds:
+            start = time.time()
+            func()
+            return
+        return
+    return innerfunc
+
+
+def summonBall():
+    pydirectinput.keyDown("down")
+    pydirectinput.keyDown("n")
+    pydirectinput.keyUp("n")
+    pydirectinput.keyUp("down")
+    delay(0.5)
+ballCD = 60
+summonBallWithInterval = callWithInterval(summonBall, ballCD)

@@ -11,12 +11,12 @@ lib.totem()
 counter = 0
 while True:
     for i in range(6):
-        if counter % BUFF_LOOP == 0:
-            lib.buffSharpEyes()
-            lib.buffDsi()
-            lib.buffHs()
-            counter = 0
-        counter += 1
+        # if counter % BUFF_LOOP == 0:
+        #     lib.buffSharpEyes()
+        #     lib.buffDsi()
+        #     lib.buffHs()
+        #     counter = 0
+        # counter += 1
         lib.right()
         lib.doubleJumpAttackHuntingDecree()
         lib.doubleJumpAttackHuntingDecree()
@@ -33,5 +33,5 @@ while True:
         lib.doubleJumpAttack()
         lib.doubleJumpAttack()
         lib.doubleJumpAttack()
-    lib.sellAllEquips()
+    # lib.sellAllEquips()
     lib.delay(0.3)

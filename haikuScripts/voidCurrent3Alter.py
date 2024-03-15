@@ -10,15 +10,17 @@ BUFF_LOOP = 3
 LOOT_LOOP = 3
 loopCounter = 0
 
-lib.totem()
+totemInterval = 400 # 8 mins
+totem = lib.callWithInterval(lib.totem, totemInterval)
 while True:
-    if loopCounter % BUFF_LOOP == 0:
-        lib.buffSharpEyes()
-        lib.buffDsi()
-    if loopCounter % LOOT_LOOP == 0:
-        lib.sellAllEquips()
-    loopCounter += 1
+    # if loopCounter % BUFF_LOOP == 0:
+    #     lib.buffSharpEyes()
+    #     lib.buffDsi()
+    # if loopCounter % LOOT_LOOP == 0:
+    #     lib.sellAllEquips()
+    # loopCounter += 1
     start = time.time()
+    totem()
     lib.right()
     lib.flashJumpAttack()
     lib.flashJumpAttack()
@@ -30,15 +32,25 @@ while True:
     lib.left()
     lib.flashJumpAttack()
     lib.flashJumpAttack()
-    lib.slowerFlashJumpAttack()
+    lib.summonBallWithInterval()
+    lib.doubleJumpAttack()
+    lib.delay(0.1)
+    lib.huntingDecree()
     lib.huntingDecree()
     lib.huntingDecree()
     lib.flashJumpAttack()
-    lib.delay(0.2)
+    lib.groundAttack()
+    lib.delay(0.1)
     lib.right()
+    # lib.flashJumpAttack()
+    # lib.rightImpaleRush()
+    lib.downJumpAttack()
+    lib.delay(0.3)
+    # lib.right()
     lib.flashJumpAttack()
-    lib.rightImpaleRush()
     lib.flashJumpAttack()
+    # lib.doubleJumpAttack()
+    # lib.doubleJumpAttack()
     lib.flashJumpAttack()
     lib.flashJumpAttack()
     lib.aetherBloom()

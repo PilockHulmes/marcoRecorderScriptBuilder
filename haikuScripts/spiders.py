@@ -10,17 +10,21 @@ LOOT_LOOP_LOW = 5
 LOOT_LOOP_HIGH = 6
 loopCounter = 0
 
-lib.totem()
+# lib.totem()
 
-sellOrNot = lib.sellRandomly(LOOT_LOOP_LOW, LOOT_LOOP_HIGH)
+# sellOrNot = lib.sellRandomly(LOOT_LOOP_LOW, LOOT_LOOP_HIGH)
+
+totemInterval = 400 # 8 mins
+totem = lib.callWithInterval(lib.totem, totemInterval)
 
 while True:
-    if loopCounter % BUFF_LOOP == 0:
-        lib.buffSharpEyes()
-        lib.buffDsi()
-    if sellOrNot():
-        lib.sellAllEquips()
-    loopCounter += 1
+    totem()
+    # if loopCounter % BUFF_LOOP == 0:
+    #     lib.buffSharpEyes()
+    #     lib.buffDsi()
+    # if sellOrNot():
+    #     lib.sellAllEquips()
+    # loopCounter += 1
     lib.right()
     lib.doubleJumpAttack()
     lib.doubleJumpAttackHuntingDecree()

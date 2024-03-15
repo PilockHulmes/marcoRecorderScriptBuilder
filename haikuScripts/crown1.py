@@ -9,15 +9,18 @@ BUFF_LOOP = 11
 LOOT_LOOP = 4
 loopCounter = 0
 
-lib.totem()
+totemInterval = 400 # 8 mins
+totem = lib.callWithInterval(lib.totem, totemInterval)
+
 while True:
-    if loopCounter % BUFF_LOOP == 0:
-        lib.buffSharpEyes()
-        lib.buffDsi()
-        # lib.buffHs()
-    if loopCounter % LOOT_LOOP == 0:
-        lib.sellAllEquips()
-    loopCounter += 1
+    # if loopCounter % BUFF_LOOP == 0:
+    #     lib.buffSharpEyes()
+    #     lib.buffDsi()
+    #     # lib.buffHs()
+    # if loopCounter % LOOT_LOOP == 0:
+    #     lib.sellAllEquips()
+    # loopCounter += 1
+    totem()
     lib.left()
     lib.doubleJumpAttackHuntingDecree()
     lib.doubleJumpAttackHuntingDecree()
