@@ -16,8 +16,7 @@ WALKING_PER_SECOND = 0.097 # roughly tested, with 150 character speed
 class Return:
     def __init__(self, horizontal_threshold = 0.01,vertical_threshold = 0.02):
         self.capture = Capture()
-        self.point = (0, 0)
-        self.point_saved = False
+        self.points = {}
         self.distance_horizontal = 0
         self.distance_vertical = 0
         self.horizontal_threshold = horizontal_threshold
@@ -26,12 +25,12 @@ class Return:
     def start(self):
         self.capture.start()
     
-    def save(self):
-        self.point = config.player_position
+    def save(self, index=0):
+        self.points[index] = config.player_position
 
-    def returnToSavePoint(self):
+    def returnToSavePoint(self, index=0):
         while True:
-            self.calculateDistance()
+            self.calculateDistance(index)
             if self.verticalMatch() and self.horizontalMatch():
                 break
             if not self.horizontalMatch():
@@ -41,10 +40,10 @@ class Return:
                 self.approachVertical()
                 continue
 
-    def calculateDistance(self):
-        self.distance_horizontal = self.point[0] - config.player_position[0]
-        self.distance_vertical = self.point[1] - config.player_position[1]
-        print("saved:", self.point)
+    def calculateDistance(self, index = 0):
+        self.distance_horizontal = self.points[index][0] - config.player_position[0]
+        self.distance_vertical = self.points[index][1] - config.player_position[1]
+        print("saved:", self.points[index])
         print("player:", config.player_position)
         print(self.distance_horizontal)
         print(self.distance_vertical)
