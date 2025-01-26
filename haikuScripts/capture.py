@@ -48,7 +48,7 @@ OTHER_RANGES = (
 other_filtered = utils.filter_color(cv2.imread('assets/other_template.png'), OTHER_RANGES)
 OTHER_TEMPLATE = cv2.cvtColor(other_filtered, cv2.COLOR_BGR2GRAY)
 
-WINDOW_NAME = 'Haiku v224'
+WINDOW_NAME = 'Haiku v236 (x64)'
 
 class Capture:
 
