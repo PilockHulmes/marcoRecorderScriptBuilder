@@ -16,7 +16,8 @@ map_invaded = False
 blackscreened = False
 # The image of minimap
 minimap = None
-
+# If bot testing happened
+bottesting = False
 
 #############################
 #       Shared Modules      #

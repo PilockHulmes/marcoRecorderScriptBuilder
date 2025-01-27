@@ -7,6 +7,7 @@ import mss.windows
 import numpy as np
 import utils as utils 
 import config as config
+import os
 
 from ctypes import wintypes
 user32 = ctypes.windll.user32
@@ -31,6 +32,12 @@ MINIMAP_TEMPLATE_WIDTH = max(MINIMAP_TOPLEFT_TEMPLATE.shape[1], MINIMAP_BOTTOMRI
 
 PLAYER_TEMPLATE = cv2.imread('assets/player_template.png', 0)
 PLAYER_TEMPLATE_HEIGHT, PLAYERER_TEMPLATE_WIDTH = PLAYER_TEMPLATE.shape
+
+HAIKU_BOT_TESTING_TOPLEFT_TEMPLATE = cv2.imread('assets/haiku_bot_testing_tl_template.jpg', 0)
+HAIKU_BOT_TESTING_BOTTOMRIGHT_TEMPLATE = cv2.imread('assets/haiku_bot_testing_br_template.jpg', 0)
+
+HAIKU_BOT_TESTING_HEIGHT = max(HAIKU_BOT_TESTING_TOPLEFT_TEMPLATE.shape[0], HAIKU_BOT_TESTING_BOTTOMRIGHT_TEMPLATE.shape[0])
+HAIKU_BOT_TESTING_WIDTH = max(HAIKU_BOT_TESTING_TOPLEFT_TEMPLATE.shape[1], HAIKU_BOT_TESTING_BOTTOMRIGHT_TEMPLATE.shape[1])
 
 # A rune's symbol on the minimap
 RUNE_RANGES = (
@@ -69,6 +76,8 @@ class Capture:
         self.thread.daemon = True
         self.minimap_topleft_position = None
         self.minimap_bottomright_position = None
+        self.haiku_bot_testing_topleft_position = None
+        self.haiku_bot_testing_bottomright_position = None
     
     def start(self):
         print("Start the video capture")
@@ -134,6 +143,11 @@ class Capture:
                     else:
                         config.rune_buff_position = None
 
+                    # Determin if there is haiku bot testing activated
+                    self.botTestingDetection()
+                    if self.haiku_bot_testing_bottomright_position is not None or self.haiku_bot_testing_topleft_position is not None:
+                        config.bottesting = True
+
                     time.sleep(0.05)
 
 
@@ -175,3 +189,19 @@ class Capture:
             print(f'\n[!] Error while taking screenshot, retrying in {delay} second'
                   + ('s' if delay != 1 else ''))
             time.sleep(delay)
+
+    # needs to be run after calibrate
+    def botTestingDetection(self):
+        # skip checking if somehow screenshot not success
+        if self.frame is None:
+            return
+        tl, _ = utils.single_match(self.frame, HAIKU_BOT_TESTING_TOPLEFT_TEMPLATE)
+        _, br = utils.single_match(self.frame, HAIKU_BOT_TESTING_BOTTOMRIGHT_TEMPLATE)
+        self.haiku_bot_testing_topleft_position = (
+            tl[0],
+            tl[1]
+        )
+        self.haiku_bot_testing_bottomright_position = (
+            br[0],
+            br[1]
+        )

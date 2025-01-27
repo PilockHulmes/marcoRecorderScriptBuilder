@@ -47,6 +47,7 @@ class Return:
         print("player:", config.player_position)
         print(self.distance_horizontal)
         print(self.distance_vertical)
+        print("Having bot testing:", config.bottesting)
 
     def verticalMatch(self):
         return abs(self.distance_vertical) <= self.vertical_threshold

@@ -13,7 +13,6 @@ while True:
     for i in range(9):
         lib.right()
         lib.doubleJumpAttackHuntingDecree()
-        lib.doubleJumpAttackHuntingDecree()
         lib.doubleJumpAttack()
         lib.doubleJumpAttack()
         lib.doubleJumpAttack()
