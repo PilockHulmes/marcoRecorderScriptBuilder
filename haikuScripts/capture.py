@@ -78,6 +78,8 @@ class Capture:
         self.minimap_bottomright_position = None
         self.haiku_bot_testing_topleft_position = None
         self.haiku_bot_testing_bottomright_position = None
+        # np array that represents a screenshot. Its the cv2 BGR format rather than normal RGB
+        self.frame = None
     
     def start(self):
         print("Start the video capture")

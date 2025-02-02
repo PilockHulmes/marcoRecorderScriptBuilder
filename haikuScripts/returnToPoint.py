@@ -4,6 +4,9 @@ from capture import Capture
 import config as config
 import commandBuilderLib as lib
 import pydirectinput
+import detection
+import cv2
+from PIL import Image
 
 DOUBLE_JUMP = 0.15
 TRIPLE_JUMP = 0.25
@@ -21,6 +24,7 @@ class Return:
         self.distance_vertical = 0
         self.horizontal_threshold = horizontal_threshold
         self.vertical_threshold = vertical_threshold
+        self.model = detection.load_model()
     
     def start(self):
         self.capture.start()
@@ -39,6 +43,14 @@ class Return:
             if not self.verticalMatch():
                 self.approachVertical()
                 continue
+    
+    def solveRune(self):
+        # print(self.capture.frame)
+        # image = Image.fromarray(self.capture.frame)
+        # image.save("output.png")
+        # cv2.imshow('img', self.capture.frame)
+        arrows = detection.merge_detection(self.model, self.capture.frame)
+        print(arrows)
 
     def calculateDistance(self, index = 0):
         self.distance_horizontal = self.points[index][0] - config.player_position[0]
