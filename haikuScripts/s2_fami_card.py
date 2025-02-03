@@ -23,6 +23,7 @@ while True:
     if (loopCounter + 1) % ADJUST_LOOP == 0:
         r.returnToSavePoint()
     loopCounter += 1
+    r.botTesting()
     # lib.left()
     lib.right()
     lib.groundAttack()

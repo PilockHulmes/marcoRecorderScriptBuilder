@@ -1,19 +1,18 @@
-import pyautogui
-import pydirectinput
-import time
-import commandBuilderLib as lib
 import time
 from returnToPoint import Return
+from botCheckSolver import BotSolver
+import commandBuilderLib as lib
+import pydirectinput
 
 r = Return()
 r.start()
-time.sleep(1)
-r.save()
 
-time.sleep(2)
+# time.sleep(2)
 
-r.solveRune()
+b = BotSolver(r.capture)
 
-# while True:
-#     time.sleep(2)
-#     r.solveRune()
+# b.debug()
+
+# b.needSolveRune()
+
+print(b.getBotText())

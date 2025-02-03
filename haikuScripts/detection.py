@@ -135,11 +135,11 @@ def merge_detection(model, image):
     cropped = image[120:height//2, width//4:3*width//4]
     c = Image.fromarray(cropped)
     c.save("z_cropped.png")
-    filtered = filter_color(cropped)
-    f = Image.fromarray(filtered)
-    f.save("z_filtered.png")
-    cannied = canny(filtered)
-    # cannied = canny(cropped)
+    # filtered = filter_color(cropped)
+    # f = Image.fromarray(filtered)
+    # f.save("z_filtered.png")
+    # cannied = canny(filtered)
+    cannied = canny(cropped)
     c = Image.fromarray(cannied)
     c.save("z_cannied.png")
 
@@ -178,6 +178,7 @@ def merge_detection(model, image):
         lst = sort_by_confidence(model, preprocessed)
         lst.sort(key=lambda x: x[1][1])
         classes = [label_map[item[2]] for item in lst]
+        print(classes)
 
         # Run detection on rotated image
         rotated = cv2.rotate(preprocessed, cv2.ROTATE_90_COUNTERCLOCKWISE)
@@ -186,6 +187,7 @@ def merge_detection(model, image):
         rotated_classes = [converter[label_map[item[2]]]
                            for item in lst
                            if item[2] in [1, 2]]
+        print(rotated_classes)
             
         # Merge the two detection results
         for i in range(len(classes)):

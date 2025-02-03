@@ -27,6 +27,7 @@ while True:
     if (loopCounter + 1) % TOTEM_LOOP == 0:
         lib.totem()
     loopCounter += 1
+    r.botTesting()
     # lib.left()
     lib.right()
     lib.groundAttack()
