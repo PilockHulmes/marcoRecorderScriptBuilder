@@ -13,6 +13,6 @@ b = BotSolver(r.capture)
 
 # b.debug()
 
-# b.needSolveRune()
+b.needSolveRune()
 
-print(b.getBotText())
+# print(b.getBotText())
