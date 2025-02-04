@@ -363,6 +363,14 @@ def sellAllEquips():
     keyboardClick("alt")
     delay(0.4)
 
+def check():
+    switchToSpeak()
+    delay(0.1)
+    inputAt()
+    pydirectinput.write("check")
+    delay(0.2)
+    keyboardClick('enter')
+
 def totem():
     delay(0.2) # make sure the previous action was stoped (landing e.t.c.)
     keyboardClick("2")

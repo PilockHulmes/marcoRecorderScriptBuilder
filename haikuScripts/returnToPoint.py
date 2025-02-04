@@ -116,10 +116,7 @@ class Return:
     def calculateDistance(self, index = 0):
         self.distance_horizontal = self.points[index][0] - config.player_position[0]
         self.distance_vertical = self.points[index][1] - config.player_position[1]
-        # print("saved:", self.points[index])
-        # print("player:", config.player_position)
-        # print(self.distance_horizontal)
-        # print(self.distance_vertical)
+        print("saved:", self.points[index], "player:", config.player_position, "horizontal:", self.distance_horizontal, "vertical", self.distance_vertical)
 
     def verticalMatch(self):
         return abs(self.distance_vertical) <= self.vertical_threshold
@@ -148,8 +145,7 @@ class Return:
             time.sleep(0.1)
         else:
             duration = distance / WALKING_PER_SECOND
-            print("distance", distance)
-            print("duration", duration)
+            print("returning to point:", "distance", distance, "duration", duration)
             pydirectinput.keyDown(direction)
             lib.delay(duration - 0.1) # minus 0.1 to compensate the delay of python input library
             pydirectinput.keyUp(direction)

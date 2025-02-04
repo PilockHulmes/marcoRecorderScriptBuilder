@@ -20,14 +20,17 @@ time.sleep(1)
 r.save()
 
 lib.totem()
+lib.check()
 
 while True:
+    r.botTesting()
     if (loopCounter + 1) % ADJUST_LOOP == 0:
+        # wait a bit longer to let character landing
+        time.sleep(SLEEP_INTERVAL)
         r.returnToSavePoint()
     if (loopCounter + 1) % TOTEM_LOOP == 0:
         lib.totem()
     loopCounter += 1
-    r.botTesting()
     # lib.left()
     lib.right()
     lib.groundAttack()

@@ -20,6 +20,7 @@ time.sleep(1)
 r.save()
 
 lib.totem()
+lib.check()
 
 while True:
     if (loopCounter + 1) % ADJUST_LOOP == 0:
