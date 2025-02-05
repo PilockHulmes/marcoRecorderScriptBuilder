@@ -152,6 +152,13 @@ class Capture:
 
                     time.sleep(0.05)
 
+    def collectFrames(self, count = 10, inteval = 0.1):
+        with mss.mss() as screenshoter:
+            result = [np.array(screenshoter.grab(self.window))]
+            for _ in range(count):
+                time.sleep(inteval)
+                result.append(np.array(screenshoter.grab(self.window)))
+            return result
 
     def calibrate(self):
         handle = user32.FindWindowW(None, WINDOW_NAME)

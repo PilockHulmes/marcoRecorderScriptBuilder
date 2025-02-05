@@ -44,6 +44,8 @@ def filter_color(image):
     # apply new mask from  https://github.com/terryhji/MapleCV?tab=readme-ov-file#rune-detector
     mask = cv2.inRange(hsv, (95, 0, 0), (130, 255, 220))
 
+    blur = cv2.GaussianBlur(mask, (5,5), 0)
+
     # Mask the image
     color_mask = mask > 0
     arrows = np.zeros_like(image, np.uint8)
@@ -111,6 +113,11 @@ def get_boxes(model, image):
     boxes = [t[1:] for t in pruned]
     return boxes
 
+def image_enhance(image):
+    hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
+    mask = cv2.inRange(hsv, (95, 0, 0), (130, 255, 220))
+    blur = cv2.GaussianBlur(mask, (5,5), 0)
+    return blur
 
 def merge_detection(model, image):
     """
@@ -135,11 +142,15 @@ def merge_detection(model, image):
     cropped = image[120:height//2, width//4:3*width//4]
     c = Image.fromarray(cropped)
     c.save("z_cropped.png")
+    enhanced = image_enhance(cropped)
+    c = Image.fromarray(enhanced)
+    c.save("z_enhanced.png")
     # filtered = filter_color(cropped)
     # f = Image.fromarray(filtered)
     # f.save("z_filtered.png")
     # cannied = canny(filtered)
-    cannied = canny(cropped)
+    # cannied = canny(cropped)
+    cannied = canny(enhanced)
     c = Image.fromarray(cannied)
     c.save("z_cannied.png")
 

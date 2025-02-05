@@ -10,6 +10,7 @@ from PIL import Image
 import pygame
 import threading
 from botCheckSolver import BotSolver
+import numpy as np
 
 
 DOUBLE_JUMP = 0.15
@@ -39,8 +40,13 @@ class Return:
         self.points[index] = config.player_position
 
     def returnToSavePoint(self, index=0):
+        latest_distance = -1
         while True:
-            self.calculateDistance(index)
+            distance = self.calculateDistance(index)
+            if distance == latest_distance:
+                print("distance didn't changed, maybe character stuck, stop returning")
+                break
+            latest_distance = distance
             if self.verticalMatch() and self.horizontalMatch():
                 break
             if not self.horizontalMatch():

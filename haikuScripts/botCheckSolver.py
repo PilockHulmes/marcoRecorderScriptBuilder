@@ -25,11 +25,11 @@ class BotSolver:
         self.botText = ""
 
     def getBotText(self):
-        image = self.capture.frame
+        image = cv2.cvtColor(self.capture.frame, cv2.COLOR_BGRA2BGR) 
         # image = cv2.imread('../bot2.png')
         # 1040,520 1200,555 text position, need to minus window position left,top 544,93.
         # and need to minus title height 30px
-        cropped = image[520 - 93 - 30 : 555 - 93, 1040 - 544 : 1200 - 544]
+        cropped = image[460 - 93 - 40 : 635 - 93 - 40, 1040 - 544 : 1450 - 544]
         b = Image.fromarray(cropped)
         b.save("z_latest_cropped_bot_text.png")
         blacked = self.blackBotText(cropped)
@@ -38,17 +38,19 @@ class BotSolver:
         # results[page][line][0 for numbers, 1 for text and accuracy][0 for text, 1 for accuracy float]
         results = self.reader.ocr(blacked)
         print("bot result:", results)
-        if results is not None and results[0] is not None and len(results) > 0 and results[0][0][1][0].startswith("@bot"):
-            self.botText = results[0][0][1][0]
-            b = Image.fromarray(blacked)
-            b.save("z_latest_bot_text.png")
+        if results is not None and results[0] is not None and len(results) > 0 :
+            for line in results[0]:
+                if type(line[1][0]) == str and line[1][0].startswith("@bot"):
+                    self.botText = line[1][0]
+                    b = Image.fromarray(blacked)
+                    b.save("z_latest_bot_text.png")
         return self.botText
     
     def blackBotText(self, image):
         # print(image)
         # 定义白色的范围（BGR格式）
-        lower_white = np.array([220, 220, 220, 255])  # 接近白色的下限
-        upper_white = np.array([255, 255, 255, 255])  # 白色的上限
+        lower_white = np.array([220, 220, 220])  # 接近白色的下限
+        upper_white = np.array([255, 255, 255])  # 白色的上限
 
         # 创建掩码，标记白色区域
         mask = cv2.inRange(image, lower_white, upper_white)
