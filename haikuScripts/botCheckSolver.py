@@ -42,6 +42,7 @@ class BotSolver:
             for line in results[0]:
                 if type(line[1][0]) == str and line[1][0].startswith("@bot"):
                     self.botText = line[1][0]
+                    print("bot text:", self.botText)
                     b = Image.fromarray(blacked)
                     b.save("z_latest_bot_text.png")
         return self.botText

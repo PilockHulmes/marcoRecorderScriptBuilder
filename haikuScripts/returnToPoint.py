@@ -95,9 +95,10 @@ class Return:
     def botTesting(self):
         text = self.botSolver.getBotText()
         if text.startswith("@bot"):
-            # close the dialogue with enter
-            time.sleep(0.5)
-            lib.keyboardClick("enter")
+            # click 220,680 to focus dialog
+            pydirectinput.moveRel(220 + self.capture.window['left'], 680 + self.capture.window['top'])
+            time.sleep(0.05)
+            pydirectinput.click(220 + self.capture.window['left'], 680 + self.capture.window['top'])
             time.sleep(0.5)
             lib.switchToSpeak()
             lib.keyboardClick("enter")
@@ -107,6 +108,10 @@ class Return:
             lib.inputText(text)
             time.sleep(0.5)
             lib.keyboardClick("enter")
+            # click 1150,520 to focus bot text window
+            pydirectinput.moveRel(1150 + self.capture.window['left'], 520 + self.capture.window['top'])
+            time.sleep(0.05)
+            pydirectinput.click(1150 + self.capture.window['left'], 520 + self.capture.window['top'])
         self.botSolver.clearBotText()
 
     def solveRune(self):
