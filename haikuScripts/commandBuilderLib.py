@@ -45,8 +45,20 @@ def keyboardRelease(button, interval = INTERVAL_CLICK):
     delay(interval)
 
 def inputText(text):
-    # do not support characters like @, alphabets only
-    pydirectinput.write(text)
+    chars = list(text)
+    for c in chars:
+        time.sleep(0.1)
+        if c.isupper():
+            c = c.lower()
+            keyboardPress("shift")
+            keyboardClick(c)
+            keyboardRelease("shift")
+        else:
+            keyboardClick(c)
+
+
+        
+    time.sleep(0.5)
 
 def inputAt():
     pydirectinput.keyDown("shift")
@@ -334,11 +346,11 @@ def upImpaleRush():
 
 def switchToSpeak():
     keyboardClick("enter")
-    delay(0.1)
+    delay(0.2)
     keyboardClick("/")
     keyboardClick("s")
     keyboardClick("enter")
-    delay(0.1)
+    delay(0.3)
 
 def sellAllEquips():
     switchToSpeak()

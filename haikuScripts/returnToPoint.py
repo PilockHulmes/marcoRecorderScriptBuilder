@@ -41,11 +41,14 @@ class Return:
 
     def returnToSavePoint(self, index=0):
         latest_distance = -1
+        not_change_counter = 0
         while True:
             distance = self.calculateDistance(index)
             if distance == latest_distance:
-                print("distance didn't changed, maybe character stuck, stop returning")
-                break
+                not_change_counter += 1
+                if not_change_counter > 3:
+                    print("distance didn't changed, maybe character stuck, stop returning")
+                    break
             latest_distance = distance
             if self.verticalMatch() and self.horizontalMatch():
                 break
@@ -96,22 +99,27 @@ class Return:
         text = self.botSolver.getBotText()
         if text.startswith("@bot"):
             # click 220,680 to focus dialog
-            pydirectinput.moveRel(220 + self.capture.window['left'], 680 + self.capture.window['top'])
-            time.sleep(0.05)
-            pydirectinput.click(220 + self.capture.window['left'], 680 + self.capture.window['top'])
-            time.sleep(0.5)
-            lib.switchToSpeak()
+            # pydirectinput.moveRel(220 + self.capture.window['left'], 700 + self.capture.window['top'])
+            # time.sleep(0.1)
+            # pydirectinput.click(220 + self.capture.window['left'], 700 + self.capture.window['top'])
+            
+            # use a enter to close bot window
+            time.sleep(2)
             lib.keyboardClick("enter")
-            time.sleep(0.5)
+            time.sleep(1)
+            lib.switchToSpeak()
+            # we can still input text after /s so no need to enter once more
+            time.sleep(1)
             lib.inputAt()
-            time.sleep(0.2)
-            lib.inputText(text)
-            time.sleep(0.5)
+            time.sleep(1)
+            print("Input text:", text)
+            lib.inputText(text[1:])
+            time.sleep(1)
             lib.keyboardClick("enter")
             # click 1150,520 to focus bot text window
-            pydirectinput.moveRel(1150 + self.capture.window['left'], 520 + self.capture.window['top'])
-            time.sleep(0.05)
-            pydirectinput.click(1150 + self.capture.window['left'], 520 + self.capture.window['top'])
+            # pydirectinput.moveRel(1150 + self.capture.window['left'], 520 + self.capture.window['top'])
+            # time.sleep(0.1)
+            # pydirectinput.click(1150 + self.capture.window['left'], 520 + self.capture.window['top'])
         self.botSolver.clearBotText()
 
     def solveRune(self):
