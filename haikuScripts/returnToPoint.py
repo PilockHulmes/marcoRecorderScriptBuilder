@@ -11,6 +11,7 @@ import pygame
 import threading
 from botCheckSolver import BotSolver
 import numpy as np
+import math
 
 
 DOUBLE_JUMP = 0.15
@@ -29,7 +30,8 @@ class Return:
         self.distance_vertical = 0
         self.horizontal_threshold = horizontal_threshold
         self.vertical_threshold = vertical_threshold
-        self.model = detection.load_model()
+        # this model is used for arrow detection
+        # self.model = detection.load_model()
         self.botSolver = BotSolver(self.capture) 
     
     def start(self):
@@ -40,16 +42,30 @@ class Return:
         self.points[index] = config.player_position
 
     def returnToSavePoint(self, index=0):
-        latest_distance = -1
+        latest_position_number = -1
         not_change_counter = 0
         while True:
-            distance = self.calculateDistance(index)
-            if distance == latest_distance:
+            self.calculateDistance(index)
+            # well horizontal + vertical isn't really the distance, but we use it only to compare if position changes.
+            position_number = self.distance_horizontal + self.distance_vertical
+            if position_number == latest_position_number:
                 not_change_counter += 1
                 if not_change_counter > 3:
-                    print("distance didn't changed, maybe character stuck, stop returning")
+                    print("position didn't changed, maybe character stuck, stop returning")
                     break
-            latest_distance = distance
+            latest_position_number = position_number
+            if self.verticalMatch() and self.horizontalMatch():
+                break
+            if not self.horizontalMatch():
+                self.approachHorizontal()
+                continue
+            if not self.verticalMatch():
+                self.approachVertical()
+                continue
+    
+    def returnToRunePoint(self):
+        while True:
+            self.calculateRuneDistance()
             if self.verticalMatch() and self.horizontalMatch():
                 break
             if not self.horizontalMatch():
@@ -136,6 +152,11 @@ class Return:
         self.distance_horizontal = self.points[index][0] - config.player_position[0]
         self.distance_vertical = self.points[index][1] - config.player_position[1]
         print("saved:", self.points[index], "player:", config.player_position, "horizontal:", self.distance_horizontal, "vertical", self.distance_vertical)
+
+    def calculateRuneDistance(self):
+        self.distance_horizontal = config.rune_position[0] - config.player_position[0]
+        self.distance_vertical = config.rune_position[1] - config.player_position[1]
+        print("rune:", config.rune_position, "player:", config.player_position, "horizontal:", self.distance_horizontal, "vertical", self.distance_vertical)
 
     def verticalMatch(self):
         return abs(self.distance_vertical) <= self.vertical_threshold

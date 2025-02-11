@@ -6,14 +6,16 @@ import pydirectinput
 import detection
 from PIL import Image
 
-# r = Return()
-# r.start()
+r = Return()
+r.start()
 
-# time.sleep(2)
+time.sleep(2)
 
-# r.solveRune()
+r.solveRune()
 
-lib.inputText("Hello World S21Rpt")
+# r.returnToRunePoint()
+
+# lib.inputText("Hello World S21Rpt")
 
 # b = BotSolver(r.capture)
 

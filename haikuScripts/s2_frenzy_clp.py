@@ -2,10 +2,7 @@ import pyautogui
 import pydirectinput
 import time
 import commandBuilderLib as lib
-import time
 from returnToPoint import Return
-
-time.sleep(3)
 
 BUFF_LOOP = 9
 LOOT_LOOP = 9

@@ -47,7 +47,7 @@ def keyboardRelease(button, interval = INTERVAL_CLICK):
 def inputText(text):
     chars = list(text)
     for c in chars:
-        time.sleep(0.1)
+        time.sleep(0.05)
         if c.isupper():
             c = c.lower()
             keyboardPress("shift")
@@ -346,11 +346,11 @@ def upImpaleRush():
 
 def switchToSpeak():
     keyboardClick("enter")
-    delay(0.2)
+    delay(0.1)
     keyboardClick("/")
     keyboardClick("s")
     keyboardClick("enter")
-    delay(0.3)
+    delay(0.1)
 
 def sellAllEquips():
     switchToSpeak()
@@ -380,8 +380,9 @@ def check():
     delay(0.1)
     inputAt()
     pydirectinput.write("check")
-    delay(0.2)
+    delay(0.1)
     keyboardClick('enter')
+    delay(0.1)
 
 def totem():
     delay(0.2) # make sure the previous action was stoped (landing e.t.c.)
