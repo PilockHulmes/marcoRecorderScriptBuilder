@@ -9,9 +9,9 @@ from PIL import Image
 r = Return()
 r.start()
 
-time.sleep(2)
+time.sleep(20)
 
-r.solveRune()
+# r.solveRune()
 
 # r.returnToRunePoint()
 

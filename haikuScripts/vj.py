@@ -19,6 +19,9 @@ r.start()
 time.sleep(1)
 r.save()
 
+lib.check()
+lib.keyboardClick('enter')
+
 while True:
     totem()
     r.botTesting()
@@ -35,6 +38,6 @@ while True:
     lib.doubleJumpAttack()
     lib.doubleJumpAttack()
     lib.doubleJumpAttack()
-    lib.doubleJumpAttack()
+    # lib.doubleJumpAttack()
     # lib.sellAllEquips()
-    time.sleep(0.5)
+    time.sleep(0.3)

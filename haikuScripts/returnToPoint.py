@@ -89,7 +89,7 @@ class Return:
             if self.needSolveRune():
                 self.playsound("assets/alerts/rune_appeared.mp3")
             if self.hasPplInMap():
-                self.playsound("assets/alerts/ding.mp3")
+                self.playsound("assets/alerts/siren.mp3")
 
     def needSolveRune(self):
         # still has rune buff, so no need to solve rune
