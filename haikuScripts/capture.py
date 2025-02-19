@@ -59,7 +59,7 @@ WINDOW_NAME = 'Haiku v236 (x64)'
 
 class Capture:
 
-    def __init__(self):
+    def __init__(self, window_name = WINDOW_NAME):
         config.capture = self
 
         self.window = {
@@ -80,6 +80,7 @@ class Capture:
         self.haiku_bot_testing_bottomright_position = None
         # np array that represents a screenshot. Its the cv2 BGR format rather than normal RGB
         self.frame = None
+        self.window_name = window_name
     
     def start(self):
         print("Start the video capture")
@@ -161,7 +162,7 @@ class Capture:
             return result
 
     def calibrate(self):
-        handle = user32.FindWindowW(None, WINDOW_NAME)
+        handle = user32.FindWindowW(None, self.window_name)
         rect = wintypes.RECT()
         user32.GetWindowRect(handle, ctypes.pointer(rect))
         rect = (rect.left, rect.top, rect.right, rect.bottom)

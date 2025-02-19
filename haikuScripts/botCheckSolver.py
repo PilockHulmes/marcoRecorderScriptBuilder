@@ -5,24 +5,29 @@ from PIL import Image
 import numpy as np
 from paddleocr import PaddleOCR
 import logging
+import time
 
 # for haiku
 class BotSolver:
-    def __init__(self, capture: Capture):
+    def __init__(self, capture: Capture, rune_text = "must activate the Runestone", ignore_text_duration = 0):
         self.capture = capture
-        self.botText = ""
+        self.bot_text = ""
+        self.rune_text = rune_text
         # self.reader = easyocr.Reader(['en'], gpu=True)
         # paddle ocr yields better result
         # 设置日志级别为 ERROR
         logging.getLogger('ppocr').setLevel(logging.ERROR)
-        self.reader = PaddleOCR(lang='en')
+        self.reader = PaddleOCR()
+        self.rune_text = rune_text
+        self.start_time = time.time()
+        self.ignore_text_duration = ignore_text_duration
     
     def hasBotCheck(self):
-        return self.botText != "" and self.botText.startswith("@bot")
+        return self.bot_text != "" and self.bot_text.startswith("@bot")
     
     # manually clear the bot text so it can check again
     def clearBotText(self):
-        self.botText = ""
+        self.bot_text = ""
 
     def getBotText(self):
         image = cv2.cvtColor(self.capture.frame, cv2.COLOR_BGRA2BGR) 
@@ -41,11 +46,11 @@ class BotSolver:
         if results is not None and results[0] is not None and len(results) > 0 :
             for line in results[0]:
                 if type(line[1][0]) == str and line[1][0].startswith("@bot"):
-                    self.botText = line[1][0]
-                    print("bot text:", self.botText)
+                    self.bot_text = line[1][0]
+                    print("bot text:", self.bot_text)
                     b = Image.fromarray(blacked)
                     b.save("z_latest_bot_text.png")
-        return self.botText
+        return self.bot_text
     
     def blackBotText(self, image):
         # print(image)
@@ -62,6 +67,9 @@ class BotSolver:
         return result
 
     def needSolveRune(self):
+        # 在前几分钟不管，避免历史数据一直警报
+        if time.time() - self.start_time <= self.ignore_text_duration:
+            return
         image = self.capture.frame
         # image = cv2.imread('../rune1.png')
         # 0,660 400,760 chatbox which is placed in the bottom left and shows 5 rows of texts
@@ -75,7 +83,7 @@ class BotSolver:
         for line in results[0]:
             all_texts += line[1][0]
         # print(all_texts)
-        return "must activate the Runestone" in all_texts
+        return self.rune_text in all_texts
 
     def debug(self):
         image = cv2.imread('z_latest_bot_text.png')

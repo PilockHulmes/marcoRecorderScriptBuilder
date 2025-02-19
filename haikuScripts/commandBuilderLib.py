@@ -426,12 +426,12 @@ def callWithInterval(func, intervalInSeconds):
         if start is None:
             start = time.time()
             func()
-            return
+            return True
         if time.time() - start >= intervalInSeconds:
             start = time.time()
             func()
-            return
-        return
+            return True
+        return False
     return innerfunc
 
 

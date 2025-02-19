@@ -14,20 +14,20 @@ import time
 import commandBuilderLib as lib
 from returnToPoint import Return
 
-r = Return()
+r = Return("MapleStory")
 r.start()
 time.sleep(1)
 r.save()
 
-lib.check()
-lib.keyboardClick('enter')
+# lib.check()
+# lib.keyboardClick('enter')
 
 while True:
     totem()
-    r.botTesting()
+    # r.botTesting()
     # r.returnToSavePoint()
     lib.right()
-    lib.doubleJumpAttackHuntingDecree()
+    # lib.doubleJumpAttackHuntingDecree()
     lib.doubleJumpAttack()
     lib.doubleJumpAttack()
     lib.doubleJumpAttack()
@@ -37,7 +37,7 @@ while True:
     lib.doubleJumpAttack()
     lib.doubleJumpAttack()
     lib.doubleJumpAttack()
-    lib.doubleJumpAttack()
+    # lib.doubleJumpAttack()
     # lib.doubleJumpAttack()
     # lib.sellAllEquips()
     time.sleep(0.3)

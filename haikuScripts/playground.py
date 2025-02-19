@@ -6,10 +6,23 @@ import pydirectinput
 import detection
 from PIL import Image
 
-r = Return()
-r.start()
+from khali import commands as lib
 
-time.sleep(20)
+time.sleep(1)
+
+# lib.dash(times=3)
+lib.upJump()
+lib.dashLeft(5)
+lib.refresh()
+time.sleep(1)
+lib.jump()
+lib.dashRight(5)
+lib.refresh()
+
+# r = Return()
+# r.start()
+
+# time.sleep(20)
 
 # r.solveRune()
 
