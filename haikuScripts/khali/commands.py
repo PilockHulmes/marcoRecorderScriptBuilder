@@ -27,7 +27,7 @@ def stopIfNotRunning(func):
 
 def callMyName(func):
     def wrapper(*args, **kwargs):
-        print(func.__name__)
+        # print(func.__name__)
         func(*args, **kwargs)
     return wrapper
 
@@ -39,6 +39,13 @@ def oppositeDirection(direction = "left"):
 
 @stopIfNotRunning
 @callMyName
+def hold(key, duration):
+    pydirectinput.keyDown(key)
+    time.sleep(duration)
+    pydirectinput.keyUp(key)
+
+@stopIfNotRunning
+@callMyName
 def click(key):
     pydirectinput.keyDown(key)
     pydirectinput.keyUp(key)
@@ -47,7 +54,7 @@ def buffFactory(key):
     @stopIfNotRunning
     def func():
         click(key)
-        time.sleep(0.8)
+        time.sleep(1)
     return func
 
 @stopIfNotRunning
@@ -192,6 +199,16 @@ def doubleJumpSlash(direction = None):
 
 @stopIfNotRunning
 @callMyName
+def doubleJumpBackwardSlash(direction = "left"):
+    faceDirection(direction)
+    doubleJump()
+    faceDirection(oppositeDirection(direction))
+    slash()
+    time.sleep(0.3)
+    faceDirection(direction)
+
+@stopIfNotRunning
+@callMyName
 def tripleJumpSlash(direction = None):
     if direction != None:
         pydirectinput.keyDown(direction)
@@ -219,11 +236,35 @@ def downJumpSlash():
     # TODO: decide how long to slash
     slash()
 
+
 @stopIfNotRunning
 @callMyName
-def doubleJumpBackRing(direction = "left"):
+def flowering():
+    click("w")
+    click("w")
+    time.sleep(0.5)
+
+@stopIfNotRunning
+@callMyName
+def ring():
+    click("h")
+    time.sleep(0.33)
+
+@stopIfNotRunning
+@callMyName
+def doubleJumpBackwardRing(direction = "left"):
     faceDirection(direction)
     doubleJump()
+    faceDirection(oppositeDirection(direction))
+    ring()
+    faceDirection(direction)
+
+@stopIfNotRunning
+@callMyName
+def doubleJumpForwardRing(direction = "left"):
+    faceDirection(direction)
+    doubleJump()
+    ring()
 
 def callWithInterval(func, interval_in_seconds):
     start = None
@@ -252,3 +293,20 @@ def returnTrueWithInterval(interval_in_seconds):
             return True
         return False
     return innerFunc
+
+rotateIntervalPool = {}
+def rotateWithInterval(func, backup, interval_in_seconds, pool_index = 0):
+    @stopIfNotRunning
+    def innerfunc():
+        if pool_index not in rotateIntervalPool:
+            rotateIntervalPool[pool_index] = time.time()
+            func()
+            return True
+        if time.time() - rotateIntervalPool[pool_index] >= interval_in_seconds:
+            rotateIntervalPool[pool_index] = time.time()
+            func()
+            return True
+        else:
+            backup()
+            return False
+    return innerfunc
