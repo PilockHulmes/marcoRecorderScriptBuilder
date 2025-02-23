@@ -201,6 +201,18 @@ def doubleJumpSlash(direction = None):
 
 @stopIfNotRunning
 @callMyName
+def jumpSlash(direction = None, wait_for_after_animation = True):
+    if direction != None:
+        pydirectinput.keyDown(direction)    
+    jump()
+    slash()
+    if direction != None:
+        pydirectinput.keyUp(direction)
+    if wait_for_after_animation:
+        time.sleep(0.2)
+
+@stopIfNotRunning
+@callMyName
 def doubleJumpBackwardSlash(direction = "left"):
     faceDirection(direction)
     doubleJump()
@@ -233,10 +245,12 @@ def upJumpSlash(direction = None):
 
 @stopIfNotRunning
 @callMyName
-def downJumpSlash():
+def downJumpSlash(wait_for_after_animation = True):
     downJump()
     # TODO: decide how long to slash
     slash()
+    if (wait_for_after_animation):
+        time.sleep(0.4)
 
 
 @stopIfNotRunning
@@ -248,9 +262,34 @@ def flowering():
 
 @stopIfNotRunning
 @callMyName
-def ring():
+def ring(wait_for_after_animation = True):
     click("h")
-    time.sleep(0.33)
+    if wait_for_after_animation:
+        time.sleep(0.33)
+
+@stopIfNotRunning
+@callMyName
+def fury(wait_for_after_animation = True):
+    click("r")
+    if wait_for_after_animation:
+        time.sleep(0.6)
+
+@stopIfNotRunning
+@callMyName
+def fountain(wait_for_after_animation = True):
+    pydirectinput.keyDown("down")
+    click("t")
+    pydirectinput.keyUp("down")
+    if wait_for_after_animation:
+        time.sleep(0.6)
+
+@stopIfNotRunning
+@callMyName
+def janus(wait_for_after_animation = True):
+    click("y")
+    if wait_for_after_animation:
+        time.sleep(0.6)
+
 
 @stopIfNotRunning
 @callMyName
@@ -284,8 +323,11 @@ def callWithInterval(func, interval_in_seconds):
         return False
     return innerfunc
 
-def returnTrueWithInterval(interval_in_seconds):
-    start = None
+def returnTrueWithInterval(interval_in_seconds, initial_return_true = False):
+    if initial_return_true:
+        start = time.time() - interval_in_seconds - 1
+    else:
+        start = None
     def innerFunc():
         nonlocal start
         if start is None:
@@ -312,3 +354,19 @@ def rotateWithInterval(func, backup, interval_in_seconds, pool_index = 0):
             backup()
             return False
     return innerfunc
+
+multiRotateIntervalPool = {}
+def multiRotateWithInterval(funcs, pool_index = 0):
+    @stopIfNotRunning
+    def innerfunc():
+        for i, (func, interval) in enumerate(funcs):
+            if pool_index not in rotateIntervalPool:
+                multiRotateIntervalPool[pool_index] = time.time()
+                func()
+                return True
+            if time.time() - multiRotateIntervalPool[pool_index] >= interval:
+                multiRotateIntervalPool[pool_index] = time.time()
+                func()
+                return True
+        return False
+    return innerfunchg

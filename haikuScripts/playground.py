@@ -10,6 +10,8 @@ from khali import commands as lib
 
 time.sleep(1)
 
+lib.janus()
+
 lib.hold("left", 0.1)
 
 # lib.dash(times=3)

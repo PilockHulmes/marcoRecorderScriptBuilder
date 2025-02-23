@@ -45,10 +45,14 @@ class Return:
         self.points[index] = config.player_position
 
     def returnToSavePoint(self, index=0):
+        point = self.points[index]
+        return self.returnToPoint(point)
+    
+    def returnToPoint(self, point):
         latest_position_number = -1
         not_change_counter = 0
         while True:
-            self.calculateDistance(index)
+            self.calculateDistance(point)
             # well horizontal + vertical isn't really the distance, but we use it only to compare if position changes.
             position_number = self.distance_horizontal + self.distance_vertical
             if position_number == latest_position_number:
@@ -65,7 +69,7 @@ class Return:
             if not self.verticalMatch():
                 self.approachVertical()
                 continue
-    
+
     def returnToRunePoint(self):
         while True:
             self.calculateRuneDistance()
@@ -151,10 +155,16 @@ class Return:
         # arrows = detection.find_arrow_directions(self.capture.frame, False)
         # print(arrows)
 
-    def calculateDistance(self, index = 0):
-        self.distance_horizontal = self.points[index][0] - config.player_position[0]
-        self.distance_vertical = self.points[index][1] - config.player_position[1]
-        print("saved:", self.points[index], "player:", config.player_position, "horizontal:", self.distance_horizontal, "vertical", self.distance_vertical)
+    def calculateDistance(self, point):
+        self.distance_horizontal = point[0] - config.player_position[0]
+        self.distance_vertical = point[1] - config.player_position[1]
+        print("point:", point, "player:", config.player_position, "horizontal:", self.distance_horizontal, "vertical", self.distance_vertical)
+
+
+    # def calculateDistance(self, index = 0):
+    #     self.distance_horizontal = self.points[index][0] - config.player_position[0]
+    #     self.distance_vertical = self.points[index][1] - config.player_position[1]
+    #     print("saved:", self.points[index], "player:", config.player_position, "horizontal:", self.distance_horizontal, "vertical", self.distance_vertical)
 
     def calculateRuneDistance(self):
         self.distance_horizontal = config.rune_position[0] - config.player_position[0]
