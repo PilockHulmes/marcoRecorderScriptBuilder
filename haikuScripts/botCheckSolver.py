@@ -9,7 +9,7 @@ import time
 
 # for haiku
 class BotSolver:
-    def __init__(self, capture: Capture, rune_text = "must activate the Runestone", ignore_text_duration = 0):
+    def __init__(self, capture: Capture, rune_text = "must activate the Runestone", ocr_lang = "en", ignore_text_duration = 0):
         self.capture = capture
         self.bot_text = ""
         self.rune_text = rune_text
@@ -17,7 +17,7 @@ class BotSolver:
         # paddle ocr yields better result
         # 设置日志级别为 ERROR
         logging.getLogger('ppocr').setLevel(logging.ERROR)
-        self.reader = PaddleOCR()
+        self.reader = PaddleOCR(lang=ocr_lang)
         self.rune_text = rune_text
         self.start_time = time.time()
         self.ignore_text_duration = ignore_text_duration

@@ -22,8 +22,11 @@ DOUBLE_UPPER_JUMP = 0.15
 
 WALKING_PER_SECOND = 0.097 # roughly tested, with 150 character speed
 
+
+
+
 class Return:
-    def __init__(self, window_name = WINDOW_NAME, rune_text = "must activate the Runestone", ignore_rune_text_seconds = 180, horizontal_threshold = 0.01,vertical_threshold = 0.02):
+    def __init__(self, window_name = WINDOW_NAME, rune_text = "must activate the Runestone", ocr_lang = "en", ignore_rune_text_seconds = 180, horizontal_threshold = 0.01,vertical_threshold = 0.02):
         self.capture = Capture(window_name)
         self.points = {}
         self.distance_horizontal = 0
@@ -32,7 +35,7 @@ class Return:
         self.vertical_threshold = vertical_threshold
         # this model is used for arrow detection
         # self.model = detection.load_model()
-        self.botSolver = BotSolver(capture=self.capture, rune_text=rune_text, ignore_text_duration = ignore_rune_text_seconds) 
+        self.botSolver = BotSolver(capture=self.capture, rune_text=rune_text, ignore_text_duration = ignore_rune_text_seconds, ocr_lang=ocr_lang) 
     
     def start(self):
         self.capture.start()
@@ -214,4 +217,4 @@ class Return:
                 time.sleep(0.05)
         # internal pause
         time.sleep(0.05)
-        
+    

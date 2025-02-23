@@ -10,14 +10,18 @@ from khali import commands as lib
 
 time.sleep(1)
 
+lib.hold("left", 0.1)
+
 # lib.dash(times=3)
-lib.upJump()
-lib.dashLeft(5)
-lib.refresh()
-time.sleep(1)
-lib.jump()
-lib.dashRight(5)
-lib.refresh()
+
+# for i in range(5):
+#     lib.click("g")
+#     lib.click("g")
+#     lib.click("f")
+#     time.sleep(0.33)
+
+# lib.ring()
+# lib.faceDirection("left")
 
 # r = Return()
 # r.start()

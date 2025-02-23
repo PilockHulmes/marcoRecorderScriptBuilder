@@ -151,7 +151,7 @@ class Capture:
                     if self.haiku_bot_testing_bottomright_position is not None or self.haiku_bot_testing_topleft_position is not None:
                         config.bottesting = True
 
-                    time.sleep(0.05)
+                    time.sleep(0.01)
 
     def collectFrames(self, count = 10, inteval = 0.1):
         with mss.mss() as screenshoter:

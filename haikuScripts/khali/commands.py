@@ -50,9 +50,11 @@ def click(key):
     pydirectinput.keyDown(key)
     pydirectinput.keyUp(key)
 
-def buffFactory(key):
+def buffFactory(key, sleep_time = 0):
     @stopIfNotRunning
     def func():
+        if sleep_time > 0:
+            time.sleep(sleep_time)
         click(key)
         time.sleep(1)
     return func
