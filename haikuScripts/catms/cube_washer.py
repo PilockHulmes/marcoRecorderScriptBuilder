@@ -4,6 +4,10 @@ import cv2
 from PIL import Image
 import time
 import numpy as np
+import pydirectinput
+
+POSITION_BPOT_AGAIN = (997,622)
+POSITION_EXIT = (1081,619)
 
 class CubeWasher:
     def __init__(self):
@@ -43,6 +47,28 @@ class CubeWasher:
         result[mask == 0] = 0  # 掩码为0的区域（非白色）设置为黑色
         return result
     
+    def isThreeLineAttack(self, bpot_lines):
+        for line in bpot_lines:
+            if str(line).split("：") != "攻击力":
+                return False
+        return True
+
+    def isTwoLineAttack(self, bpot_lines):
+        counter = 0
+        for line in bpot_lines:
+            if str(line).split("：")[0] == "攻击力":
+                counter += 1
+        return counter >= 2
+
+    def bpotAgain(self):
+        pydirectinput.click(POSITION_BPOT_AGAIN[0], POSITION_BPOT_AGAIN[1])
+        pydirectinput.keyDown("enter")
+        pydirectinput.keyUp("enter")
+        pydirectinput.keyDown("enter")
+        pydirectinput.keyUp("enter")
+        pydirectinput.keyDown("enter")
+        pydirectinput.keyUp("enter")
+
     def parseResults(self, bpot_lines):
         pass
                                   
@@ -51,4 +77,4 @@ if __name__ == '__main__':
     washer = CubeWasher()
     # 等三秒初始化
     time.sleep(3)
-    washer.readText()
+    

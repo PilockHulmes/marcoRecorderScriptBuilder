@@ -274,22 +274,27 @@ def fury(wait_for_after_animation = True):
     if wait_for_after_animation:
         time.sleep(0.6)
 
+last_use_fountain = time.time() - 60
 @stopIfNotRunning
 @callMyName
 def fountain(wait_for_after_animation = True):
+    global last_use_fountain
     pydirectinput.keyDown("down")
     click("t")
     pydirectinput.keyUp("down")
+    last_use_fountain = time.time()
     if wait_for_after_animation:
         time.sleep(0.6)
 
+last_use_janus = time.time() - 60
 @stopIfNotRunning
 @callMyName
 def janus(wait_for_after_animation = True):
+    global last_use_janus
     click("y")
+    last_use_janus = time.time()
     if wait_for_after_animation:
         time.sleep(0.6)
-
 
 @stopIfNotRunning
 @callMyName
@@ -305,6 +310,13 @@ def doubleJumpBackwardRing(direction = "left"):
 def doubleJumpForwardRing(direction = "left"):
     faceDirection(direction)
     doubleJump()
+    ring()
+
+@stopIfNotRunning
+@callMyName
+def tripleJumpForwardRing(direction = "left"):
+    faceDirection(direction)
+    tripleJump()
     ring()
 
 def callWithInterval(func, interval_in_seconds):
@@ -360,7 +372,7 @@ def multiRotateWithInterval(funcs, pool_index = 0):
     @stopIfNotRunning
     def innerfunc():
         for i, (func, interval) in enumerate(funcs):
-            if pool_index not in rotateIntervalPool:
+            if pool_index not in multiRotateIntervalPool:
                 multiRotateIntervalPool[pool_index] = time.time()
                 func()
                 return True
@@ -369,4 +381,9 @@ def multiRotateWithInterval(funcs, pool_index = 0):
                 func()
                 return True
         return False
-    return innerfunchg
+    return innerfunc
+
+def skillOnCooldown(last_used_time, cd_in_sec):
+    if last_used_time == None:
+        return True
+    return time.time() - last_used_time > cd_in_sec

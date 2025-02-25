@@ -218,10 +218,10 @@ class Return:
             distance = abs(self.distance_vertical)
             if distance > DOUBLE_UPPER_JUMP:
                 lib.doubleHighJump()
-                time.sleep(0.1)
+                time.sleep(0.3)
             elif distance > UPPER_JUMP:
                 lib.highJump()
-                time.sleep(0.1)
+                time.sleep(0.3)
             else: # actually, we don't know what should we do at this time, so just jump once
                 lib.jump()
                 time.sleep(0.05)
