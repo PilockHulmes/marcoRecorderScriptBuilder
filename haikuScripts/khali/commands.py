@@ -37,6 +37,14 @@ def oppositeDirection(direction = "left"):
     else:
         return "left"
 
+def sleep(duration):
+    windows_interval = 0.03
+    start = time.perf_counter()
+    if duration > windows_interval:
+        time.sleep(duration - windows_interval)  # 先睡眠大部分时间
+    while time.perf_counter() - start < duration:
+        pass  # 微调剩余时间
+
 @stopIfNotRunning
 @callMyName
 def hold(key, duration):
@@ -295,6 +303,16 @@ def janus(wait_for_after_animation = True):
     last_use_janus = time.time()
     if wait_for_after_animation:
         time.sleep(0.6)
+
+last_use_blossom = time.time() - 60
+@stopIfNotRunning
+@callMyName
+def blossom(wait_for_after_animation = True):
+    global last_use_blossom
+    click("w")
+    last_use_blossom = time.time()
+    if wait_for_after_animation:
+        time.sleep(0.8)
 
 @stopIfNotRunning
 @callMyName

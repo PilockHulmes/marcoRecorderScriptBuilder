@@ -21,6 +21,7 @@ class BotSolver:
         self.rune_text = rune_text
         self.start_time = time.time()
         self.ignore_text_duration = ignore_text_duration
+        self.print_solve_rune_countdown = time.time()
     
     def hasBotCheck(self):
         return self.bot_text != "" and self.bot_text.startswith("@bot")
@@ -82,7 +83,10 @@ class BotSolver:
         all_texts = ""
         for line in results[0]:
             all_texts += line[1][0]
-        # print(all_texts)
+
+        if time.time() - self.print_solve_rune_countdown >= 60:
+            self.print_solve_rune_countdown = time.time()
+            print(all_texts)
         return self.rune_text in all_texts
 
     def debug(self):

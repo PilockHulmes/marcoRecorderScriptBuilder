@@ -33,6 +33,7 @@ while lib.running:
     r.returnToPoint(PLAYER_POSITION)
     if lib.skillOnCooldown(lib.last_use_fountain - 15, 60):
         time.sleep(0.3)
+        lib.blossom()
         leftBackwardRing()
         time.sleep(LANDING_INTEVAL)
         leftBackwardRing()
@@ -59,7 +60,7 @@ while lib.running:
         if config.player_position[0] < FOUNTAIN_POSITION[0] and config.player_position[0] != 0 and config.player_position[1] != 0:
             rightBackwardRing()
             time.sleep(LANDING_INTEVAL)
-        lib.hold("right", 0.2)
+        lib.hold("right", 0.3)
         lib.upJumpSlash("left")
         time.sleep(0.4)
         r.returnToPoint(FOUNTAIN_POSITION)

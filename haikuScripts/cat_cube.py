@@ -18,7 +18,7 @@ def stopWhenPress(pressed_key):
 
 while running:
     time.sleep(1.5)
-    text = washer.readText()
-    if washer.isTwoLineAttack(text):
+    bpot_lines = washer.readTextLineByLine()
+    if washer.isLuckLines(bpot_lines):
         break
     washer.bpotAgain()

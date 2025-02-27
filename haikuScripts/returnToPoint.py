@@ -158,7 +158,7 @@ class Return:
     def calculateDistance(self, point):
         self.distance_horizontal = point[0] - config.player_position[0]
         self.distance_vertical = point[1] - config.player_position[1]
-        print("point:", point, "player:", config.player_position, "horizontal:", self.distance_horizontal, "vertical", self.distance_vertical)
+        # print("point:", point, "player:", config.player_position, "horizontal:", self.distance_horizontal, "vertical", self.distance_vertical)
 
 
     # def calculateDistance(self, index = 0):
@@ -169,7 +169,7 @@ class Return:
     def calculateRuneDistance(self):
         self.distance_horizontal = config.rune_position[0] - config.player_position[0]
         self.distance_vertical = config.rune_position[1] - config.player_position[1]
-        print("rune:", config.rune_position, "player:", config.player_position, "horizontal:", self.distance_horizontal, "vertical", self.distance_vertical)
+        # print("rune:", config.rune_position, "player:", config.player_position, "horizontal:", self.distance_horizontal, "vertical", self.distance_vertical)
 
     def verticalMatch(self):
         return abs(self.distance_vertical) <= self.vertical_threshold
@@ -198,7 +198,8 @@ class Return:
             time.sleep(0.1)
         else:
             duration = distance / WALKING_PER_SECOND
-            print("returning to point:", "distance", distance, "duration", duration)
+            # TODO: add this log back for debug
+            # print("returning to point:", "distance", distance, "duration", duration)
             pydirectinput.keyDown(direction)
             lib.delay(duration - 0.1) # minus 0.1 to compensate the delay of python input library
             pydirectinput.keyUp(direction)
