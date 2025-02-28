@@ -1,10 +1,11 @@
 from capture import Capture
-from paddleocr import PaddleOCR
+import paddleocr
 import cv2
 from PIL import Image
 import time
 import numpy as np
 import pydirectinput
+import pprint
 
 POSITION_BPOT_AGAIN = (657,507)
 POSITION_EXIT = (754,507)
@@ -68,7 +69,7 @@ LUK_SEC = [
 class CubeWasher:
     def __init__(self, debug = False):
         self.capture = Capture("MapleStory")
-        self.ocr = PaddleOCR(lang='ch')
+        self.ocr = paddleocr.PaddleOCR(lang='ch', show_log=False)
         self.capture.start()
         self.debug = debug
 
@@ -191,6 +192,91 @@ class CubeWasher:
                 counter += 1
         print(bpot_lines, counter)
         return counter >= 3
+
+    def isLuckTwoLines(self, bpot_lines):
+        prime = 0
+        secondary = 0
+        for line in bpot_lines:
+            line_text = str(line)
+            if line_text in LUK_PRIME:
+                prime += 1
+            if line_text in LUK_SEC:
+                secondary += 1
+        print(bpot_lines, prime, secondary)
+        return (prime >= 1 and prime + secondary >= 2) or (secondary >= 3)
+
+    def isAnyThreeLines(self, bpot_lines):
+        counter = {
+            "XENO": 0,
+            "STR": 0,
+            "DEX": 0,
+            "INT": 0,
+            "LUK": 0,
+        }
+        for line in bpot_lines:
+            line_text = str(line)
+            if line_text in XENO_PRIME or line_text in XENO_SEC:
+                counter["XENO"] += 1
+            if line_text in STR_PRIME or line_text in STR_SEC:
+                counter["STR"] += 1
+            if line_text in DEX_PRIME or line_text in DEX_SEC:
+                counter["DEX"] += 1
+            if line_text in INT_PRIME or line_text in INT_SEC:
+                counter["INT"] += 1
+            if line_text in LUK_PRIME or line_text in LUK_SEC:
+                counter["LUK"] += 1
+        print(bpot_lines)
+        pprint.pprint(counter, indent=4)
+        for stats, c in counter.items():
+            if c >= 3:
+                return True
+        return False
+
+    def isSellableThreeLines(self, bpot_lines):
+        prime = {
+            "XENO": 0,
+            "STR": 0,
+            "DEX": 0,
+            "INT": 0,
+            "LUK": 0,
+        }
+        sec = {
+            "XENO": 0,
+            "STR": 0,
+            "DEX": 0,
+            "INT": 0,
+            "LUK": 0,
+        }
+        for line in bpot_lines:
+            line_text = str(line)
+            if line_text in XENO_PRIME:
+                prime["XENO"] += 1
+            if line_text in XENO_SEC:
+                sec["XENO"] += 1
+            if line_text in STR_PRIME:
+                prime["STR"] += 1
+            if line_text in STR_SEC:
+                sec["STR"] += 1
+            if line_text in DEX_PRIME:
+                prime["DEX"] += 1
+            if line_text in DEX_SEC:
+                sec["DEX"] += 1
+            if line_text in INT_PRIME:
+                prime["INT"] += 1
+            if line_text in INT_SEC:
+                sec["INT"] += 1
+            if line_text in LUK_PRIME:
+                prime["LUK"] += 1
+            if line_text in LUK_SEC:
+                sec["LUK"] += 1
+        print(bpot_lines)
+        pprint.pprint(prime, indent=4)
+        pprint.pprint(sec, indent=4)
+        for stats, c in prime.items():
+            if c >= 2 and sec[stats] >= 1:
+                return True
+        return False
+
 
     def bpotAgain(self):
         if self.debug:
