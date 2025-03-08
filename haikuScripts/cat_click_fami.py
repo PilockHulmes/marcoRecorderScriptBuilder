@@ -28,7 +28,7 @@ HEIGHT = 42
 WIDTH_CELLS = 16
 HEIGHT_CELLS = 8
 
-TOTAL_COUNT = WIDTH_CELLS * HEIGHT_CELLS
+TOTAL_COUNT = WIDTH_CELLS * HEIGHT_CELLS - 1 # 最后的是拍卖券
 capture = Capture("MapleStory")
 capture.start()
 

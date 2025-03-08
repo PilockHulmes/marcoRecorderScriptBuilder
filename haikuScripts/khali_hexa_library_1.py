@@ -36,6 +36,7 @@ while lib.running:
     r.returnToPoint(STAND_STILL_POSITION)
     if lib.skillOnCooldown(lib.last_use_fountain - 8, 60):
         time.sleep(0.3)
+        lib.blossom()
         leftBackwardRing()
         time.sleep(0.6)
         if withinVerticalThreshold(LEFT_STAIR_PLATFORM, CHARACTER_WIDTH):
@@ -77,6 +78,8 @@ while lib.running:
         lib.tripleJumpSlash("left")
         time.sleep(LANDING_INTEVAL)
         r.returnToPoint(STAND_STILL_POSITION)
+        lib.janus()
+        time.sleep(0.1)
     else:
         r.returnToPoint(STAND_STILL_POSITION)
         always_oblivion()

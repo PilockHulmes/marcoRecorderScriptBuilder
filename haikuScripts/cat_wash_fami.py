@@ -1,9 +1,7 @@
-from catms.cube_washer import CubeWasher
+from catms.fami_washer import FamiWasher
 import time
 
-
-
-washer = CubeWasher()
+washer = FamiWasher()
 
 time.sleep(3)
 
@@ -21,9 +19,12 @@ def stopWhenPress(pressed_key):
 listener = keyboard.Listener(on_press=stopWhenPress)
 listener.start()
 
+# TODO: 每次洗的时候记得切
+FAMI_POS = (725,292) # 第一张
+
 while running:
-    time.sleep(1.5)
-    bpot_lines = washer.readTextLineByLine()
-    if washer.isSellableThreeLines(bpot_lines) or washer.isLuckTwoLines(bpot_lines):
+    time.sleep(0.3)
+    fami_lines = washer.readTextLineByLine()
+    if washer.isAttLines(fami_lines) or washer.isMattLines(fami_lines):
         break
-    washer.bpotAgain()
+    washer.wash(FAMI_POS)

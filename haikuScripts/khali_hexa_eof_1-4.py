@@ -11,6 +11,7 @@ from khali.common_used_funcs import *
 # Position 5 is (0.8489208633093526, 0.38848920863309355)
 
 JANUS_POSITION = (0.2158273381294964, 0.5035971223021583) # also left jump threshold
+JANUS_POSITION_HIGHER = (0.35251798561151076, 0.4316546762589928)
 PLAYER_POSITION = (0.5467625899280576, 0.4316546762589928)
 RIGHT_JUMP_THRESHOLD = (0.7841726618705036, 0.5035971223021583)
 RIGHT_STAIR_GROUND = (0.8201438848920863, 0.5035971223021583)
@@ -36,6 +37,11 @@ while lib.running:
         lib.blossom()
         leftBackwardRing()
         time.sleep(LANDING_INTEVAL)
+        r.returnToPoint(JANUS_POSITION_HIGHER)
+        lib.slash()
+        time.sleep(0.4)
+        lib.janus()
+        time.sleep(0.1)
         leftBackwardRing()
         time.sleep(0.8) # jump out of platform
         # if config.player_position[0] < JANUS_POSITION[0] and config.player_position[0] != 0 and config.player_position[1] != 0:
