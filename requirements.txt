@@ -16,3 +16,4 @@ paddleocr
 paddlepaddle # use cpu for now since I do not want to downgrade cuda from 12.8. google to see how to install with cuda
 pynput # listen key press to stop
 mss
+pygame
