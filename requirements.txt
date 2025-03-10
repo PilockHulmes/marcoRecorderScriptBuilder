@@ -7,7 +7,7 @@ pynewinput
 # easyocr
 # scikit-image
 # numpy
-opencv
+opencv-python
 opencv-contrib-python
 Pillow
 playsound
