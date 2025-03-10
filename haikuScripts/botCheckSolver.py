@@ -81,8 +81,9 @@ class BotSolver:
         results = self.reader.ocr(cropped)
         # print(results)
         all_texts = ""
-        for line in results[0]:
-            all_texts += line[1][0]
+        if results is not None and results[0] is not None:
+            for line in results[0]:
+                all_texts += line[1][0]
 
         if time.time() - self.print_solve_rune_countdown >= 60:
             self.print_solve_rune_countdown = time.time()
