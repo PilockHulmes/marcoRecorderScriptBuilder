@@ -37,7 +37,7 @@ while lib.running:
     if lib.skillOnCooldown(lib.last_use_fountain - 8, 60):
         time.sleep(0.3)
         lib.blossom()
-        lib.hold("left", 0.3) # in vm its hard to jump far so walk a bit to help
+        lib.hold("left", 0.2) # in vm its hard to jump far so walk a bit to help
         leftBackwardRing()
         time.sleep(0.6)
         if withinVerticalThreshold(LEFT_STAIR_PLATFORM, CHARACTER_WIDTH):

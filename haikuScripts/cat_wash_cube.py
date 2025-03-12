@@ -26,8 +26,8 @@ while running:
     # if washer.is2LCdr(bpot_lines) or washer.is1LineCDR2LineLuk250(bpot_lines):
     # if washer.isThreeLineAttack(bpot_lines):
     # if washer.isLuckThreeLines250(bpot_lines) or washer.isXenoThreeLines250(bpot_lines):
-    # if washer.isLuckThreeLines(bpot_lines) or washer.isAnyThreeLines(bpot_lines):
-    if washer.isLuckTwoLines(bpot_lines) or washer.isAnyThreeLines(bpot_lines):
+    if washer.isLuckThreeLines(bpot_lines) or washer.isSellableThreeLines(bpot_lines):
+    # if washer.isLuckTwoLines(bpot_lines) or washer.isAnyThreeLines(bpot_lines):
         break
     if not running:
         break

@@ -380,7 +380,7 @@ class CubeWasher:
             if line_text in DEX_PRIME:
                 prime["DEX"] += 1
             if line_text in DEX_SEC:
-                prime["DEX"] += 1
+                sec["DEX"] += 1
             if line_text in INT_PRIME:
                 prime["INT"] += 1
             if line_text in INT_SEC:
@@ -392,6 +392,8 @@ class CubeWasher:
         print(bpot_lines)
         pprint.pprint(prime, indent=4)
         pprint.pprint(sec, indent=4)
+        if prime["XENO"] + sec["XENO"] >=3:
+            return True
         for stats, c in prime.items():
             if c >= 2 and c + sec[stats] >= 3:
                 return True
@@ -437,6 +439,8 @@ class CubeWasher:
         print(bpot_lines)
         pprint.pprint(prime, indent=4)
         pprint.pprint(sec, indent=4)
+        if prime["XENO"] + sec["XENO"] >=3:
+            return True
         for stats, c in prime.items():
             if c >= 2 and sec[stats] >= 1:
                 return True

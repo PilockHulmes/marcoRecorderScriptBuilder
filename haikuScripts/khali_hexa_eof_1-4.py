@@ -15,7 +15,7 @@ JANUS_POSITION_HIGHER = (0.35251798561151076, 0.4316546762589928)
 PLAYER_POSITION = (0.5467625899280576, 0.4316546762589928)
 RIGHT_JUMP_THRESHOLD = (0.7841726618705036, 0.5035971223021583)
 RIGHT_STAIR_GROUND = (0.8201438848920863, 0.5035971223021583)
-FOUNTAIN_POSITION = (0.8489208633093526, 0.38848920863309355)
+FOUNTAIN_POSITION = (0.8705035971223022, 0.38848920863309355)
 
 r = Return(window_name="MapleStory", rune_text = "的诅咒应用中", ocr_lang="ch", ignore_rune_text_seconds=60)
 r.start()
@@ -32,7 +32,7 @@ while lib.running:
     oblivion()
 
     r.returnToPoint(PLAYER_POSITION)
-    if lib.skillOnCooldown(lib.last_use_fountain - 15, 60):
+    if lib.skillOnCooldown(lib.last_use_fountain - 20, 60):
         time.sleep(0.3)
         lib.blossom()
         leftBackwardRing()
@@ -66,7 +66,7 @@ while lib.running:
         if config.player_position[0] < FOUNTAIN_POSITION[0] and config.player_position[0] != 0 and config.player_position[1] != 0:
             rightBackwardRing()
             time.sleep(LANDING_INTEVAL)
-        lib.hold("right", 0.3)
+        lib.hold("right", 0.4)
         lib.upJumpSlash("left")
         time.sleep(0.4)
         r.returnToPoint(FOUNTAIN_POSITION)

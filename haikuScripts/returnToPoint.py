@@ -206,7 +206,7 @@ class Return:
             # give time to stop walking
             time.sleep(0.1)
         # internal pause
-        time.sleep(0.3)
+        time.sleep(0.1)
 
     def approachVertical(self):
         if self.verticalMatch():
@@ -227,5 +227,5 @@ class Return:
                 lib.jump()
                 time.sleep(0.05)
         # internal pause
-        time.sleep(0.3)
+        time.sleep(0.1)
     
