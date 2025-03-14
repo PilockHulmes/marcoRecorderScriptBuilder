@@ -112,46 +112,46 @@ class Capture:
                     else:
                         config.player_position = (0, 0)
                     
-                    # Determin the rune's position
-                    filtered = utils.filter_color(minimap, RUNE_RANGES)
-                    rune = utils.multi_match(filtered, RUNE_TEMPLATE, threshold=0.9)
-                    if rune:
-                        config.rune_position = utils.convert_to_relative(rune[0], minimap)
-                        config.rune_active = True
-                    else:
-                        # do nothing to inactive the rune, inactive will be done by rune solver class
-                        pass
+                    # # Determin the rune's position
+                    # filtered = utils.filter_color(minimap, RUNE_RANGES)
+                    # rune = utils.multi_match(filtered, RUNE_TEMPLATE, threshold=0.9)
+                    # if rune:
+                    #     config.rune_position = utils.convert_to_relative(rune[0], minimap)
+                    #     config.rune_active = True
+                    # else:
+                    #     # do nothing to inactive the rune, inactive will be done by rune solver class
+                    #     pass
                     
                     # Determin the other players' positions
                     filtered = utils.filter_color(minimap, OTHER_RANGES)
                     others_count = len(utils.multi_match(filtered, OTHER_TEMPLATE, threshold=0.5))
                     config.map_invaded = others_count > 0
 
-                    # Determin if there is unexpected blackscreen (like dc or something)
-                    gray = cv2.cvtColor(self.frame, cv2.COLOR_BGR2GRAY)
-                    height, width, _ = self.frame.shape
-                    room_change_threshold = 0.9
-                    config.blackscreened = np.count_nonzero(gray < 15) / height / width > room_change_threshold
+                    # # Determin if there is unexpected blackscreen (like dc or something)
+                    # gray = cv2.cvtColor(self.frame, cv2.COLOR_BGR2GRAY)
+                    # height, width, _ = self.frame.shape
+                    # room_change_threshold = 0.9
+                    # config.blackscreened = np.count_nonzero(gray < 15) / height / width > room_change_threshold
 
-                    # Determin if there is rune buff activated
-                    rune_buff = utils.multi_match(self.frame[:self.frame.shape[0] // 8, :],
-                                RUNE_BUFF_TEMPLATE,
-                                threshold=0.9)
-                    if rune_buff:
-                        position_in_name = min(rune_buff, key=lambda p: p[0])
-                        config.rune_buff_position = (
-                            position_in_name[0] + self.window['left'],
-                            position_in_name[1] + self.window['top']
-                        )
-                    else:
-                        config.rune_buff_position = None
+                    # # Determin if there is rune buff activated
+                    # rune_buff = utils.multi_match(self.frame[:self.frame.shape[0] // 8, :],
+                    #             RUNE_BUFF_TEMPLATE,
+                    #             threshold=0.9)
+                    # if rune_buff:
+                    #     position_in_name = min(rune_buff, key=lambda p: p[0])
+                    #     config.rune_buff_position = (
+                    #         position_in_name[0] + self.window['left'],
+                    #         position_in_name[1] + self.window['top']
+                    #     )
+                    # else:
+                    #     config.rune_buff_position = None
 
-                    # Determin if there is haiku bot testing activated
-                    self.botTestingDetection()
-                    if self.haiku_bot_testing_bottomright_position is not None or self.haiku_bot_testing_topleft_position is not None:
-                        config.bottesting = True
+                    # # Determin if there is haiku bot testing activated
+                    # self.botTestingDetection()
+                    # if self.haiku_bot_testing_bottomright_position is not None or self.haiku_bot_testing_topleft_position is not None:
+                    #     config.bottesting = True
 
-                    time.sleep(0.01)
+                    time.sleep(0.05)
 
     def collectFrames(self, count = 10, inteval = 0.1):
         with mss.mss() as screenshoter:
