@@ -1,5 +1,4 @@
 import cv2
-import easyocr
 from capture import Capture
 from PIL import Image
 import numpy as np

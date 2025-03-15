@@ -226,6 +226,6 @@ class Return:
             else: # actually, we don't know what should we do at this time, so just jump once
                 lib.jump()
                 time.sleep(0.05)
-        # internal pause
-        time.sleep(0.1)
+        # internal pause, vertical needs longer pause
+        time.sleep(0.3)
     
