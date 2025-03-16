@@ -214,18 +214,18 @@ class Return:
         direction = ""
         if self.distance_vertical > 0: # go down
             lib.downJump()
-            time.sleep(0.1)
+            time.sleep(0.4)
         else: # go up
             distance = abs(self.distance_vertical)
             if distance > DOUBLE_UPPER_JUMP:
                 lib.doubleHighJump()
-                time.sleep(0.3)
+                time.sleep(0.6)
             elif distance > UPPER_JUMP:
                 lib.highJump()
-                time.sleep(0.3)
+                time.sleep(0.6)
             else: # actually, we don't know what should we do at this time, so just jump once
                 lib.jump()
-                time.sleep(0.05)
+                time.sleep(0.3)
         # internal pause, vertical needs longer pause
         time.sleep(0.3)
     
