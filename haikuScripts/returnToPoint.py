@@ -95,6 +95,7 @@ class Return:
             time.sleep(2)
             if self.needSolveRune():
                 self.playsound("assets/alerts/rune_appeared.mp3")
+            print(f"start checking ppl {config.map_invaded}")
             if self.hasPplInMap():
                 self.playsound("assets/alerts/siren.mp3")
 
@@ -108,7 +109,7 @@ class Return:
         return True
 
     def hasPplInMap(self):
-        return config.map_invaded
+        return self.botSolver.hasPplInMap()
     
     def playsound(self, path):
         pygame.mixer.music.load(path)
@@ -219,10 +220,10 @@ class Return:
             distance = abs(self.distance_vertical)
             if distance > DOUBLE_UPPER_JUMP:
                 lib.doubleHighJump()
-                time.sleep(0.6)
+                time.sleep(0.8)
             elif distance > UPPER_JUMP:
                 lib.highJump()
-                time.sleep(0.6)
+                time.sleep(0.8)
             else: # actually, we don't know what should we do at this time, so just jump once
                 lib.jump()
                 time.sleep(0.3)

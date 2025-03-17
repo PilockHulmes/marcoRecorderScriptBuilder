@@ -5,6 +5,15 @@ import numpy as np
 from paddleocr import PaddleOCR
 import logging
 import time
+import config as config
+import utils as utils 
+
+# Other players' symbols on the minimap
+OTHER_RANGES = (
+    ((0, 245, 215), (10, 255, 255)),
+)
+other_filtered = utils.filter_color(cv2.imread('assets/other_template.png'), OTHER_RANGES)
+OTHER_TEMPLATE = cv2.cvtColor(other_filtered, cv2.COLOR_BGR2GRAY)
 
 # for haiku
 class BotSolver:
@@ -65,6 +74,14 @@ class BotSolver:
         result = image.copy()
         result[mask == 0] = 0  # 掩码为0的区域（非白色）设置为黑色
         return result
+
+    def hasPplInMap(self):
+        c = Image.fromarray(config.minimap)
+        c.save("z_latest_minimap.png")
+        filtered = utils.filter_color(config.minimap, OTHER_RANGES)
+        others_count = len(utils.multi_match(filtered, OTHER_TEMPLATE, threshold=0.5))
+        config.map_invaded = others_count > 0
+        return config.map_invaded
 
     def needSolveRune(self):
         # 在前几分钟不管，避免历史数据一直警报

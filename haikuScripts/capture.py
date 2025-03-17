@@ -122,10 +122,10 @@ class Capture:
                     #     # do nothing to inactive the rune, inactive will be done by rune solver class
                     #     pass
                     
-                    # Determin the other players' positions
-                    filtered = utils.filter_color(minimap, OTHER_RANGES)
-                    others_count = len(utils.multi_match(filtered, OTHER_TEMPLATE, threshold=0.5))
-                    config.map_invaded = others_count > 0
+                    # # Determin the other players' positions
+                    # filtered = utils.filter_color(minimap, OTHER_RANGES)
+                    # others_count = len(utils.multi_match(filtered, OTHER_TEMPLATE, threshold=0.5))
+                    # config.map_invaded = others_count > 0
 
                     # # Determin if there is unexpected blackscreen (like dc or something)
                     # gray = cv2.cvtColor(self.frame, cv2.COLOR_BGR2GRAY)
