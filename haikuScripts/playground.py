@@ -30,6 +30,11 @@ from PIL import Image
 r = Return(window_name="MapleStory")
 r.start()
 
+time.sleep(2)
+r.saveScreenshot()
+time.sleep(5)
+r.saveScreenshot()
+
 time.sleep(20)
 
 # r.solveRune()

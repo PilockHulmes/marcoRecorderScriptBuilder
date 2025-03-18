@@ -12,6 +12,7 @@ import threading
 from botCheckSolver import BotSolver
 import numpy as np
 import math
+from datetime import datetime
 
 
 DOUBLE_JUMP = 0.15
@@ -87,6 +88,21 @@ class Return:
         thread.daemon = True
         thread.start()
 
+    def saveScreenshot(self):
+        img = cv2.cvtColor(self.capture.frame, cv2.COLOR_BGR2RGB)
+        top_pixels = 0
+        bottom_pixels = 8
+        left_pixels = 8
+        right_pixels = 8
+        # 获取原始图像尺寸
+        height, width = img.shape[:2]
+        # 进行四周裁剪
+        cropped_image = img[top_pixels:height-bottom_pixels, 
+                            left_pixels:width-right_pixels]
+
+        b = Image.fromarray(cropped_image)
+        b.save(f"./screenshots/screenshot_{int(datetime.now().timestamp())}.png")
+
     def warningThreadMain(self):
         pygame.mixer.init()
         # # wait for 10s at the begining so the capture could init properly
@@ -98,8 +114,10 @@ class Return:
             if self.needSolveRune(all_texts):
                 self.playsound("assets/alerts/rune_appeared.mp3")
             if self.botTested(all_texts):
+                self.saveScreenshot()
                 self.playsound("assets/alerts/siren.mp3")
             if self.hasPplInMap():
+                self.saveScreenshot()
                 self.playsound("assets/alerts/siren.mp3")
 
     def needSolveRune(self, all_texts):
