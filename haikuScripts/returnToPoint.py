@@ -93,20 +93,26 @@ class Return:
         # time.sleep(10)
         while True:
             time.sleep(2)
-            if self.needSolveRune():
+            all_texts = self.botSolver.readChatText()
+
+            if self.needSolveRune(all_texts):
                 self.playsound("assets/alerts/rune_appeared.mp3")
-            print(f"start checking ppl {config.map_invaded}")
+            if self.botTested(all_texts):
+                self.playsound("assets/alerts/siren.mp3")
             if self.hasPplInMap():
                 self.playsound("assets/alerts/siren.mp3")
 
-    def needSolveRune(self):
+    def needSolveRune(self, all_texts):
         # still has rune buff, so no need to solve rune
-        if not self.botSolver.needSolveRune():
+        if not self.botSolver.needSolveRune(all_texts):
             return False
         # no rune in the map, no need to solve rune
         if config.rune_position is None:
             return False
         return True
+
+    def botTested(self, all_texts):
+        return "测谎" in all_texts or "对你使用了" in all_texts or "无法进行" in all_texts or "此操作" in all_texts
 
     def hasPplInMap(self):
         return self.botSolver.hasPplInMap()

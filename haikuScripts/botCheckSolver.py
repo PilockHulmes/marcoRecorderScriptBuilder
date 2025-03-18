@@ -83,10 +83,7 @@ class BotSolver:
         config.map_invaded = others_count > 0
         return config.map_invaded
 
-    def needSolveRune(self):
-        # 在前几分钟不管，避免历史数据一直警报
-        if time.time() - self.start_time <= self.ignore_text_duration:
-            return
+    def readChatText(self):
         image = self.capture.frame
         # image = cv2.imread('../rune1.png')
         # 0,660 400,760 chatbox which is placed in the bottom left and shows 5 rows of texts
@@ -100,6 +97,12 @@ class BotSolver:
         if results is not None and results[0] is not None:
             for line in results[0]:
                 all_texts += line[1][0]
+        return all_texts
+
+    def needSolveRune(self, all_texts):
+        # 在前几分钟不管，避免历史数据一直警报
+        if time.time() - self.start_time <= self.ignore_text_duration:
+            return
 
         if time.time() - self.print_solve_rune_countdown >= 60:
             self.print_solve_rune_countdown = time.time()

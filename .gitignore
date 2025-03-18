@@ -3,6 +3,7 @@ testImages/
 
 venv
 .git
+screenshots
 
 # ignore all the generated scripts
 *.mcr
