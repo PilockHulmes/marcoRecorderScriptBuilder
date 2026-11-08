@@ -238,5 +238,35 @@ class GuardTest(unittest.TestCase):
         self.assertEqual(result.evidence, "failed")
 
 
+class ChatSignalTest(unittest.TestCase):
+    def test_no_template_returns_none(self):
+        self.assertIsNone(botcheck.find_chat_line(np.zeros((600, 800, 3), np.uint8)))
+
+    def test_roi_crop_from_game_frame(self):
+        frame = np.zeros((600, 800, 3), np.uint8)
+        frame[432:570, 0:360] = 200                 # 左下角亮块 = 聊天区
+        original = botcheck._window_rect
+        botcheck._window_rect = lambda title: None  # 假装没有独立聊天窗口
+        try:
+            crop = botcheck.chat_crop(frame)
+        finally:
+            botcheck._window_rect = original
+        self.assertIsNotNone(crop)
+        self.assertGreater(crop.shape[0], 100)
+
+    def test_template_match_on_synthetic_chat(self):
+        frame = np.zeros((600, 800, 3), np.uint8)
+        cv2.putText(frame, "BLOCKED ACTION", (20, 500), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (255, 255, 255), 2)
+        tpl = cv2.cvtColor(frame[480:520, 10:340], cv2.COLOR_BGR2GRAY)
+        original = botcheck._window_rect
+        botcheck._window_rect = lambda title: None
+        try:
+            found = botcheck.find_chat_line(frame, template=tpl)
+        finally:
+            botcheck._window_rect = original
+        self.assertIsNotNone(found)
+        self.assertGreaterEqual(found[0], 0.95)
+
+
 if __name__ == "__main__":
     unittest.main()

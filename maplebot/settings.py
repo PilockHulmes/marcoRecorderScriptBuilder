@@ -22,6 +22,8 @@ CONFIG_PATH = Path(__file__).resolve().parents[1] / "maplebot.local.json"
 DEFAULTS = {
     "window_titles": ["MapleStory"],
     "qq_group": "",
+    "chat_window_title": "MAPLESTORY CHAT",
+    "chat_roi": [0.0, 0.72, 0.45, 0.95],
 }
 
 
@@ -44,6 +46,21 @@ def load():
     if group:
         data["qq_group"] = group
     return data
+
+
+def chat_window_title():
+    """右侧独立聊天窗口的标题；空字符串表示没有独立窗口。"""
+    return str(load().get("chat_window_title") or "").strip()
+
+
+def chat_roi():
+    """聊天框在游戏窗口内的比例区域 (x0, y0, x1, y1)，用于左下角布局。"""
+    roi = load().get("chat_roi") or DEFAULTS["chat_roi"]
+    try:
+        x0, y0, x1, y1 = (float(v) for v in roi)
+    except Exception:
+        x0, y0, x1, y1 = DEFAULTS["chat_roi"]
+    return x0, y0, x1, y1
 
 
 def window_titles():

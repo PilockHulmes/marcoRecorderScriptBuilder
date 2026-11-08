@@ -23,7 +23,7 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-from . import config, rune_api, utils, vision
+from . import config, rune_api, settings, utils, vision
 
 ASSETS_DIR = Path(__file__).resolve().parents[1] / "haikuScripts" / "assets"
 
@@ -33,6 +33,10 @@ PANEL_TEMPLATE = "botcheck_text.png"
 PANEL_THRESHOLD = 0.80
 #: 模板的尺度梯度（客户端分辨率可能不同）
 PANEL_SCALES = (0.9, 1.0, 1.1)
+#: 聊天框里"被拦下"提示的模板（可选；没有就问不出，只是少了二级信号）
+CHAT_TEMPLATE = "chat_blocked.png"
+CHAT_MATCH_THRESHOLD = 0.80
+
 #: 验证码框相对"文字块模板左上角"的偏移 (dx, dy, w, h)，实测
 CAPTCHA_OFFSET = (-33, 70, 224, 60)
 #: 「請先點擊再輸入」那行字的中心，相对文字块左上角的偏移（面板提示点这里）
@@ -255,6 +259,70 @@ def read_captcha(crop, client=None, attempts=3):
     return answers[0]
 
 
+def _window_rect(title):
+    """按标题找顶层窗口，返回 (x, y, w, h)。"""
+    import win32gui
+
+    hwnd = win32gui.FindWindow(None, title) if title else 0
+    if not hwnd:
+        return None
+    left, top, right, bottom = win32gui.GetWindowRect(hwnd)
+    if right - left < 100 or bottom - top < 100:
+        return None
+    return left, top, right - left, bottom - top
+
+
+def _grab_rect(rect):
+    import mss
+    import numpy as np
+
+    x, y, w, h = rect
+    with mss.mss() as sct:
+        shot = sct.grab({"left": x, "top": y, "width": w, "height": h})
+        return np.array(shot)[:, :, :3].copy()
+
+
+def chat_crop(frame=None, grabber=None):
+    """取聊天区图像：优先右侧独立聊天窗口，其次游戏窗口左下角 ROI。"""
+    rect = _window_rect(settings.chat_window_title())
+    if rect is not None:
+        try:
+            return (grabber or _grab_rect)(rect)
+        except Exception:
+            pass
+    if frame is None or getattr(frame, "size", 0) == 0:
+        return None
+    x0, y0, x1, y1 = settings.chat_roi()
+    height, width = frame.shape[:2]
+    crop = frame[int(y0 * height):int(y1 * height), int(x0 * width):int(x1 * width)]
+    return crop if crop.size else None
+
+
+def load_chat_template(assets_dir=None):
+    path = Path(assets_dir or ASSETS_DIR) / CHAT_TEMPLATE
+    if not path.is_file():
+        return None
+    return cv2.imread(str(path), cv2.IMREAD_GRAYSCALE)
+
+
+def find_chat_line(frame=None, grabber=None, template=None, threshold=CHAT_MATCH_THRESHOLD):
+    """在聊天区里找"被拦下"提示；模板还没采集到就返回 None。"""
+    tpl = template if template is not None else load_chat_template()
+    if tpl is None:
+        return None
+    crop = chat_crop(frame, grabber)
+    if crop is None:
+        return None
+    gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY)
+    if tpl.shape[0] > gray.shape[0] or tpl.shape[1] > gray.shape[1]:
+        return None
+    result = cv2.matchTemplate(gray, tpl, cv2.TM_CCOEFF_NORMED)
+    _, score, _, loc = cv2.minMaxLoc(result)
+    if score < threshold:
+        return None
+    return float(score), (loc[0], loc[1], tpl.shape[1], tpl.shape[0])
+
+
 def _default_key_api():
     import pydirectinput
 
@@ -356,6 +424,7 @@ class BotCheckGuard:
         png = rune_api.encode_png(frame)
         evidence_ok = bool(self._send_evidence(png))
         evidence = "ok" if evidence_ok else "failed"
+        self._save_chat(frame, "before")     # 被动攒样本：面板出现时的聊天区
 
         # 2) 读验证码：三次一致才用
         crop = captcha_crop(frame, panel)
@@ -370,12 +439,30 @@ class BotCheckGuard:
         self._sleep(0.2)
         type_text(captcha, key_api=self.key_api, sleep=self._sleep)
 
+        self._save_chat(None, "after")       # 输入后 1~2 秒，"測謊中…"通常这时出现
+
         # 4) 验收：面板消失 = 成功（不重复输入）
         if self._wait_panel_gone(source):
             return GuardResult(True, "solved", captcha=captcha, evidence=evidence,
                                panel_score=panel.score)
         return GuardResult(False, "still_there", captcha=captcha, evidence=evidence,
                            panel_score=panel.score)
+
+    def _save_chat(self, frame, tag):
+        """把聊天区存下来（不阻塞流程），用于以后采集"被拦下"提示的模板。"""
+        try:
+            crop = chat_crop(frame)
+        except Exception:
+            return None
+        if crop is None or getattr(crop, "size", 0) == 0:
+            return None
+        try:
+            self.save_dir.mkdir(parents=True, exist_ok=True)
+            path = self.save_dir / f"chat_{time.strftime('%Y%m%d_%H%M%S')}_{tag}.png"
+            cv2.imwrite(str(path), crop)
+            return path
+        except Exception:
+            return None
 
     def _wait_panel_gone(self, source="template"):
         deadline = time.monotonic() + self.verify_timeout
