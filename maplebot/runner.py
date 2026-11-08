@@ -3,7 +3,7 @@
 负责四件事，脚本本身不用再管：
 
 1. **找脚本**：按名字在 `haikuScripts/`、`marcoRecorder/`、`auto-maple/` 里查（支持模糊提示）；
-2. **找窗口**：自动识别 `MapleStory` / `Haiku v236 (x64)` / `Haiku v224`，命中就写
+2. **找窗口**：按 `maplebot.local.json` 里的候选标题（默认 `MapleStory`）识别，命中就写
    `config.window_override`，覆盖脚本里写死的窗口标题；
 3. **起会话**：装好 stop key（默认 `l`）与按键记账，然后 `runpy` 执行目标脚本；
 4. **收尾**：无论正常结束、stop key、Ctrl+C 还是异常，都松开所有按下的键。
@@ -23,7 +23,7 @@ import sys
 import threading
 import time
 
-from . import config, stop
+from . import config, settings, stop
 
 #: 仓库根目录
 ROOT = pathlib.Path(__file__).resolve().parent.parent
@@ -31,8 +31,8 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 #: `--script NAME` 的搜索顺序
 SEARCH_DIRS = ("haikuScripts", "marcoRecorder", "auto-maple")
 
-#: 自动探测窗口标题的候选（前者为通用服，后两者是仓库里出现过的私服标题）
-CANDIDATE_WINDOW_TITLES = ("MapleStory", "Haiku v236 (x64)", "Haiku v224")
+#: 自动探测窗口标题的候选（来自本地配置，仓库默认只有 MapleStory）
+CANDIDATE_WINDOW_TITLES = tuple(settings.window_titles())
 
 #: 这些文件名视为「库」，在 --list 里单独归类
 LIBRARY_STEMS = {

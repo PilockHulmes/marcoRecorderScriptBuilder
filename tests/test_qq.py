@@ -12,7 +12,7 @@ class QQSendTest(unittest.TestCase):
         self.clipboard = []
 
         sender = qq.QQSender(
-            group_title="猫叶物语T",
+            group_title="测试群",
             dry_run=dry_run,
             find_window=lambda fragment: rect,
             activate=lambda fragment: activate_ok,
@@ -77,26 +77,26 @@ class QQSendTest(unittest.TestCase):
             return (10, 20, 1000, 800) if name == "QQ" else None
 
         sender = qq.QQSender(
-            group_title="猫叶物语T", dry_run=True, find_window=find,
+            group_title="测试群", dry_run=True, find_window=find,
             activate=lambda name: True, click=lambda x, y: None,
             hotkey=lambda keys: None, set_clipboard=lambda png: None,
             sleep=lambda _s: None,
         )
         result = sender.send(b"x")
         self.assertTrue(result.sent)
-        self.assertEqual(calls[:2], ["猫叶物语T", "QQ"])
+        self.assertEqual(calls[:2], ["测试群", "QQ"])
 
 
 class FindChatTitleTest(unittest.TestCase):
     def test_substring_match(self):
-        titles = ["微信", "猫叶物语T (1002)", "QQ"]
-        self.assertEqual(qq.find_chat_title("猫叶物语T", titles), "猫叶物语T (1002)")
+        titles = ["微信", "测试群 (1002)", "QQ"]
+        self.assertEqual(qq.find_chat_title("测试群", titles), "测试群 (1002)")
 
     def test_missing(self):
         self.assertIsNone(qq.find_chat_title("不存在的群", ["QQ", "微信"]))
 
     def test_empty_titles(self):
-        self.assertIsNone(qq.find_chat_title("猫叶物语T", ["", None]))
+        self.assertIsNone(qq.find_chat_title("测试群", ["", None]))
 
 
 if __name__ == "__main__":

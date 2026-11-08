@@ -172,11 +172,11 @@ class FindGameWindowTest(unittest.TestCase):
 
         def fake(title):
             seen.append(title)
-            return 1 if title == "Haiku v224" else 0
+            return 1 if title == "MapleStory" else 0
 
         with mock.patch("maplebot.win32.find_ready_window", side_effect=fake):
-            self.assertEqual(runner.find_game_window(timeout=0, titles=["Haiku v224"]), "Haiku v224")
-        self.assertEqual(seen, ["Haiku v224"])
+            self.assertEqual(runner.find_game_window(timeout=0, titles=["MapleStory"]), "MapleStory")
+        self.assertEqual(seen, ["MapleStory"])
 
 
 class CliDispatchTest(unittest.TestCase):

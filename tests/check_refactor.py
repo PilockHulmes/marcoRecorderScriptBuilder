@@ -101,7 +101,7 @@ result = run_py(AUTO_MAPLE_CODE, cwd=ROOT / "auto-maple")
 for expected in (
     "identity True",
     "utils_ok True",
-    "window_name Haiku v224",
+    "window_name ",                       # 具体标题来自本地配置，这里只检查属性存在
     "subclass maplebot.capture",
     "flags True True True True False",
     "interval 0.05",

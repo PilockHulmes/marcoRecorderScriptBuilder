@@ -2,19 +2,19 @@
 
 原来有两份几乎相同的拷贝：
 
-- `haikuScripts/capture.py`：默认窗口 `"Haiku v236 (x64)"`，可传窗口名，
+- `haikuScripts/capture.py`：窗口标题从 `maplebot.local.json` 读，可传窗口名，
   带 `@bot` 验证码模板检测，符文 / 黑屏 / 符文 buff 检测全被注释掉。
-- `auto-maple/src/capture.py`：窗口 `"Haiku v224"`，符文 / 黑屏 / 符文 buff 检测是开的。
+- `auto-maple/src/capture.py`：窗口标题同上，符文 / 黑屏 / 符文 buff 检测是开的。
 
 合并后这些差异全部变成构造参数，两个薄壳各自选择默认值（行为保持不变）：
 
 .. code-block:: python
 
     # haikuScripts/capture.py
-    Capture(window_name="Haiku v236 (x64)", assets_dir=<haikuScripts/assets>)
+    Capture(window_name=settings.window_title(), assets_dir=<haikuScripts/assets>)
 
     # auto-maple/src/capture.py
-    Capture(window_name="Haiku v224", assets_dir=<auto-maple/assets>,
+    Capture(window_name=settings.window_title(), assets_dir=<auto-maple/assets>,
             detect_rune=True, detect_blackscreen=True, detect_rune_buff=True)
 
 模板改为**按需加载**：只有开着对应检测才要求对应模板存在，缺文件会给出
@@ -30,7 +30,7 @@ import mss
 import mss.windows
 import numpy as np
 
-from . import config, utils, win32
+from . import config, settings, utils, win32
 from . import minimap as minimap_mod
 from . import player as player_mod
 
@@ -42,8 +42,8 @@ MINIMAP_BOTTOM_BORDER = 9
 WINDOWED_OFFSET_TOP = 36
 WINDOWED_OFFSET_LEFT = 10
 
-# 客户端默认标题；不同版本/私服不一致，用参数覆盖或 run.py --window 覆盖
-DEFAULT_WINDOW_NAME = "Haiku v236 (x64)"
+# 客户端默认标题；不同客户端版本不一致，用参数覆盖或 run.py --window 覆盖
+DEFAULT_WINDOW_NAME = settings.window_title()
 
 # 小地图上符文的颜色范围（HSV）
 RUNE_RANGES = (

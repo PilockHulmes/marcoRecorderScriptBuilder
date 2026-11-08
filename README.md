@@ -98,7 +98,7 @@ python run.py --check                    # 全仓库语法自检
 | 步骤 | 行为 |
 |---|---|
 | 找脚本 | 在 `haikuScripts/`、`marcoRecorder/`、`auto-maple/` 里按名字查；拼错会给近似建议（`s2_clpp` → `s2_clp`） |
-| 找窗口 | 依次探测 `MapleStory` / `Haiku v236 (x64)` / `Haiku v224`，命中就写 `config.window_override`，**覆盖脚本里写死的标题** |
+| 找窗口 | 按 `maplebot.local.json` 里的候选标题（默认 `MapleStory`）探测，命中就写 `config.window_override`，**覆盖脚本里写死的标题** |
 | 起会话 | 装好急停键（默认 `l`）与按键记账，然后 `runpy` 执行目标脚本 |
 | 收尾 | 正常结束 / 按 `l` / Ctrl+C / 异常，都会**松开所有按下的键和鼠标键**，并停掉正在播的警报音 |
 
@@ -138,8 +138,8 @@ cd haikuScripts
 2. **先开游戏，再跑脚本。** `Capture.calibrate()` 找不到窗口时现在会**每秒重试**并
    打印提示，而不是拿全 0 矩形继续跑；`run.py --wait 60` 可以直接替你等。
 3. **窗口标题写死在三个地方**，优先级 `--window` > run.py 自动识别 > 脚本显式传参 > 薄壳默认值：
-   - `haikuScripts/capture.py`：默认 `'Haiku v236 (x64)'`
-   - `auto-maple/src/capture.py`：`'Haiku v224'`
+   - `haikuScripts/capture.py`：窗口标题从 `maplebot.local.json` 读（默认 `MapleStory`）
+   - `auto-maple/src/capture.py`：窗口标题同上
    - 各脚本里的 `Return(window_name="MapleStory")` / `Capture("MapleStory")`
 4. **窗口必须完整可见**：`mss` 抓的是屏幕像素，最小化 / 被遮挡 / 远程桌面断开都会导致识别失效。DPI 已用 `SetProcessDPIAware()` 处理，但系统缩放仍会影响 UI 像素尺寸，建议 100%。
 5. **开头 `time.sleep(3)` 是给你切窗口用的**，别删。
@@ -450,7 +450,7 @@ cd auto-maple
 ..\venv\Scripts\python.exe main.py
 ```
 
-把它理解成 `haikuScripts` 的 OOP 化尝试 + 一个 Tkinter 小地图窗口（`Displayer`，菜单里的 `Recalibrate` 可以重新标定）。`src/capture.py` / `src/config.py` / `src/utils.py` 现在是共享内核的薄壳（默认窗口 `Haiku v224`，符文 / 黑屏 / 符文 buff 检测开启）。**但它跑不起来完整流程**：
+把它理解成 `haikuScripts` 的 OOP 化尝试 + 一个 Tkinter 小地图窗口（`Displayer`，菜单里的 `Recalibrate` 可以重新标定）。`src/capture.py` / `src/config.py` / `src/utils.py` 现在是共享内核的薄壳（窗口标题同上，符文 / 黑屏 / 符文 buff 检测开启）。**但它跑不起来完整流程**：
 
 - `src/rune.py` 第 18 行 `FLASHJUMP_DISTANCE_THRESHOLD = 2_` 是**语法错误**，整个文件无法解析；
 - `src/capture.py` 依赖 TensorFlow 已移除；
@@ -684,7 +684,7 @@ $env:MAPLEBOT_PRECISE_DELAY=1; .\venv\Scripts\python.exe tests\bench_delay.py   
 
 ## 12. 挂机监测（bot check）：检测 / 取证 / 验证码
 
-私服管理员会人工触发挂机监测：屏幕上弹出一块半透明蓝面板（约 210×200），里面是
+管理员会人工触发挂机监测：屏幕上弹出一块半透明蓝面板（约 210×200），里面是
 「將下方圖片中的文字 / 輸入顯示的內容後 / 請按下ENTER鍵」+ 一张验证码图 + 倒计时（约 60s）。
 处理方式：**先截图发 QQ 群当证据，再输入验证码**；输入错就靠那张截图自证。
 
@@ -730,13 +730,14 @@ text = botcheck.read_captcha(crop, attempts=3)   # 三次完全一致才返回�
 ### 12.4 发 QQ 群（`maplebot/qq.py`）
 
 ```python
-sender = qq.QQSender(group_title="猫叶物语T", dry_run=True)   # 测试务必 dry_run
+sender = qq.QQSender(dry_run=True)      # 群名读 maplebot.local.json，测试务必 dry_run
 sender.send(png_bytes)
 ```
 
 流程：按标题子串找窗口 → 激活 → 点输入框（相对位置 0.45/0.90）→ 剪贴板放 PNG（CF_DIB）
 → `Ctrl+V` → `Enter`。
 
+- 群名从本地配置读（`maplebot.local.json` 的 `qq_group`），仓库里没有；
 - **`dry_run=True` 时只贴图、随后清空输入框，绝不按回车**；
 - 窗口找不到 / 激活失败 / 剪贴板被占用都会返回 `SendResult(sent=False, reason=...)`；
 - 测试建议把 `group_title` 指向「文件传输助手」，正式跑再改回群名（或之后换群图标识别）。

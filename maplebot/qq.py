@@ -2,8 +2,8 @@
 
 用途：挂机监测出现时，先把**游戏窗口截图**发到群里，作为"人在屏幕前"的证据。
 
-实测（`cat_qq_screenshot.png`，1067×905 的 QQ 窗口）：
-- 群聊窗口标题形如 ``猫叶物语T (1002)``，用**子串匹配**找窗口；
+实测（1067×905 的 QQ 窗口）：
+- 群聊窗口标题里通常带群名，用**子串匹配**找窗口；
 - 输入框在窗口底部，相对位置约 (0.45, 0.90)；
 - 贴图靠剪贴板（CF_DIB）+ ``Ctrl+V``，然后 ``Enter`` 发送。
 
@@ -15,7 +15,10 @@ import io
 import time
 from dataclasses import dataclass
 
-DEFAULT_GROUP = "猫叶物语T"
+from . import settings
+
+#: 默认群名：从本地配置读（`maplebot.local.json` 的 `qq_group`），仓库里为空
+DEFAULT_GROUP = settings.qq_group()
 #: 群名找不到时的兜底窗口标题（新版 QQ 的主窗口标题就是 "QQ"，群聊是里面的一栏）
 FALLBACK_TITLES = ("QQ",)
 #: 输入框在窗口内的相对位置（右下角小块区域）
