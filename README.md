@@ -513,6 +513,10 @@ ok = session.solve_and_verify()     # True = 解成功；False = 3 次都失败
 
 `session.history` 会记录每次尝试的方向与结果，`session.last_error` 是最后一次失败原因。
 
+**前提：地图里只有自己**（单人刷图）。所以流程里**不会**在开始前复查 CD、也不处理
+"别人抢先解了符文"的情况 —— 如果以后要多人同图，需要在 `solve_and_verify()` 开头加一次
+`rune_cd_visible()` 检查，并把"CD 已亮"当作"跳过而不是成功"。
+
 **`open_panel` / `close_panel` 是可注入的**：默认实现只是"按 alt / 按 esc"。因为
 "判断该不该按 alt、走到符文旁边"属于移动/交互逻辑（还没写），所以这里刻意只留一个钩子：
 

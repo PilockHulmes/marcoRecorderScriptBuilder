@@ -521,7 +521,12 @@ class RuneSession:
         return directions
 
     def solve_and_verify(self):
-        """完整流程；成功返回 True，3 次都失败返回 False 并触发 give_up。"""
+        """完整流程；成功返回 True，3 次都失败返回 False 并触发 give_up。
+
+        假设：地图里只有自己（单人刷图）。所以开头**不复查 CD**、也不处理
+        "别人抢先解了符文"的情况；将来要支持多人同图时，在循环开头加一次
+        :func:`rune_cd_visible` 并把"CD 已亮"当作跳过（而不是成功）即可。
+        """
         from .rune_api import RuneAPIError
 
         for attempt in range(1, self.max_attempts + 1):
