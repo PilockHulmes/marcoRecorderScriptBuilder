@@ -33,13 +33,30 @@ GAPS = (0.04, 0.06, 0.10)
 ANCHOR_KEYWORDS = ("隊伍", "队伍", "所有人", "全部")
 
 
-def focus_window(title):
-    hwnd = ctypes.windll.user32.FindWindowW(None, title)
-    if not hwnd:
-        return False
-    ctypes.windll.user32.SetForegroundWindow(hwnd)
-    time.sleep(0.3)
-    return ctypes.windll.user32.GetForegroundWindow() == hwnd
+def focus_window(title=None):
+    """把游戏窗口切到前台（标题可能重复，取面积最大的那个）。"""
+    import win32con
+    import win32gui
+
+    for name in ([title] if title else settings.window_titles()):
+        rects = botcheck._windows_named(name)
+        if not rects:
+            continue
+        rect = max(rects, key=lambda r: r[2] * r[3])
+        hwnd = win32gui.WindowFromPoint((rect[0] + rect[2] // 2, rect[1] + rect[3] // 2))
+        while hwnd and win32gui.GetParent(hwnd):
+            hwnd = win32gui.GetParent(hwnd)
+        if not hwnd:
+            continue
+        try:
+            win32gui.ShowWindow(hwnd, win32con.SW_RESTORE)
+            win32gui.SetForegroundWindow(hwnd)
+        except Exception as exc:
+            print("切前台失败:", exc)
+        time.sleep(0.3)
+        if win32gui.GetForegroundWindow() == hwnd:
+            return True
+    return False
 
 
 def grab_chat():
@@ -103,9 +120,8 @@ def clear_input(keyboard, anchor, frame_getter, presses=40):
 
 
 def run(holds, gaps, chars, live):
-    game = settings.window_title()
-    if live and not focus_window(game):
-        print(f"无法把窗口切到前台：{game}")
+    if live and not focus_window():
+        print("无法把游戏窗口切到前台（Windows 前台锁），请手动点一下游戏窗口再重试")
         return 1
     frame = grab_chat()
     if frame is None:
@@ -126,7 +142,9 @@ def run(holds, gaps, chars, live):
     for hold in holds:
         for gap in gaps:
             keyboard.burst("backspace", count=40, hold=0.02, gap=0.01)
-            time.sleep(0.3)
+            time.sleep(0.2)
+            keyboard.tap("enter", hold=0.05)      # 激活输入框（此刻为空，不会发出内容）
+            time.sleep(0.35)
             base = ink(grab_chat(), anchor)
             ok = 0
             for index in range(chars):
@@ -139,9 +157,14 @@ def run(holds, gaps, chars, live):
                     ok += 1
                     base = now
             keyboard.burst("backspace", count=chars + 10, hold=0.02, gap=0.01)
-            keyboard._send_key("esc", up=False)
-            keyboard._send_key("esc", up=True)
+            time.sleep(0.2)
+            left = ink(grab_chat(), anchor)
+            keyboard.tap("esc", hold=0.05)        # 关闭输入框，不发送
+            time.sleep(0.3)
             rows.append((hold, gap, ok, chars, ok / chars))
+            if not rows[0][2] and len(rows) == 1:
+                print("第一组一个字符都没打进 → 输入框可能没激活，先中止")
+                return 1
             print(f"hold={hold:.2f} gap={gap:.2f} -> {ok}/{chars} ({ok / chars:.0%})")
 
     out = ROOT / "detections" / "key_calibration.csv"

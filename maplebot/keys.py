@@ -84,6 +84,23 @@ def virtual_key(key):
     raise KeyError(f"不认识的按键：{key!r}")
 
 
+def is_elevated():
+    """本进程是否以管理员身份运行。"""
+    try:
+        return bool(ctypes.windll.shell32.IsUserAnAdmin())
+    except Exception:
+        return False
+
+
+def require_admin(action="向游戏窗口注入按键"):
+    """游戏通常是提权进程；低权限进程的 SendInput 会被 UIPI 静默丢弃。"""
+    if not is_elevated():
+        raise PermissionError(
+            f"需要管理员权限才能{action}：游戏是提权进程，"
+            "低权限进程的 SendInput 会返回成功但事件被丢弃"
+        )
+
+
 def time_begin():
     """把系统定时器精度调到 1ms（sleep 才不会被量化成 15.6ms）。"""
     _winmm.timeBeginPeriod(1)
@@ -97,6 +114,8 @@ class Keyboard:
     """扫卡码键盘。``dry_run=True`` 只记录事件，不真的发送。"""
 
     def __init__(self, sleep=None, dry_run=False):
+        if not dry_run:
+            require_admin()
         self._sleep = sleep or timing.sleep_precise
         self.dry_run = bool(dry_run)
         self.events = []          # dry_run 时的记录：(时间, "down"/"up", 键)
@@ -258,6 +277,8 @@ __all__ = [
     "release_all",
     "shared",
     "tap",
+    "is_elevated",
+    "require_admin",
     "time_begin",
     "time_end",
     "virtual_key",
