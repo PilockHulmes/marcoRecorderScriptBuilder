@@ -1,6 +1,6 @@
 """P0 回归测试：等待是否既准又不烧 CPU。
 
-运行：``.\\venv\\Scripts\\python.exe tests\\test_p0_timing.py``
+运行：``.\\venv\\Scripts\\python.exe tests\\check_p0_timing.py``（或 ``tests\\run_all.py`` 跑全部）
 
 判定标准：
 - **不早于 deadline**（精度不能回退，否则动作时序会变）；

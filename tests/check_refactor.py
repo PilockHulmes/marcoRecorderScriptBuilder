@@ -1,6 +1,6 @@
 """重构自检：不启动游戏、不注入真实按键。
 
-运行：``.\\venv\\Scripts\\python.exe tests\\test_refactor.py``
+运行：``.\\venv\\Scripts\\python.exe tests\\check_refactor.py``（或 ``tests\\run_all.py`` 跑全部）
 
 覆盖点：
 

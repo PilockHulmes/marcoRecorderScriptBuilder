@@ -1,0 +1,183 @@
+"""maplebot.capture 的单元测试：小地图自动标定、检测开关、帧间隔。
+
+做法：造一张带模板的合成画面，替换掉截图器与窗口查找，然后调用 calibrate()。
+不需要游戏窗口，也不需要真实屏幕。
+"""
+
+import contextlib
+import io
+import unittest
+from unittest import mock
+
+from maplebot import capture as capmod
+from maplebot import config
+from tests.helpers import ASSETS, FakeGrabber, asset, build_frame, temp_assets
+
+WINDOW_RECT = (100, 50, 900, 650)  # left, top, right, bottom → 800x600
+WINDOW_W = WINDOW_RECT[2] - WINDOW_RECT[0]
+WINDOW_H = WINDOW_RECT[3] - WINDOW_RECT[1]
+
+REQUIRED_ONLY = ["minimap_tl_template.png", "minimap_br_template.png", "player_template.png"]
+
+
+def make_capture(**kwargs):
+    """用仓库里的真实素材建一个 Capture（不启动线程）。"""
+    kwargs.setdefault("assets_dir", str(ASSETS))
+    return capmod.Capture("TestWindow", **kwargs)
+
+
+class CalibrationTest(unittest.TestCase):
+    def setUp(self):
+        self._saved_capture = config.capture
+        self.tl = asset("minimap_tl_template.png")
+        self.br = asset("minimap_br_template.png")
+        self.player = asset("player_template.png")
+        self.tl_pos = (60, 80)     # (y, x)
+        self.br_pos = (300, 400)
+        self.frame = build_frame(
+            width=WINDOW_W,
+            height=WINDOW_H,
+            templates=[(self.tl, self.tl_pos), (self.br, self.br_pos)],
+        )
+
+    def tearDown(self):
+        config.capture = self._saved_capture
+
+    def _calibrated(self, frame=None):
+        cap = make_capture()
+        cap.screenshoter = FakeGrabber(self.frame if frame is None else frame)
+        with mock.patch.object(capmod.win32, "find_window", return_value=1), \
+                mock.patch.object(capmod.win32, "window_rect", return_value=WINDOW_RECT):
+            ok = cap.calibrate()
+        return cap, ok
+
+    def test_calibrate_computes_minimap_rect_and_ratio(self):
+        cap, ok = self._calibrated()
+        self.assertTrue(ok)
+        self.assertTrue(cap.calibrated)
+        self.assertEqual(cap.window, {"left": 100, "top": 50, "width": WINDOW_W, "height": WINDOW_H})
+
+        tl_x = self.tl_pos[1] + capmod.MINIMAP_BOTTOM_BORDER
+        tl_y = self.tl_pos[0] + capmod.MINIMAP_TOP_BORDER
+        self.assertEqual(cap.minimap_topleft_position, (tl_x, tl_y))
+
+        # calibrate 取的是「右下角模板的右下角」，所以要先加上模板自身宽高
+        br_corner_x = self.br_pos[1] + self.br.shape[1]
+        br_corner_y = self.br_pos[0] + self.br.shape[0]
+        br_x = max(tl_x + self.player.shape[1], br_corner_x - capmod.MINIMAP_BOTTOM_BORDER)
+        br_y = max(tl_y + self.player.shape[0], br_corner_y - capmod.MINIMAP_BOTTOM_BORDER)
+        self.assertEqual(cap.minimap_bottomright_position, (br_x, br_y))
+        self.assertAlmostEqual(cap.minimap_ratio, (br_x - tl_x) / (br_y - tl_y))
+
+    def test_calibrate_is_idempotent(self):
+        cap, ok = self._calibrated()
+        self.assertTrue(ok)
+        first = (cap.minimap_topleft_position, cap.minimap_bottomright_position, cap.minimap_ratio)
+        with mock.patch.object(capmod.win32, "find_window", return_value=1), \
+                mock.patch.object(capmod.win32, "window_rect", return_value=WINDOW_RECT):
+            cap.calibrate()
+        second = (cap.minimap_topleft_position, cap.minimap_bottomright_position, cap.minimap_ratio)
+        self.assertEqual(first, second)
+
+    def test_missing_window_returns_false_and_keeps_uncalibrated(self):
+        cap = make_capture()
+        cap.screenshoter = FakeGrabber(self.frame)
+        with mock.patch.object(capmod.win32, "find_window", return_value=0):
+            self.assertFalse(cap.calibrate())
+        self.assertFalse(cap.calibrated)
+
+    def test_failed_rect_returns_false(self):
+        cap = make_capture()
+        cap.screenshoter = FakeGrabber(self.frame)
+        with mock.patch.object(capmod.win32, "find_window", return_value=1), \
+                mock.patch.object(capmod.win32, "window_rect", return_value=None):
+            self.assertFalse(cap.calibrate())
+        self.assertFalse(cap.calibrated)
+
+    def test_none_frame_returns_false(self):
+        cap = make_capture()
+        with mock.patch.object(capmod.win32, "find_window", return_value=1), \
+                mock.patch.object(capmod.win32, "window_rect", return_value=WINDOW_RECT), \
+                mock.patch.object(capmod.Capture, "screenshot", return_value=None):
+            self.assertFalse(cap.calibrate())
+        self.assertFalse(cap.calibrated)
+
+    def test_bot_testing_detection_locates_templates(self):
+        tl = asset("haiku_bot_testing_tl_template.jpg")
+        br = asset("haiku_bot_testing_br_template.jpg")
+        pos_tl, pos_br = (200, 500), (260, 620)
+        frame = build_frame(width=WINDOW_W, height=WINDOW_H, templates=[(tl, pos_tl), (br, pos_br)])
+        cap, ok = self._calibrated(frame=frame)
+        self.assertTrue(ok)
+        cap.detect_bot_testing = True
+        cap.botTestingDetection()
+        # botTestingDetection 同样取「左上模板的左上 + 右下模板的右下」
+        self.assertEqual(cap.haiku_bot_testing_topleft_position, (pos_tl[1], pos_tl[0]))
+        self.assertEqual(
+            cap.haiku_bot_testing_bottomright_position,
+            (pos_br[1] + br.shape[1], pos_br[0] + br.shape[0]),
+        )
+
+
+class FlagTest(unittest.TestCase):
+    def setUp(self):
+        self._saved_capture = config.capture
+
+    def tearDown(self):
+        config.capture = self._saved_capture
+
+    def test_all_optional_detections_can_be_off(self):
+        cap = make_capture(detect_other=False)
+        for flag in ("detect_other", "detect_rune", "detect_blackscreen",
+                     "detect_rune_buff", "detect_bot_testing"):
+            self.assertFalse(getattr(cap, flag), flag)
+
+    def test_missing_templates_disable_detections_with_warning(self):
+        tmp, path = temp_assets(REQUIRED_ONLY)
+        self.addCleanup(tmp.cleanup)
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            cap = capmod.Capture(
+                "W",
+                assets_dir=str(path),
+                detect_rune=True,
+                detect_rune_buff=True,
+                detect_bot_testing=True,
+            )
+        for flag in ("detect_rune", "detect_rune_buff", "detect_bot_testing", "detect_other"):
+            self.assertFalse(getattr(cap, flag), flag)
+        text = out.getvalue()
+        for label in ("detect_rune", "detect_rune_buff", "detect_bot_testing", "detect_other"):
+            self.assertIn(label, text)
+
+    def test_detect_blackscreen_needs_no_template(self):
+        tmp, path = temp_assets(REQUIRED_ONLY)
+        self.addCleanup(tmp.cleanup)
+        cap = capmod.Capture("W", assets_dir=str(path), detect_blackscreen=True)
+        self.assertTrue(cap.detect_blackscreen)
+
+    def test_window_override_wins_over_script_title(self):
+        saved = config.window_override
+        config.window_override = "Overridden"
+        try:
+            self.assertEqual(make_capture().window_name, "Overridden")
+        finally:
+            config.window_override = saved
+        self.assertEqual(make_capture().window_name, "TestWindow")
+
+    def test_frame_interval_default_and_setter(self):
+        cap = make_capture()
+        self.assertEqual(cap.frame_interval, 0.1)
+        self.assertEqual(cap.set_frame_interval(0.33), 0.33)
+        self.assertEqual(cap.frame_interval, 0.33)
+        with self.assertRaises(ValueError):
+            cap.set_frame_interval(0)
+
+    def test_missing_assets_dir_raises_readable_error(self):
+        with self.assertRaises(FileNotFoundError) as ctx:
+            capmod.Capture("W", assets_dir="__definitely_missing__")
+        self.assertIn("素材目录不存在", str(ctx.exception))
+
+
+if __name__ == "__main__":
+    unittest.main()

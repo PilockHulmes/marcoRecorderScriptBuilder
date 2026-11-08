@@ -6,7 +6,8 @@
 - **在线世代（2023-12 起）**：Python 直接注入按键（`pydirectinput`），同时用 `mss` 截窗口、OpenCV 模板匹配小地图，拿到角色相对坐标做闭环修正。此外还有一批 PaddleOCR 驱动的「洗潜能 / 洗怪怪卡」半自动工具。
 
 > **状态说明**
-> 个人自用工具集：**没有 CI、没有打包**；`tests/test_refactor.py` 是唯一自动化检查（不启动游戏）。
+> 个人自用工具集：**没有 CI、没有打包**；自动化检查都在 `tests/`（不启动游戏、不注入按键），一条命令全跑：
+> `.\venv\Scripts\python.exe tests\run_all.py`。
 > 提交历史：`2022-08-29` 首次提交 → `2023-12-27` 转入实时方案 → `2025-03-15` 最后一次业务提交。
 > 之后做过一次重构：抽出 `maplebot/` 共享内核 + 新增 `run.py` 统一入口（见 [§9](#9-优化候选)）。
 > `auto-maple/` 是一次未完成的重构，见 [§7](#7-auto-maple半成品重构)。
@@ -416,31 +417,54 @@ cd auto-maple
 
 ---
 
-## 10. 环境备忘
+## 10. 测试与基准
 
-- **语法自检**（不写盘，只做 AST 解析，已知坏文件会单独标注）：
+**一条命令跑全部**（约 40 秒，不启动游戏、不注入按键、不联网）：
 
-  ```powershell
-  .\venv\Scripts\python.exe run.py --check
-  ```
+```powershell
+.\venv\Scripts\python.exe tests\run_all.py
+```
 
-- **重构自检**（不启动游戏、不注入真实按键，约 20 秒）：
+它做两件事：跑 `tests/test_*.py` 的 unittest，再跑 `tests/check_*.py` 两个独立自检脚本。
 
-  ```powershell
-  .\venv\Scripts\python.exe tests\test_refactor.py
-  ```
+### 10.1 单元测试（unittest，118 个用例）
 
-  覆盖：全仓库语法、模块同一性（`config` 别名）、`Capture` 薄壳与素材加载、
-  `stop` 的急停/记账/松键（用假的 pydirectinput）、`run.py` 的解析与 `--stop-after` 端到端停止。
+| 文件 | 覆盖 |
+|---|---|
+| `tests/test_utils.py` | 模板匹配（单/多目标、阈值、模板大于画面）、相对/绝对坐标换算（含 ratio=1 回退）、HSV 颜色过滤 |
+| `tests/test_win32.py` | 窗口查找（精确标题）、矩形（负坐标裁剪/API 失败）、可截屏判断（最小化/隐藏）、`wait_for_window` 轮询与超时 |
+| `tests/test_capture.py` | **小地图自动标定**（算出左上/右下/比例）、幂等性、窗口缺失/矩形失败/取帧失败的降级、`@bot` 区域定位、检测开关与缺模板告警、`window_override` 优先级、`set_frame_interval`、素材目录缺失报错 |
+| `tests/test_stop.py` | 急停信号（`BaseException`）、`check()` 带原因、`request_stop` 幂等、按键/鼠标记账与松键、只松按过的键、`session()` 异常也还原、后台线程不被中断、重复 install 不叠加包装 |
+| `tests/test_runner.py` | 脚本解析（名字/路径/`--dir`/绝对路径/拼错建议）、分类、`uses_capture`、import 收集与解析状态、`--list` 排除库文件、`check_sources` 通过、窗口探测（mock）、CLI 分派 |
+| `tests/test_command_builder.py` | **haikuScripts 按键序列**：click/rapid/press/release、jump/cleave/二段跳/三段跳/上跳/下跳/普攻/跳攻/闪跳攻、`inputAt` 的 `@`、`totem`、`buffHs`、`check()` 发 `@check`、`delay`/`delayRandomly` 转发到 `maplebot.timing` |
+| `tests/test_marco_builder.py` | 离线 `.mcr` 生成器：`Keyboard`/`DELAY`/`REPEAT` 格式、`countDuration` 正则行为、`holding`/`holdingMultiple` 嵌套、`click` 的 70ms、真实跑 `scriptWriter.py` 与 `adele-truth2.py` 产出文件 |
+| `tests/test_cli.py` | `run.py` 端到端：无参退出码 2、`--list`、`--check`、`--dry-run`（含「不使用截屏」）、拼错脚本的建议、`--stop-after` 停住死循环 |
 
-- **P0 时序自检 / 基准**：
+只跑 unittest：
 
-  ```powershell
-  .\venv\Scripts\python.exe tests\test_p0_timing.py    # 精度 + CPU 回归（约 5 秒）
-  .\venv\Scripts\python.exe tests\bench_delay.py       # 等待的 CPU 开销
-  $env:MAPLEBOT_PRECISE_DELAY=1; .\venv\Scripts\python.exe tests\bench_delay.py   # 老行为对比
-  .\venv\Scripts\python.exe tests\bench_pipeline.py    # 每帧各步骤的耗时（加 --ocr 测 OCR）
-  ```
+```powershell
+.\venv\Scripts\python.exe -m unittest discover -s tests -t . -p "test_*.py"
+# 或单个模块：
+.\venv\Scripts\python.exe -m unittest tests.test_capture -v
+```
 
-- **目录权限**：本机 `E:\workspace\marcoRecorderScriptBuilder` 的权限继承被断开过，受限账户在该目录内写文件会被拒。需要恢复继承时：`icacls "E:\workspace\marcoRecorderScriptBuilder" /inheritance:e`。
+### 10.2 独立自检脚本
+
+| 文件 | 内容 |
+|---|---|
+| `tests/check_refactor.py` | 全仓库语法、`config` 模块别名、`Capture` 薄壳与素材路径、`stop` 假按键、`run.py` 端到端停止（55 项） |
+| `tests/check_p0_timing.py` | 等待精度（不早于 deadline）+ CPU 回归 + 逃生开关 + 帧间隔（21 项） |
+
+### 10.3 基准
+
+```powershell
+.\venv\Scripts\python.exe tests\bench_delay.py     # 等待的 CPU 开销
+$env:MAPLEBOT_PRECISE_DELAY=1; .\venv\Scripts\python.exe tests\bench_delay.py   # 老行为对比
+.\venv\Scripts\python.exe tests\bench_pipeline.py  # 每帧各步骤耗时（加 --ocr 测 OCR）
+```
+
+### 10.4 其它
+
+- **语法自检**（只做 AST 解析，不写盘）：`.\venv\Scripts\python.exe run.py --check`
+- **目录权限**：本机该目录的权限继承曾被断开，受限账户在目录内写文件会被拒。恢复：`icacls "E:\workspace\marcoRecorderScriptBuilder" /inheritance:e`。
 - **`.mcr` 产物与 `z_*.png` 都不入库**（`.gitignore` 忽略 `*.mcr`；`z_*.png` 属于误提交残留）。
