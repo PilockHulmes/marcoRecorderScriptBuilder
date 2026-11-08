@@ -43,6 +43,8 @@ def delayRandomly(seconds):
 #: 试验开关：MAPLEBOT_FAST_KEYS=1 时改用 maplebot.keys（无隐藏 100ms sleep，按住 40ms）
 _USE_FAST_KEYS = os.environ.get("MAPLEBOT_FAST_KEYS") == "1"
 FAST_HOLD = 0.04
+#: 普攻之后多久才能起跳（实测：F→G 间隔 0.50s 起稳定，0.48s 设置 → 实际 ≈0.535s，20/20）
+ATTACK_TO_JUMP = 0.48
 
 def keyboardClick(button, interval = INTERVAL_CLICK):
     if _USE_FAST_KEYS:
@@ -166,7 +168,9 @@ def downJump():
 
 def groundAttack():
     cleave()
-    delay(0.3)
+    # 旧按键库每次按键自带 100ms 隐藏 sleep（一次点击 ≈0.215s），0.3+0.215≈0.515s 刚好够；
+    # 新按键层没有隐藏延迟，必须显式等到实测的 0.48s，否则后面的跳跃会被攻击后摇吞掉。
+    delay(ATTACK_TO_JUMP if _USE_FAST_KEYS else 0.3)
 
 def jumpAttack():
     jump()
