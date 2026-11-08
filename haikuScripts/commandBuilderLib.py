@@ -3,6 +3,7 @@ import random
 import sys
 import time
 
+import os
 import pydirectinput
 import pyautogui  # noqa: F401  历史上被 import 但没用到，保留以免影响外部脚本
 
@@ -39,7 +40,16 @@ def delayRandomly(seconds):
     timing.sleep_precise(seconds + random.uniform(0, delayTreshold))
 
 
+#: 试验开关：MAPLEBOT_FAST_KEYS=1 时改用 maplebot.keys（无隐藏 100ms sleep，按住 40ms）
+_USE_FAST_KEYS = os.environ.get("MAPLEBOT_FAST_KEYS") == "1"
+FAST_HOLD = 0.04
+
 def keyboardClick(button, interval = INTERVAL_CLICK):
+    if _USE_FAST_KEYS:
+        from maplebot import keys as _fast_keys      # 延迟导入，避免影响旧的 sys.path 引导
+        _fast_keys.tap(button, hold=FAST_HOLD)
+        delay(interval)
+        return
     pydirectinput.keyDown(button)
     # delay(INTERVAL_KEYUP)
     pydirectinput.keyUp(button)
