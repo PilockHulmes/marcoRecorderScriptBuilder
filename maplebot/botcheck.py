@@ -272,6 +272,64 @@ def _window_rect(title):
     return left, top, right - left, bottom - top
 
 
+def _windows_named(title):
+    """所有标题等于 title 的可见窗口（游戏和聊天窗可能同名）。"""
+    import win32gui
+
+    found = []
+    def callback(hwnd, _):
+        if not win32gui.IsWindowVisible(hwnd):
+            return
+        if win32gui.GetWindowText(hwnd) != title:
+            return
+        left, top, right, bottom = win32gui.GetWindowRect(hwnd)
+        width, height = right - left, bottom - top
+        if width >= 100 and height >= 100:
+            found.append((left, top, width, height))
+    win32gui.EnumWindows(callback, None)
+    return found
+
+
+def _game_rect():
+    """按本地配置的候选标题找游戏窗口；同名时取面积最大的那个。"""
+    for title in settings.window_titles():
+        rects = _windows_named(title)
+        if rects:
+            return max(rects, key=lambda r: r[2] * r[3])
+    return None
+
+
+def find_chat_rect(game_title=None, min_width=200, max_width=800, min_height=300):
+    """找右侧独立聊天窗口：位置在游戏窗口右边、尺寸像聊天框。
+
+    实测这类窗口的系统标题也叫 "MapleStory"，所以按位置+尺寸识别更可靠。
+    """
+    import win32gui
+
+    game = _window_rect(game_title) if game_title else _game_rect()
+    if game is None:
+        return None
+    game_right = game[0] + game[2]
+    best = None
+    def callback(hwnd, _):
+        nonlocal best
+        if not win32gui.IsWindowVisible(hwnd):
+            return
+        title = win32gui.GetWindowText(hwnd)
+        if not title:
+            return
+        left, top, right, bottom = win32gui.GetWindowRect(hwnd)
+        width, height = right - left, bottom - top
+        if not (min_width <= width <= max_width and height >= min_height):
+            return
+        if left < game_right - 20:          # 必须在游戏窗口右侧
+            return
+        if best is None or width * height > best[0]:
+            best = (width * height, (left, top, width, height))
+    win32gui.EnumWindows(callback, None)
+    return best[1] if best else None
+
+
 def _grab_rect(rect):
     import mss
     import numpy as np
@@ -285,6 +343,8 @@ def _grab_rect(rect):
 def chat_crop(frame=None, grabber=None):
     """取聊天区图像：优先右侧独立聊天窗口，其次游戏窗口左下角 ROI。"""
     rect = _window_rect(settings.chat_window_title())
+    if rect is None:
+        rect = find_chat_rect()          # 标题不是 MAPLESTORY CHAT 时的兜底
     if rect is not None:
         try:
             return (grabber or _grab_rect)(rect)
