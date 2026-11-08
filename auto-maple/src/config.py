@@ -1,25 +1,16 @@
+"""兼容壳 —— 真正的全局状态在 :mod:`maplebot.config`，且**就是同一个模块对象**。
 
-#################################
-#       Global Variables        #
-#################################
-# The player's position relative to the minimap
-player_position = (0, 0)
-# The rune's position relative to the minimap
-rune_position = (0, 0)
-rune_active = False
-rune_solved = False
-# The rune buff's position, used to cancel buff
-rune_buff_position = None
-# If the map has other players
-map_invaded = False
-# If there is blackscree
-blackscreened = False
-# The image of minimap
-minimap = None
+`auto-maple/src/config.py` 原来是一份独立拷贝；现在与 `haikuScripts/config.py`
+指向同一个模块，`import src.config` 不用改。
+"""
 
+import pathlib
+import sys
 
-#############################
-#       Shared Modules      #
-#############################
-# Shares the video capture loop
-capture = None
+_ROOT = pathlib.Path(__file__).resolve().parents[2]
+if str(_ROOT) not in sys.path:
+    sys.path.insert(0, str(_ROOT))
+
+from maplebot import config as _config  # noqa: E402
+
+sys.modules[__name__] = _config
