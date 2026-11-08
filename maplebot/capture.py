@@ -190,6 +190,18 @@ class Capture:
         print(f"Start the video capture (window={self.window_name!r}, assets={self.assets_dir!r})")
         self.thread.start()
 
+    def set_frame_interval(self, seconds):
+        """运行期调整截屏间隔（秒），下一帧生效。
+
+        脚本在「等技能 CD / 等落地」这类不需要高频定位的阶段可以调大（例如 0.3~1.0），
+        需要精细定位时再调回来，省 CPU 的同时不影响动作精度。
+        """
+        seconds = float(seconds)
+        if seconds <= 0:
+            raise ValueError("frame_interval 必须大于 0")
+        self.frame_interval = seconds
+        return seconds
+
     def _main(self):
         mss.windows.CAPTUREBLT = 0
         while True:

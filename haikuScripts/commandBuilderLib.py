@@ -1,7 +1,16 @@
-import pyautogui
-import pydirectinput
-import time
+import pathlib
 import random
+import sys
+import time
+
+import pydirectinput
+import pyautogui  # noqa: F401  历史上被 import 但没用到，保留以免影响外部脚本
+
+_ROOT = pathlib.Path(__file__).resolve().parent.parent
+if str(_ROOT) not in sys.path:
+    sys.path.insert(0, str(_ROOT))
+
+from maplebot import timing  # noqa: E402
 
 LINE_DELIMITER = "\n"
 INTERVAL_KEYUP = 0.01
@@ -11,18 +20,24 @@ INTERVAL_DOUBLE_JUMP_LANDING = 550 / 1000  # 同层跳跃落地间隔
 INTERVAL_SLASH = 220 / 1000  # 穿刺动作长度
 INTERVAL_SLASH_END = 600 / 1000  # 魔剑共鸣动作长度
 
-def delay(ms):
-    start_time = time.perf_counter()
-    end_time = start_time + ms
-    while time.perf_counter() < end_time:
-        pass
+
+def delay(seconds):
+    """等待 SECONDS 秒。
+
+    原实现是纯自旋（等 200 ms 烧 200 ms CPU，见 README §9 P0）；现在改成
+    「睡到还差几毫秒 → 短自旋收尾」，精度不变、CPU 接近 0。
+    注：参数名以前叫 ms，但所有调用方一直传的是**秒**。
+    """
+    timing.sleep_precise(seconds)
+
 
 delayTreshold = 0.07
-def delayRandomly(ms):
-    start_time = time.perf_counter()
-    end_time = start_time + ms + random.uniform(0, delayTreshold)
-    while time.perf_counter() < end_time:
-        pass
+
+
+def delayRandomly(seconds):
+    """在 SECONDS 秒基础上再加 0~70 ms 随机抖动（反机械感），同样是混合等待。"""
+    timing.sleep_precise(seconds + random.uniform(0, delayTreshold))
+
 
 def keyboardClick(button, interval = INTERVAL_CLICK):
     pydirectinput.keyDown(button)

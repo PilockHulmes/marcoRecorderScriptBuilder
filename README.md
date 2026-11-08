@@ -43,6 +43,7 @@ auto-maple/src/{capture,config,utils}.py ← 薄壳：同上，默认值不同
 maplebot/                                ← 唯一实现（haikuScripts 与 auto-maple 共用一份）
    config.py    全局状态
    utils.py     模板匹配 / 坐标换算 / HSV 过滤
+   timing.py    精确等待（睡眠 + 短自旋，不烧 CPU）
    win32.py     窗口查找 / 矩形 / DPI
    capture.py   截屏线程 + 小地图识别
    stop.py      急停：stop key、按键记账、退出松键
@@ -210,7 +211,7 @@ Capture 线程（20fps，time.sleep(0.05)）
 | `utils.py`（薄壳 → `maplebot/utils.py`） | 模板匹配（单/多目标）、HSV 颜色过滤、坐标换算 | `multi_match()`、`convert_to_relative()` |
 | `returnToPoint.py` | 位置闭环：回到保存点 / 走向符文；警报线程；自动答题 | `returnToPoint()`、`approachHorizontal()`、`botTesting()` |
 | `botCheckSolver.py` | PaddleOCR 读聊天框（符文提示）和 `@bot` 验证码弹窗 | `needSolveRune()`、`getBotText()` |
-| `commandBuilderLib.py` | 按键原语 + 各职业技能连招 + UI 宏 | `delay()`、`jumpAttack()`、`sellAllEquips()` |
+| `commandBuilderLib.py` | 按键原语 + 各职业技能连招 + UI 宏 | `delay()`（混合等待，见 §5.7）、`jumpAttack()`、`sellAllEquips()` |
 | `detection.py` | 符文箭头方向识别（TF 目标检测） | **已废弃**，见 §8 |
 | `khali/commands.py` | 卡莉版原语 + `l` 急停 + 技能 CD 调度闭包 | `stopIfNotRunning`、`callWithInterval` |
 | `khali/common_used_funcs.py` | 把 CD 绑成模块级函数对象，脚本里直接调用 | `totem`、`guild_dmg`、`rightForwardRing` |
@@ -300,6 +301,32 @@ while True:
 
 `commandBuilderLib` 常用件：`jump/cleave/groundAttack/jumpAttack/doubleJumpAttack/tribleJumpAttack/flashJumpAttack`（战斗）、`totem/buffSharpEyes/buffDsi/buffHs`（buff，分别按 2/3/4/5）、`sellAllEquips`（回收）、`check`（发 `@check` 聊天）、`delayRandomly`（加 0–70ms 抖动）。
 
+### 5.7 时序与 CPU（P0 之后）
+
+**`delay()` 不再自旋。** 以前 `lib.delay(0.2)` 是 `while perf_counter() < end: pass`——等 200 ms 就烧 200 ms CPU。脚本大部分时间都在等（落地、后摇、点击间隔），于是进程长期占满一个核。
+
+现在由 `maplebot/timing.py` 拆成「先 `time.sleep` 睡到还差几毫秒 → 最后几毫秒自旋」；自旋尾段在启动时实测 `time.sleep` 的过冲量自适应（2~20 ms；本机定时器粒度 15.6 ms，因此 tail≈14 ms）。
+
+实测（本机，20 次 `delay(0.2)` 共 4 秒，×3 次取范围）：
+
+| | 墙钟 | CPU | 单核占用 |
+|---|---|---|---|
+| 现在（混合等待） | 4000.1 ms | 31~47 ms | **0.8~1.2%** |
+| 以前（纯自旋） | 4000.1 ms | 4000 ms | **100%** |
+
+平均每次仍是 200.01~200.03 ms（目标 200 ms）——**精度没变**。复现：
+
+```powershell
+.\venv\Scripts\python.exe tests\bench_delay.py
+$env:MAPLEBOT_PRECISE_DELAY=1; .\venv\Scripts\python.exe tests\bench_delay.py   # 老行为对比
+```
+
+要退回纯自旋（最准、最费 CPU）：`$env:MAPLEBOT_PRECISE_DELAY=1`。
+
+**帧率可在运行时调。** `Capture.set_frame_interval(seconds)` 让截屏线程按新间隔跑（下一帧生效）：等技能 CD / 等落地时可以调到 0.3~1.0 省 CPU，需要精细定位时再调回 0.1。
+
+**注意**：`delay()` 的参数一直是**秒**（`0.008`/`0.015`/`0.2`/`0.55`），旧参数名 `ms` 起错了，P0 里已改成 `seconds`。
+
 ---
 
 ## 6. `haikuScripts/catms/`：OCR 半自动（洗潜能 / 洗怪怪卡）
@@ -344,15 +371,14 @@ cd auto-maple
 | 位置 | 问题 | 影响 |
 |---|---|---|
 | `auto-maple/src/rune.py:18` | `2_` 非法字面量 | 该文件无法 import（全仓库唯一的语法错误） |
-| `haikuScripts/detection.py` | 用了 `tf` 但没 import；`load_model` 已删 | 调用即 `NameError` |
-| `haikuScripts/returnToPoint.py:153` | `solveRune()` 里 `self.model` 从未赋值 | 调用即 `AttributeError`，符文求解整体**已废弃**，现在只能响警报 |
+| `detection.py` / `returnToPoint.solveRune()` | 本地 TensorFlow 符文识别链已断（无 `tf` 导入、`self.model` 从未赋值） | **已被新方案取代**：符文区域截图 → DeepSeek 视觉 API 识图（符文出现频率低，API 开销可忽略，无需本地模型/推理环境）。这两个文件与两份 `assets/models/`（2×113 MB）可删 |
 | `returnToPoint.py:51` | 卡住判定 `not_change_counter` 从不清零，累计 4 次相同读数就退出 | 正常移动时几乎不触发，但「走开又回到同一读数」也会被计入 |
 | `haikuScripts/windowFocusLib.py` | 设了 `paused` 但**全仓库无人读取**；`SetWinEventHook` 句柄未保存/未卸载 | 这个「切出窗口自动暂停」功能实际没生效；且没人 import 它 |
 | `haikuScripts/khali/jump_slash.py` | 空文件（0 字节） | — |
 | `haikuScripts/input/keyboardmouse.py` | 只有一行 `from pydirectinput import ...` | 死文件 |
 | `maplebot/stop.py` | 急停只能拦 `pydirectinput.*` 与 `time.sleep` | 纯计算循环（`legionBoard.py`）不响应；进程被强杀时来不及松键 |
 | `maplebot/capture.py` | 仍在后台线程写全局 `config`（无锁） | 偶发读到半更新状态（既有行为，未改） |
-| `commandBuilderLib.py` | `delay()` 是自旋 busy-wait | 占满单核（提交 `reduce cpu cost` 就是在调这个） |
+| ~~`commandBuilderLib.py`~~ | ~~`delay()` 是自旋 busy-wait~~ | ✅ **已修复（P0，见 §5.7）**：单核占用 100% → 0.8%，精度不变 |
 | 全局 `config` | 跨线程读写无锁，靠轮询 | 偶发读到半更新状态（坐标/帧不同步），表现为「偶尔跳错方向」 |
 | 各脚本顶部 | 地图坐标、阈值、`+30` 标题栏、1366×768 全硬编码 | 换分辨率要重标全部常量 |
 | `z_*.png` | 调试截图直接写当前目录，无开关 | 仓库里长期残留；`git status` 现在就挂着 4 个未跟踪的 `z_*.png` |
@@ -363,25 +389,30 @@ cd auto-maple
 
 ## 9. 优化候选
 
-### 已完成（本次重构）
+### 已完成
 
-1. ✅ **消重**：`capture/config/utils` 合并进 `maplebot/`，`haikuScripts/` 与 `auto-maple/src/`
+1. ✅ **消重**（重构）：`capture/config/utils` 合并进 `maplebot/`，`haikuScripts/` 与 `auto-maple/src/`
    只剩薄壳（只声明默认窗口标题、素材目录、检测开关）。原先 6 个文件里的两份重复实现
    变成「一份实现 + 六个几行的薄壳」。
-2. ✅ **统一入口**：`run.py`（实现见 `maplebot/runner.py`）负责找脚本 → 找窗口 → 起会话
+2. ✅ **统一入口**（重构）：`run.py`（实现见 `maplebot/runner.py`）负责找脚本 → 找窗口 → 起会话
    → `l` 急停 → 收尾松键；附带窗口重试、自动识别标题、`--list` / `--check` / `--dry-run` /
    `--stop-after`。脚本本身一行都不用改。
+3. ✅ **P0：等待不再烧 CPU**：`delay()` 自旋 → 混合等待（`maplebot/timing.py`），
+   等 4 秒的 CPU 从 4000 ms 降到 31 ms（100% → 0.8% 单核），精度不变；
+   另加 `Capture.set_frame_interval()` 供脚本按需降帧。见 §5.7。
 
 ### 待办（按性价比排序）
 
-3. **坐标外置**：把每张图的常量（录点得到的坐标、阈值、循环间隔）抽成一个 `maps/<map>.json` 或 `maps/<map>.py`，让 `util_recordpoints.py` 直接吐出配置文件，替代「看控制台手工抄数字」。
-4. **`delay()` 换成 `time.sleep` + 事件**：现有精度收益已被 `pydirectinput` 自身开销淹没，busy-wait 只是在烧 CPU。
-5. **决定符文识别的去留**：要么删掉 `detection.py` + `rune.py` + 两份 113MB 模型，要么把它真正修好（`load_model` + `self.model`）。
+4. **坐标外置**：把每张图的常量（录点得到的坐标、阈值、循环间隔）抽成一个 `maps/<map>.json` 或 `maps/<map>.py`，让 `util_recordpoints.py` 直接吐出配置文件，替代「看控制台手工抄数字」。
+5. **符文改 API 识图**：符文区域截图 → DeepSeek 视觉 API 返回箭头序列（频率低、可等待，不需要本地模型/推理环境）。落地时把 `detection.py` + `returnToPoint.solveRune()` + 两份 `assets/models/`（2×113 MB）一并删掉。
 6. **`config` 结构化**：换成 dataclass + `threading.Event`/`Lock`，顺手解决「读到半更新状态」。
 7. **调试输出开关**：`z_*.png` 收进 `debug/` 目录，用环境变量或 `--debug` 控制。
 8. **加 `__init__.py`**：现在靠命名空间包 import（`from catms.cube_washer import ...`），换 IDE/换 Python 版本容易出问题，`catms/FAQ.md` 里已经记过这个坑。
 9. **脚本模板化**：把每个脚本开头重复的 8 行（`time.sleep(3)` / `Return(...)` / `r.start()` / `r.save()`）
    收进一个 `maplebot.script.standard_open()`，新脚本只写主循环。
+10. **P1/P2（架构）**：采屏与识别分离（最新帧 + 时间戳）→ 识别改「ROI + 按需频率 + 变化门控」的调度器，
+    替脚本提供 `wait_until` / `wait_for_stable`。当前实测每帧 CV 只有 0.48 ms，所以这一步是为了
+    「能加新识别而不拖慢采集」，不是为省 CPU —— 详细数据见提交讨论与 `tests/bench_pipeline.py`。
 
 ---
 
@@ -401,6 +432,15 @@ cd auto-maple
 
   覆盖：全仓库语法、模块同一性（`config` 别名）、`Capture` 薄壳与素材加载、
   `stop` 的急停/记账/松键（用假的 pydirectinput）、`run.py` 的解析与 `--stop-after` 端到端停止。
+
+- **P0 时序自检 / 基准**：
+
+  ```powershell
+  .\venv\Scripts\python.exe tests\test_p0_timing.py    # 精度 + CPU 回归（约 5 秒）
+  .\venv\Scripts\python.exe tests\bench_delay.py       # 等待的 CPU 开销
+  $env:MAPLEBOT_PRECISE_DELAY=1; .\venv\Scripts\python.exe tests\bench_delay.py   # 老行为对比
+  .\venv\Scripts\python.exe tests\bench_pipeline.py    # 每帧各步骤的耗时（加 --ocr 测 OCR）
+  ```
 
 - **目录权限**：本机 `E:\workspace\marcoRecorderScriptBuilder` 的权限继承被断开过，受限账户在该目录内写文件会被拒。需要恢复继承时：`icacls "E:\workspace\marcoRecorderScriptBuilder" /inheritance:e`。
 - **`.mcr` 产物与 `z_*.png` 都不入库**（`.gitignore` 忽略 `*.mcr`；`z_*.png` 属于误提交残留）。
