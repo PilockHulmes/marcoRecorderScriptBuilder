@@ -9,7 +9,7 @@
 > 个人自用工具集：**没有 CI、没有打包**；自动化检查都在 `tests/`（不启动游戏、不注入按键），一条命令全跑：
 > `.\venv\Scripts\python.exe tests\run_all.py`。
 > 提交历史：`2022-08-29` 首次提交 → `2023-12-27` 转入实时方案 → `2025-03-15` 最后一次业务提交。
-> 之后做过一次重构：抽出 `maplebot/` 共享内核 + 新增 `run.py` 统一入口（见 [§9](#9-优化候选)）。
+> 之后做过一次重构：抽出 `maplebot/` 共享内核 + 新增 `run.py` 统一入口（见 [§10](#10-优化候选)）。
 > `auto-maple/` 是一次未完成的重构，见 [§7](#7-auto-maple半成品重构)。
 
 ---
@@ -49,6 +49,8 @@ maplebot/                                ← 唯一实现（haikuScripts 与 aut
    capture.py   截屏线程 + 小地图识别
    stop.py      急停：stop key、按键记账、退出松键
    runner.py    统一入口实现（run.py 的 CLI）
+   rune.py      符文面板定位 / 裁剪 / 按方向键（§8）
+   rune_api.py  DeepSeek 视觉 API：截图 → 4 个方向（§8）
 ```
 
 `haikuScripts/config.py` 与 `auto-maple/src/config.py` 用
@@ -72,7 +74,8 @@ maplebot/                                ← 唯一实现（haikuScripts 与 aut
 - **仅 Windows**：`pydirectinput`、`mss.windows`、`win32gui`、`pynput` 都是 Windows 专用。
 - **Python 3.10**：`venv` 里是 3.10.11。
 - **PaddleOCR 首次运行会联网下载模型**（落在 `~/.paddleocr`），第一次跑会卡几十秒，之后可离线。
-- `requirements.txt` 里 `torch` / `easyocr` 大部分被注释：**符文自动求解已停用**（见 [§8](#8-已知问题)），不需要 TensorFlow，`easyocr` 也没再被代码引用（代码里统一用 PaddleOCR）。
+- `requirements.txt` 里 `torch` / `easyocr` 大部分被注释：本地 TF 符文识别已停用（新方案见 [§8](#8-符文识图deepseek-视觉-api)），不需要 TensorFlow，`easyocr` 也没再被代码引用（代码里统一用 PaddleOCR）。
+- **符文识图需要 API key**：放在仓库根的 `deepseek.local.json`（已被 `.gitignore` 的 `*.local.json` 忽略，绝不入库）。文件里 `api_key` 空着就等于是未配置；也接受只写裸 key 的纯文本。依赖 `openai`（官方无独立 Python SDK，DeepSeek 文档指定用 OpenAI SDK，`base_url` 指向 `https://api.deepseek.com`），已加进 `requirements.txt`。
 
 ---
 
@@ -213,7 +216,7 @@ Capture 线程（20fps，time.sleep(0.05)）
 | `returnToPoint.py` | 位置闭环：回到保存点 / 走向符文；警报线程；自动答题 | `returnToPoint()`、`approachHorizontal()`、`botTesting()` |
 | `botCheckSolver.py` | PaddleOCR 读聊天框（符文提示）和 `@bot` 验证码弹窗 | `needSolveRune()`、`getBotText()` |
 | `commandBuilderLib.py` | 按键原语 + 各职业技能连招 + UI 宏 | `delay()`（混合等待，见 §5.7）、`jumpAttack()`、`sellAllEquips()` |
-| `detection.py` | 符文箭头方向识别（TF 目标检测） | **已废弃**，见 §8 |
+| `detection.py` | 符文箭头方向识别（TF 目标检测） | **已废弃**，改由 §8 的 API 方案取代 |
 | `khali/commands.py` | 卡莉版原语 + `l` 急停 + 技能 CD 调度闭包 | `stopIfNotRunning`、`callWithInterval` |
 | `khali/common_used_funcs.py` | 把 CD 绑成模块级函数对象，脚本里直接调用 | `totem`、`guild_dmg`、`rightForwardRing` |
 
@@ -257,7 +260,7 @@ Return(
 
 `returnToPoint.py` 顶部的动作距离阈值：`DOUBLE_JUMP=0.15`、`TRIPLE_JUMP=0.25`、`UPPER_JUMP=0.05`、`DOUBLE_UPPER_JUMP=0.15`、`WALKING_PER_SECOND=0.097`。换职业移动速度变了要重标这几个。
 
-闭环逻辑：距离 > 阈值就选动作（三段跳 / 二段跳 / 按住方向键走 `距离 / 0.097` 秒），垂直方向同理；位置读数累计 4 次没变化就判定卡住并退出（计数器没清零，见 §8），不会无限顶墙。
+闭环逻辑：距离 > 阈值就选动作（三段跳 / 二段跳 / 按住方向键走 `距离 / 0.097` 秒），垂直方向同理；位置读数累计 4 次没变化就判定卡住并退出（计数器没清零，见 §9），不会无限顶墙。
 
 ### 5.5 录点工作流（新地图必用）
 
@@ -367,7 +370,67 @@ cd auto-maple
 
 ---
 
-## 8. 已知问题
+## 8. 符文识图（DeepSeek 视觉 API）
+
+符文解谜：屏幕上出现「想要解放符文，請按順序輸入方向鍵」和 4 个箭头，**从左到右**敲方向键即可。
+现在用视觉模型读箭头，不再需要本地 TensorFlow 模型（`detection.py` + 两份 113 MB checkpoint 可删）。
+
+### 8.1 为什么先本地裁剪再发图
+
+- 箭头在原图里只有 ~28 px，整屏发过去缩放后更小，容易读错；
+- 单图 token 有 **1024** 上限，所以「裁剪 + 放大」不额外花钱，却能让箭头占满画面；
+- 本地定位顺带产出 bbox，可用于判断「面板还在不在」。
+
+### 8.2 实测几何（`rune_example.png`，1368×800）
+
+| 元素 | 像素 |
+|---|---|
+| 4 个箭头 bbox | x 487–777，y 245–282（290×37） |
+| 外扩 20 px 后裁剪 | x 467–797，y 225–302 |
+| 放大 3× 后发给模型 | **990×231** PNG |
+
+### 8.3 定位算法（`maplebot/rune.py`）
+
+HSV 阈值 `H≤75 / S≥140 / V≥150`（箭头是红橙黄绿；天空和大部分 UI 是蓝色）→ 5×5 闭运算 →
+连通域 → 尺寸过滤（阈值按窗口宽度缩放）→ 按 y 聚行 → 取「**恰好 4 个**」的那一行。
+
+固定 ROI：**x 20–75%、y 25–45%**，正好避开上方横幅文字与面板下方那行黄字。
+实测：0.75×/1.5×/2× 缩放、±25 px 平移都能稳定找到 4 个；把面板抹掉则 0 误报。
+
+### 8.4 调用链
+
+`maplebot/rune.py`（定位 / 裁剪 / 按键）+ `maplebot/rune_api.py`（凭据 / 请求 / 解析）：
+
+```python
+panel = rune.find_panel(frame)          # None → 屏幕上没有符文面板
+crop = rune.crop_panel(frame, panel)    # 990×231 BGR
+directions = solver.solve(crop)         # ["down", "down", "left", "down"]
+rune.press_directions(directions)       # 100 ms ± 30 ms 抖动，逐键 keyDown/keyUp
+```
+
+请求参数：`model=deepseek-flash`、`temperature=0`、`response_format={"type":"json_object"}`、
+`thinking=disabled`、图片走 base64 `data:` URL + `detail=high`。
+每按一个键之前都会 `stop.check()`，所以急停不会卡在序列中间。
+
+### 8.5 离线验证（不需要游戏）
+
+```powershell
+python -m maplebot.rune --no-api rune_example.png    # 只做定位 + 裁剪，不联网
+python -m maplebot.rune rune_example.png             # 真调 API（需要 key，见 §2）
+python -m maplebot.rune rune_example.png --save-crop debug/crop.png
+```
+
+### 8.6 不确定时
+
+解析不出 4 个合法方向（数量不对 / 非法词 / 模型说看不清 / 网络错误）时，`solve()` 抛
+`RuneSolveError` 或 `RuneAPIError`，**一个键都不按**。当前只做到这个边界：
+「按 ESC 退出 → 等 2 秒 → 重试」的机制由调用方后续实现。
+
+⚠️ 裁剪图会发到 DeepSeek（第三方服务），介意的话不要启用该功能。
+
+---
+
+## 9. 已知问题
 
 | 位置 | 问题 | 影响 |
 |---|---|---|
@@ -388,7 +451,7 @@ cd auto-maple
 
 ---
 
-## 9. 优化候选
+## 10. 优化候选
 
 ### 已完成
 
@@ -405,7 +468,7 @@ cd auto-maple
 ### 待办（按性价比排序）
 
 4. **坐标外置**：把每张图的常量（录点得到的坐标、阈值、循环间隔）抽成一个 `maps/<map>.json` 或 `maps/<map>.py`，让 `util_recordpoints.py` 直接吐出配置文件，替代「看控制台手工抄数字」。
-5. **符文改 API 识图**：符文区域截图 → DeepSeek 视觉 API 返回箭头序列（频率低、可等待，不需要本地模型/推理环境）。落地时把 `detection.py` + `returnToPoint.solveRune()` + 两份 `assets/models/`（2×113 MB）一并删掉。
+5. ✅ **符文改 API 识图**（本体已完成，见 §8）：本地定位 4 个箭头 → 裁剪放大 3× → DeepSeek 读出 4 个方向 → 100 ms±30 ms 抖动按键。**最小范围**只到「返回方向 + 按键」，时机与「不确定 → ESC → 等 2 秒 → 重试」留待调用方。后续清理：删掉 `detection.py` + `returnToPoint.solveRune()` + 两份 `assets/models/`（2×113 MB）。
 6. **`config` 结构化**：换成 dataclass + `threading.Event`/`Lock`，顺手解决「读到半更新状态」。
 7. **调试输出开关**：`z_*.png` 收进 `debug/` 目录，用环境变量或 `--debug` 控制。
 8. **加 `__init__.py`**：现在靠命名空间包 import（`from catms.cube_washer import ...`），换 IDE/换 Python 版本容易出问题，`catms/FAQ.md` 里已经记过这个坑。
@@ -417,7 +480,7 @@ cd auto-maple
 
 ---
 
-## 10. 测试与基准
+## 11. 测试与基准
 
 **一条命令跑全部**（约 40 秒，不启动游戏、不注入按键、不联网）：
 
@@ -427,7 +490,7 @@ cd auto-maple
 
 它做两件事：跑 `tests/test_*.py` 的 unittest，再跑 `tests/check_*.py` 两个独立自检脚本。
 
-### 10.1 单元测试（unittest，118 个用例）
+### 11.1 单元测试（unittest，176 个用例）
 
 | 文件 | 覆盖 |
 |---|---|
@@ -439,6 +502,8 @@ cd auto-maple
 | `tests/test_command_builder.py` | **haikuScripts 按键序列**：click/rapid/press/release、jump/cleave/二段跳/三段跳/上跳/下跳/普攻/跳攻/闪跳攻、`inputAt` 的 `@`、`totem`、`buffHs`、`check()` 发 `@check`、`delay`/`delayRandomly` 转发到 `maplebot.timing` |
 | `tests/test_marco_builder.py` | 离线 `.mcr` 生成器：`Keyboard`/`DELAY`/`REPEAT` 格式、`countDuration` 正则行为、`holding`/`holdingMultiple` 嵌套、`click` 的 70ms、真实跑 `scriptWriter.py` 与 `adele-truth2.py` 产出文件 |
 | `tests/test_cli.py` | `run.py` 端到端：无参退出码 2、`--list`、`--check`、`--dry-run`（含「不使用截屏」）、拼错脚本的建议、`--stop-after` 停住死循环 |
+| `tests/test_rune.py` | 符文面板定位（4 个色块、行聚类、尺寸/ROI 过滤、缩放与平移不变性）、裁剪（padding/放大/贴边收敛）、按键序列（顺序、100 ms±抖动、急停中断）、真实截图 `rune_example.png` 的 bbox、`python -m maplebot.rune --no-api` |
+| `tests/test_rune_api.py` | 凭据文件（JSON/裸 key/BOM/空 key/坏 JSON）、PNG 编码与 `data:` URL、模型回复解析（围栏/废话/裸数组/中文/箭头符号/数量或非法词报错）、请求参数契约（model/temperature/JSON 模式/thinking/图片块）、异常包装 |
 
 只跑 unittest：
 
@@ -448,14 +513,14 @@ cd auto-maple
 .\venv\Scripts\python.exe -m unittest tests.test_capture -v
 ```
 
-### 10.2 独立自检脚本
+### 11.2 独立自检脚本
 
 | 文件 | 内容 |
 |---|---|
 | `tests/check_refactor.py` | 全仓库语法、`config` 模块别名、`Capture` 薄壳与素材路径、`stop` 假按键、`run.py` 端到端停止（55 项） |
 | `tests/check_p0_timing.py` | 等待精度（不早于 deadline）+ CPU 回归 + 逃生开关 + 帧间隔（21 项） |
 
-### 10.3 基准
+### 11.3 基准
 
 ```powershell
 .\venv\Scripts\python.exe tests\bench_delay.py     # 等待的 CPU 开销
@@ -463,7 +528,7 @@ $env:MAPLEBOT_PRECISE_DELAY=1; .\venv\Scripts\python.exe tests\bench_delay.py   
 .\venv\Scripts\python.exe tests\bench_pipeline.py  # 每帧各步骤耗时（加 --ocr 测 OCR）
 ```
 
-### 10.4 其它
+### 11.4 其它
 
 - **语法自检**（只做 AST 解析，不写盘）：`.\venv\Scripts\python.exe run.py --check`
 - **目录权限**：本机该目录的权限继承曾被断开，受限账户在目录内写文件会被拒。恢复：`icacls "E:\workspace\marcoRecorderScriptBuilder" /inheritance:e`。

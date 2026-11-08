@@ -17,3 +17,4 @@ paddlepaddle # use cpu for now since I do not want to downgrade cuda from 12.8. 
 pynput # listen key press to stop
 mss
 pygame
+openai # DeepSeek 官方文档指定的接入方式（base_url 指向 api.deepseek.com），用于符文识图

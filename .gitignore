@@ -1,6 +1,9 @@
 samples/
 testImages/
 
+# 本地密钥（DeepSeek API key 等），绝不入库
+*.local.json
+
 venv
 .git
 screenshots

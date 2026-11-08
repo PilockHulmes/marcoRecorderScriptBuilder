@@ -13,8 +13,10 @@
 - :mod:`maplebot.capture` —— 截屏线程 + 小地图识别
 - :mod:`maplebot.stop` —— 全局急停（stop key、按键记账、退出时松键）
 - :mod:`maplebot.runner` —— 统一入口（`run.py` 的实现）
+- :mod:`maplebot.rune` —— 符文面板定位 / 裁剪 / 按方向键
+- :mod:`maplebot.rune_api` —— DeepSeek 视觉 API 封装（截图 → 4 个方向）
 """
 
-__all__ = ["capture", "config", "runner", "stop", "timing", "utils", "win32"]
+__all__ = ["capture", "config", "runner", "rune", "rune_api", "stop", "timing", "utils", "win32"]
 
 __version__ = "2.0.0"
