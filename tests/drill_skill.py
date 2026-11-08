@@ -125,18 +125,22 @@ def main(argv=None):
     for interval in intervals:
         hits = 0
         for _ in range(args.reps):
-            start = scroll_y() or 0
+            start_p, start_o = player_y(), scroll_y()
             keyboard.tap("f", hold=0.04)
             keyboard._sleep(interval)
             keyboard.tap("g", hold=0.04)
-            peak = start
+            peak_p, peak_o = start_p, start_o
             deadline = time.perf_counter() + JUMP_WINDOW
             while time.perf_counter() < deadline:
-                y = scroll_y()
-                if y is not None and y > peak:
-                    peak = y
+                yp, yo = player_y(), scroll_y()
+                if yp is not None and (peak_p is None or yp < peak_p):
+                    peak_p = yp
+                if yo is not None and (peak_o is None or yo > peak_o):
+                    peak_o = yo
                 time.sleep(0.01)
-            if peak - start >= JUMP_MIN_RISE:
+            rose = (start_p - peak_p) if (start_p is not None and peak_p is not None) else 0
+            slid = (peak_o - start_o) if (start_o is not None and peak_o is not None) else 0
+            if max(rose, slid) >= JUMP_MIN_RISE:
                 hits += 1
             keyboard._sleep(0.6)
         rows.append((interval, hits, args.reps))
