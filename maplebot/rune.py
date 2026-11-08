@@ -26,7 +26,7 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-from . import minimap, timing, utils
+from . import config, minimap, timing, utils
 
 DIRECTIONS = ("up", "down", "left", "right")
 
@@ -362,6 +362,215 @@ def press_directions(directions, key_api=None, sleep=None, hold=HOLD, interval=I
         api.keyUp(direction)
         if index < len(directions) - 1:
             wait(max(0.0, interval + random.uniform(-jitter, jitter)))
+
+
+# ---------------------------------------------------------------- 状态机
+DEFAULT_OPEN_KEY = "alt"     # 站在符文上按它打开面板
+DEFAULT_CLOSE_KEY = "esc"    # 失败时用它关掉面板
+
+
+def should_solve(frame, minimap_box=None):
+    """触发条件：小地图上有符文菱形，且 buff 栏里没有符文 CD。"""
+    if frame is None or getattr(frame, "size", 0) == 0:
+        return False
+    box = minimap_box if minimap_box is not None else minimap.find_minimap(frame)
+    if box is None or not rune_on_minimap(frame, box):
+        return False
+    return not rune_cd_visible(frame)[0]
+
+
+def _frame_from_capture():
+    capture = config.capture
+    return None if capture is None else capture.frame
+
+
+class RuneSession:
+    """解一次符文：截图 → 问模型 → 按键 → 用 CD 图标验收；失败重试，最多 3 次。
+
+    设计上刻意把「打开/关闭面板」做成可注入动作：
+
+    :param open_panel:  默认按 ``alt``。**移动/交互逻辑接上以后应该替换它**
+                        （先走到符文旁边，再按交互键）；
+    :param close_panel: 默认按 ``esc``；
+    :param get_frame:   默认读 ``config.capture.frame``；
+    :param solver:      :class:`maplebot.rune_api.RuneSolver`，可注入假实现；
+    :param key_api:     ``pydirectinput`` 或假实现；
+    :param sleep:       默认 :func:`maplebot.timing.sleep_precise`，测试可注入记录器。
+
+    典型用法（面板已经由调用方打开）::
+
+        session = RuneSession()
+        ok = session.solve_and_verify()
+    """
+
+    def __init__(
+        self,
+        solver=None,
+        get_frame=None,
+        key_api=None,
+        open_panel=None,
+        close_panel=None,
+        open_key=DEFAULT_OPEN_KEY,
+        close_key=DEFAULT_CLOSE_KEY,
+        max_attempts=3,
+        panel_timeout=1.5,
+        cd_timeout=3.0,
+        reopen_delay=2.0,
+        poll_interval=0.1,
+        sleep=None,
+        on_give_up=None,
+    ):
+        self.solver = solver
+        self._get_frame = get_frame or _frame_from_capture
+        self.key_api = key_api
+        self._open_panel = open_panel
+        self._close_panel = close_panel
+        self.open_key = open_key
+        self.close_key = close_key
+        self.max_attempts = max(1, int(max_attempts))
+        self.panel_timeout = float(panel_timeout)
+        self.cd_timeout = float(cd_timeout)
+        self.reopen_delay = float(reopen_delay)
+        self.poll_interval = max(0.0, float(poll_interval))
+        self._sleep = sleep or timing.sleep_precise
+        self._on_give_up = on_give_up
+        self.attempts = 0
+        self.last_error = None
+        self.history = []
+
+    # ------------------------------------------------------------ 基础动作
+    def frame(self):
+        return self._get_frame()
+
+    def _key_api(self):
+        if self.key_api is not None:
+            return self.key_api
+        import pydirectinput
+
+        return pydirectinput
+
+    def press(self, key):
+        """单独敲一个键（alt/esc 都用它），急停时不会继续。"""
+        from . import stop
+
+        stop.check()
+        api = self._key_api()
+        api.keyDown(key)
+        self._sleep(HOLD)
+        api.keyUp(key)
+
+    def open_panel(self):
+        if self._open_panel is not None:
+            self._open_panel()
+            return
+        self.press(self.open_key)
+
+    def close_panel(self):
+        if self._close_panel is not None:
+            self._close_panel()
+            return
+        self.press(self.close_key)
+
+    # ------------------------------------------------------------ 等待
+    def wait_panel(self, timeout=None):
+        """等待 4 个箭头出现；返回 :class:`RunePanel` 或 None。"""
+        panel = find_panel(self.frame())
+        if panel is not None:
+            return panel
+        budget = self.panel_timeout if timeout is None else float(timeout)
+        spent = 0.0
+        while spent < budget:
+            self._sleep(self.poll_interval)
+            spent += self.poll_interval
+            panel = find_panel(self.frame())
+            if panel is not None:
+                return panel
+        return None
+
+    def wait_for_cd(self, timeout=None):
+        """等待 buff 栏出现符文 CD 图标（解成功的唯一判据）。"""
+        if rune_cd_visible(self.frame())[0]:
+            return True
+        budget = self.cd_timeout if timeout is None else float(timeout)
+        spent = 0.0
+        while spent < budget:
+            self._sleep(self.poll_interval)
+            spent += self.poll_interval
+            if rune_cd_visible(self.frame())[0]:
+                return True
+        return False
+
+    # ------------------------------------------------------------ 单次尝试
+    def _solver(self):
+        if self.solver is None:
+            from .rune_api import RuneSolver
+
+            self.solver = RuneSolver()
+        return self.solver
+
+    def solve_once(self):
+        """面板已经打开时解一次：截图 → 识别 → 按键。识别不确定会抛异常。"""
+        from .rune_api import RuneSolveError
+
+        frame = self.frame()
+        panel = find_panel(frame)
+        if panel is None:
+            raise RuneSolveError("没有检测到符文面板")
+        directions = self._solver().solve(crop_panel(frame, panel))
+        press_directions(directions, key_api=self._key_api(), sleep=self._sleep)
+        return directions
+
+    def solve_and_verify(self):
+        """完整流程；成功返回 True，3 次都失败返回 False 并触发 give_up。"""
+        from .rune_api import RuneAPIError
+
+        for attempt in range(1, self.max_attempts + 1):
+            self.attempts = attempt
+            self.last_error = None
+            record = {"attempt": attempt}
+
+            if find_panel(self.frame()) is None:
+                self.open_panel()
+                if self.wait_panel() is None:
+                    self.last_error = "面板没有打开（可能不在符文上）"
+                    record["result"] = self.last_error
+                    self.history.append(record)
+                    if attempt < self.max_attempts:
+                        self._sleep(self.reopen_delay)
+                    continue
+
+            try:
+                record["directions"] = self.solve_once()
+            except RuneAPIError as exc:
+                self.last_error = f"识别失败：{exc}"
+                record["result"] = self.last_error
+            else:
+                if self.wait_for_cd():
+                    record["result"] = "成功"
+                    self.history.append(record)
+                    return True
+                self.last_error = "按完没有出现 CD 图标"
+                record["result"] = self.last_error
+
+            self.history.append(record)
+            if attempt < self.max_attempts:
+                self.close_panel()
+                self._sleep(self.reopen_delay)
+
+        self.give_up()
+        return False
+
+    def give_up(self):
+        print(f"[rune] 连续 {self.max_attempts} 次失败，放弃。最后一次原因：{self.last_error}")
+        if self._on_give_up is not None:
+            self._on_give_up()
+            return
+        self.return_to_town()
+
+    def return_to_town(self):
+        # TODO: 回城逻辑还没实现（回城卷 / 走回城点 / 切图都还没定）。
+        #       等移动逻辑写好以后，在这里接上真正的回城动作。
+        print("[rune] TODO: 回城逻辑未实现，先停在这里")
 
 
 def _main(argv=None):

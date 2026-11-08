@@ -4,6 +4,8 @@
 按键部分注入假的 pydirectinput，绝不注入真实按键。
 """
 
+import contextlib
+import io
 import unittest
 from unittest import mock
 
@@ -331,6 +333,188 @@ class RuneCdTest(unittest.TestCase):
 
     def test_tiny_frame_does_not_crash(self):
         self.assertFalse(rune.rune_cd_visible(np.zeros((20, 20, 3), np.uint8))[0])
+
+
+PANEL_FRAME = None
+BLANK_FRAME = None
+CD_FRAME = None
+
+
+def _session_frames():
+    """构造三张会话测试用的画面：有面板 / 无面板 / 无面板但有 CD。"""
+    global PANEL_FRAME, BLANK_FRAME, CD_FRAME
+    if PANEL_FRAME is None:
+        PANEL_FRAME = make_frame()
+        BLANK_FRAME = np.full((800, 1368, 3), (20, 20, 20), np.uint8)
+        CD_FRAME = BLANK_FRAME.copy()
+        cd = cv2.imread(str(FIXTURES / "buff_cd.png"))
+        CD_FRAME[20:130, 1100:1368] = cd[20:130, 1100:1368]
+    return PANEL_FRAME, BLANK_FRAME, CD_FRAME
+
+
+class FakeGame:
+    """假游戏：记录按键，按 esc 关面板、按 alt 开面板、方向键正确时点亮 CD。"""
+
+    def __init__(self, succeed_on_keys=False, panel_open=True, alt_works=True):
+        _session_frames()
+        self.keys = []
+        self.cd = False
+        self.panel_open = panel_open
+        self.succeed_on_keys = succeed_on_keys
+        self.alt_works = alt_works
+
+    def frame(self):
+        if self.cd:
+            return CD_FRAME
+        return PANEL_FRAME if self.panel_open else BLANK_FRAME
+
+    def keyDown(self, key):
+        self.keys.append(("down", key))
+
+    def keyUp(self, key):
+        self.keys.append(("up", key))
+        if key == "esc":
+            self.panel_open = False
+        elif key == "alt" and self.alt_works:
+            self.panel_open = True
+        elif key in rune.DIRECTIONS and self.succeed_on_keys:
+            self.cd = True
+
+    def count(self, key, event="up"):
+        return sum(1 for e, k in self.keys if e == event and k == key)
+
+
+class FakeSolver:
+    def __init__(self, directions=None, exc=None):
+        self.directions = directions or ["down", "down", "left", "down"]
+        self.exc = exc
+        self.calls = 0
+
+    def solve(self, crop):
+        self.calls += 1
+        if self.exc is not None:
+            raise self.exc
+        return list(self.directions)
+
+
+def make_session(game, solver=None, **kwargs):
+    sleeps = []
+    options = dict(
+        panel_timeout=0.0,
+        cd_timeout=0.0,
+        poll_interval=0.0,
+        sleep=sleeps.append,
+    )
+    options.update(kwargs)
+    session = rune.RuneSession(
+        solver=solver if solver is not None else FakeSolver(),
+        get_frame=game.frame,
+        key_api=game,
+        **options,
+    )
+    return session, sleeps
+
+
+class ShouldSolveTest(unittest.TestCase):
+    def load(self, name):
+        return cv2.imread(str(FIXTURES / name))
+
+    def test_true_when_diamond_and_no_cd(self):
+        self.assertTrue(rune.should_solve(self.load("minimap_rune.png")))
+
+    def test_false_without_diamond(self):
+        self.assertFalse(rune.should_solve(self.load("minimap_no_rune.png")))
+
+    def test_false_when_cd_active(self):
+        frame = self.load("minimap_rune.png")
+        cd = self.load("buff_cd.png")
+        frame[20:130, 1100:1368] = cd[20:130, 1100:1368]
+        self.assertTrue(rune.rune_on_minimap(frame))   # 菱形还在
+        self.assertTrue(rune.rune_cd_visible(frame)[0])  # 但 CD 也亮了
+        self.assertFalse(rune.should_solve(frame))
+
+    def test_false_without_minimap(self):
+        self.assertFalse(rune.should_solve(np.zeros((800, 1368, 3), np.uint8)))
+
+
+class RuneSessionTest(unittest.TestCase):
+    def test_success_on_first_attempt(self):
+        game = FakeGame(succeed_on_keys=True)
+        session, sleeps = make_session(game)
+        self.assertTrue(session.solve_and_verify())
+        self.assertEqual(session.attempts, 1)
+        # 面板本来开着 → 不该按 alt；成功后也不该按 esc
+        self.assertEqual(game.count("alt"), 0)
+        self.assertEqual(game.count("esc"), 0)
+        # 四个方向键，左→右
+        keys = [k for e, k in game.keys if e == "down"]
+        self.assertEqual(keys, ["down", "down", "left", "down"])
+
+    def test_retries_three_times_then_gives_up(self):
+        game = FakeGame(succeed_on_keys=False)
+        solver = FakeSolver()
+        gave_up = []
+        session, sleeps = make_session(game, solver, on_give_up=lambda: gave_up.append(True))
+        self.assertFalse(session.solve_and_verify())
+        self.assertEqual(session.attempts, 3)
+        self.assertEqual(solver.calls, 3)
+        # 每次失败后 esc 关面板（最后一次不关），第 2/3 次开头 alt 重新打开
+        self.assertEqual(game.count("esc"), 2)
+        self.assertEqual(game.count("alt"), 2)
+        self.assertEqual(len(gave_up), 1)
+        # 两次 2 秒的重开等待
+        self.assertEqual(sum(1 for s in sleeps if abs(s - 2.0) < 1e-6), 2)
+
+    def test_api_failure_does_not_press_arrows(self):
+        game = FakeGame(succeed_on_keys=False)
+        solver = FakeSolver(exc=rune_api_error())
+        session, _ = make_session(game, solver, on_give_up=lambda: None)
+        self.assertFalse(session.solve_and_verify())
+        self.assertEqual(solver.calls, 3)
+        arrows = [k for e, k in game.keys if e == "down" and k in rune.DIRECTIONS]
+        self.assertEqual(arrows, [])
+        self.assertEqual(session.last_error.startswith("识别失败"), True)
+
+    def test_panel_never_opens_no_api_calls(self):
+        game = FakeGame(succeed_on_keys=False, panel_open=False, alt_works=False)
+        solver = FakeSolver()
+        session, _ = make_session(game, solver, on_give_up=lambda: None)
+        self.assertFalse(session.solve_and_verify())
+        self.assertEqual(solver.calls, 0)
+        self.assertEqual(game.count("alt"), 3)
+        self.assertEqual(game.count("esc"), 0)
+        self.assertEqual(session.last_error, "面板没有打开（可能不在符文上）")
+
+    def test_solve_once_requires_panel(self):
+        game = FakeGame(succeed_on_keys=True, panel_open=False)
+        session, _ = make_session(game)
+        with self.assertRaises(Exception) as ctx:
+            session.solve_once()
+        self.assertIn("符文面板", str(ctx.exception))
+
+    def test_return_to_town_prints_todo(self):
+        game = FakeGame(succeed_on_keys=False)
+        session, _ = make_session(game, on_give_up=None)
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            session.give_up()
+        text = out.getvalue()
+        self.assertIn("放弃", text)
+        self.assertIn("TODO", text)
+        self.assertIn("回城", text)
+
+    def test_history_records_each_attempt(self):
+        game = FakeGame(succeed_on_keys=False)
+        session, _ = make_session(game, on_give_up=lambda: None)
+        session.solve_and_verify()
+        self.assertEqual([r["attempt"] for r in session.history], [1, 2, 3])
+        self.assertTrue(all(r["result"] for r in session.history))
+
+
+def rune_api_error():
+    from maplebot.rune_api import RuneSolveError
+
+    return RuneSolveError("看不清")
 
 
 @unittest.skipUnless(REAL_IMAGE.is_file(), "根目录没有 rune_example.png")

@@ -494,11 +494,38 @@ python -m maplebot.rune rune_example.png --save-crop debug/crop.png
 python -m maplebot.minimap rune_icon.png             # 小地图白框定位
 ```
 
-### 8.7 不确定时
+### 8.7 解一次符文的完整流程（`RuneSession`）
+
+```python
+session = rune.RuneSession()        # 默认读 config.capture.frame，按 alt/esc
+ok = session.solve_and_verify()     # True = 解成功；False = 3 次都失败
+```
+
+每次尝试的流程：
+
+```
+面板不可见 → open_panel()（默认按 alt）→ 等 panel_timeout（1.5 s）
+  截图 → 找 4 个箭头 → 裁剪 → 问 API → 按方向键（100 ms ± 30 ms 抖动）
+  等 buff 栏出现 CD 图标（cd_timeout 3 s）→ 出现 = 成功
+  失败（含"模型看不清"）→ close_panel()（esc）→ 等 reopen_delay（2 s）→ 下一次
+3 次都失败 → give_up() → return_to_town()（目前只打印 TODO，回城逻辑未实现）
+```
+
+`session.history` 会记录每次尝试的方向与结果，`session.last_error` 是最后一次失败原因。
+
+**`open_panel` / `close_panel` 是可注入的**：默认实现只是"按 alt / 按 esc"。因为
+"判断该不该按 alt、走到符文旁边"属于移动/交互逻辑（还没写），所以这里刻意只留一个钩子：
+
+```python
+session = rune.RuneSession(open_panel=my_walk_to_rune_and_press_alt)
+```
+
+移动逻辑做好以后替换这两者即可，识别 / 验证 / 重试逻辑不用动。
+
+### 8.8 不确定时
 
 解析不出 4 个合法方向（数量不对 / 非法词 / 模型说看不清 / 网络错误）时，`solve()` 抛
-`RuneSolveError` 或 `RuneAPIError`，**一个键都不按**。当前只做到这个边界：
-「按 ESC 退出 → 等 2 秒 → 重试 3 次 → 失败留 TODO 回城」的机制由调用方后续实现。
+`RuneSolveError` 或 `RuneAPIError`，**一个键都不按**，直接进入下一次尝试（ESC → 等 2 s → 重新打开）。
 
 ⚠️ 裁剪图会发到 DeepSeek（第三方服务），介意的话不要启用该功能。
 
@@ -577,7 +604,7 @@ python -m maplebot.minimap rune_icon.png             # 小地图白框定位
 | `tests/test_command_builder.py` | **haikuScripts 按键序列**：click/rapid/press/release、jump/cleave/二段跳/三段跳/上跳/下跳/普攻/跳攻/闪跳攻、`inputAt` 的 `@`、`totem`、`buffHs`、`check()` 发 `@check`、`delay`/`delayRandomly` 转发到 `maplebot.timing` |
 | `tests/test_marco_builder.py` | 离线 `.mcr` 生成器：`Keyboard`/`DELAY`/`REPEAT` 格式、`countDuration` 正则行为、`holding`/`holdingMultiple` 嵌套、`click` 的 70ms、真实跑 `scriptWriter.py` 与 `adele-truth2.py` 产出文件 |
 | `tests/test_cli.py` | `run.py` 端到端：无参退出码 2、`--list`、`--check`、`--dry-run`（含「不使用截屏」）、拼错脚本的建议、`--stop-after` 停住死循环 |
-| `tests/test_rune.py` | 符文面板定位（4 个色块、行聚类、尺寸/ROI 过滤、缩放与平移不变性）、裁剪（padding/放大/贴边收敛）、按键序列（顺序、100 ms±抖动、急停中断）、**小地图菱形**（有/无、缩放、地图上的紫色块不干扰）、**buff CD 图标**（有/无、分数分离 >0.15、缩放）、真实截图用例、`python -m maplebot.rune --no-api` |
+| `tests/test_rune.py` | 符文面板定位（4 个色块、行聚类、尺寸/ROI 过滤、缩放与平移不变性）、裁剪（padding/放大/贴边收敛）、按键序列（顺序、100 ms±抖动、急停中断）、**小地图菱形**（有/无、缩放、地图上的紫色块不干扰）、**buff CD 图标**（有/无、分数分离 >0.15、缩放）、**状态机**（一次成功不按 alt/esc、3 次失败后 esc×2/alt×2、API 失败不按键、面板打不开不调 API、history/last_error、回城 TODO 输出）、真实截图用例、`python -m maplebot.rune --no-api` |
 | `tests/test_rune_api.py` | 凭据文件（JSON/裸 key/BOM/空 key/坏 JSON）、PNG 编码与 `data:` URL、模型回复解析（围栏/废话/裸数组/中文/箭头符号/数量或非法词报错）、请求参数契约（model/temperature/JSON 模式/thinking/图片块）、异常包装 |
 | `tests/test_minimap.py` | 白色圆角边框定位：合成白框、纯白块/断边/过小/过宽/ROI 外等反例、多候选取最大、缩放与平移不变性、`MinimapBox` 几何、真实截图的 (8,99,198,82)、`Capture` 集成（auto 优先白框、template 模式忽略白框、非法参数报错） |
 
