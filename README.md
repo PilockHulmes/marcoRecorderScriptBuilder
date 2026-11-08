@@ -450,9 +450,29 @@ HSV 阈值 `H≤75 / S≥140 / V≥150`（箭头是红橙黄绿；天空和大�
 固定 ROI：**x 20–75%、y 25–45%**，正好避开上方横幅文字与面板下方那行黄字。
 实测：0.75×/1.5×/2× 缩放、±25 px 平移都能稳定找到 4 个；把面板抹掉则 0 误报。
 
-### 8.4 调用链
+### 8.4 触发：小地图菱形 + buff CD
 
-`maplebot/rune.py`（定位 / 裁剪 / 按键）+ `maplebot/rune_api.py`（凭据 / 请求 / 解析）：
+解不解由两个观察点决定（都在 `maplebot/rune.py`）：
+
+| 检测 | 方法 | 实测 |
+|---|---|---|
+| 小地图上的符文菱形 | 在 `find_minimap().inner()` 里找**紫罗兰色块**（H 132–168、S≥90、V≥120），再按尺寸/宽高比/填充率筛选 | 真实样本命中 `(119,114,7,7)`；无符文的样本返回 `None`；0.75×~2× 缩放仍然命中 |
+| buff 栏的符文 CD 图标 | 右上角 ROI（x≥74%、y≤20%）里，用图标**上半部分**（33×18，`assets/rune_cd_top.png`）做 `TM_CCOEFF_NORMED` | 有 CD 时 **1.000**，无 CD 时 **0.70~0.72**；阈值 0.85 |
+
+为什么"上半部分"能解决数字变化：模板只比较它覆盖的那 18 行像素，倒计时数字在图标下半部分，
+根本不在比较范围内 —— 数字怎么变都不影响。你把 UI 设置改成"小字 + 右下角"之后会更干净。
+
+```python
+icon = rune.find_rune_icon(frame)          # None 或菱形 bbox
+visible, score, box = rune.rune_cd_visible(frame)   # (bool, 分数, bbox)
+should_solve = icon is not None and not visible
+```
+
+`rune_cd_visible` 返回分数而不只是布尔，方便按实际客户端调阈值。
+
+### 8.5 调用链
+
+`maplebot/rune.py`（定位 / 裁剪 / 按键 / 触发检测）+ `maplebot/rune_api.py`（凭据 / 请求 / 解析）：
 
 ```python
 panel = rune.find_panel(frame)          # None → 屏幕上没有符文面板
@@ -465,19 +485,20 @@ rune.press_directions(directions)       # 100 ms ± 30 ms 抖动，逐键 keyDow
 `thinking=disabled`、图片走 base64 `data:` URL + `detail=high`。
 每按一个键之前都会 `stop.check()`，所以急停不会卡在序列中间。
 
-### 8.5 离线验证（不需要游戏）
+### 8.6 离线验证（不需要游戏）
 
 ```powershell
 python -m maplebot.rune --no-api rune_example.png    # 只做定位 + 裁剪，不联网
 python -m maplebot.rune rune_example.png             # 真调 API（需要 key，见 §2）
 python -m maplebot.rune rune_example.png --save-crop debug/crop.png
+python -m maplebot.minimap rune_icon.png             # 小地图白框定位
 ```
 
-### 8.6 不确定时
+### 8.7 不确定时
 
 解析不出 4 个合法方向（数量不对 / 非法词 / 模型说看不清 / 网络错误）时，`solve()` 抛
 `RuneSolveError` 或 `RuneAPIError`，**一个键都不按**。当前只做到这个边界：
-「按 ESC 退出 → 等 2 秒 → 重试」的机制由调用方后续实现。
+「按 ESC 退出 → 等 2 秒 → 重试 3 次 → 失败留 TODO 回城」的机制由调用方后续实现。
 
 ⚠️ 裁剪图会发到 DeepSeek（第三方服务），介意的话不要启用该功能。
 
@@ -556,7 +577,7 @@ python -m maplebot.rune rune_example.png --save-crop debug/crop.png
 | `tests/test_command_builder.py` | **haikuScripts 按键序列**：click/rapid/press/release、jump/cleave/二段跳/三段跳/上跳/下跳/普攻/跳攻/闪跳攻、`inputAt` 的 `@`、`totem`、`buffHs`、`check()` 发 `@check`、`delay`/`delayRandomly` 转发到 `maplebot.timing` |
 | `tests/test_marco_builder.py` | 离线 `.mcr` 生成器：`Keyboard`/`DELAY`/`REPEAT` 格式、`countDuration` 正则行为、`holding`/`holdingMultiple` 嵌套、`click` 的 70ms、真实跑 `scriptWriter.py` 与 `adele-truth2.py` 产出文件 |
 | `tests/test_cli.py` | `run.py` 端到端：无参退出码 2、`--list`、`--check`、`--dry-run`（含「不使用截屏」）、拼错脚本的建议、`--stop-after` 停住死循环 |
-| `tests/test_rune.py` | 符文面板定位（4 个色块、行聚类、尺寸/ROI 过滤、缩放与平移不变性）、裁剪（padding/放大/贴边收敛）、按键序列（顺序、100 ms±抖动、急停中断）、真实截图 `rune_example.png` 的 bbox、`python -m maplebot.rune --no-api` |
+| `tests/test_rune.py` | 符文面板定位（4 个色块、行聚类、尺寸/ROI 过滤、缩放与平移不变性）、裁剪（padding/放大/贴边收敛）、按键序列（顺序、100 ms±抖动、急停中断）、**小地图菱形**（有/无、缩放、地图上的紫色块不干扰）、**buff CD 图标**（有/无、分数分离 >0.15、缩放）、真实截图用例、`python -m maplebot.rune --no-api` |
 | `tests/test_rune_api.py` | 凭据文件（JSON/裸 key/BOM/空 key/坏 JSON）、PNG 编码与 `data:` URL、模型回复解析（围栏/废话/裸数组/中文/箭头符号/数量或非法词报错）、请求参数契约（model/temperature/JSON 模式/thinking/图片块）、异常包装 |
 | `tests/test_minimap.py` | 白色圆角边框定位：合成白框、纯白块/断边/过小/过宽/ROI 外等反例、多候选取最大、缩放与平移不变性、`MinimapBox` 几何、真实截图的 (8,99,198,82)、`Capture` 集成（auto 优先白框、template 模式忽略白框、非法参数报错） |
 

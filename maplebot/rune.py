@@ -26,9 +26,27 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-from . import timing
+from . import minimap, timing, utils
 
 DIRECTIONS = ("up", "down", "left", "right")
+
+#: 模板目录（与 capture 用的是同一份）
+ASSETS_DIR = Path(__file__).resolve().parents[1] / "haikuScripts" / "assets"
+
+#: 小地图上符文菱形的颜色范围（紫罗兰）。
+#: 实测菱形像素 HSV=(143,153,255)；这里放宽一些，容忍半透明地图/缩放后的颜色漂移。
+RUNE_RANGES = (((132, 90, 120), (168, 255, 255)),)
+#: 菱形色块的尺寸范围（相对 1368 宽按比例缩放）
+RUNE_SIDE_MIN, RUNE_SIDE_MAX = 3, 18
+RUNE_AREA_MIN, RUNE_AREA_MAX = 3, 250
+#: buff 栏里「符文 CD」图标的上半部分（33×18，避开底部的倒计时数字）
+RUNE_CD_TEMPLATE = "rune_cd_top.png"
+#: buff 栏找 CD 图标的阈值（实测：有 CD=1.000，无 CD≈0.70~0.72）
+CD_MATCH_THRESHOLD = 0.85
+#: buff 栏搜索区域（相对窗口）：右上角，最多能容纳 3 行图标
+BUFF_ROI = (0.74, 0.00, 0.26, 0.20)
+#: CD 模板是按 1368 宽标定的，其它宽度按比例缩放模板
+BASE_WIDTH = 1368.0
 
 # ---------------------------------------------------------------- 定位参数
 # 箭头一定出现在窗口中部偏上：横幅在 y≈21~24%，面板在 y≈28~38%
@@ -194,6 +212,135 @@ def _default_key_api():
     import pydirectinput
 
     return pydirectinput
+
+
+@dataclass(frozen=True)
+class BBox:
+    """画面上的一个矩形（窗口坐标）。"""
+
+    x: int
+    y: int
+    w: int
+    h: int
+
+    @property
+    def right(self):
+        return self.x + self.w
+
+    @property
+    def bottom(self):
+        return self.y + self.h
+
+    @property
+    def center(self):
+        return self.x + self.w // 2, self.y + self.h // 2
+
+    def as_tuple(self):
+        return self.x, self.y, self.w, self.h
+
+
+def load_cd_template(assets_dir=None):
+    """符文 CD 图标的上半部分（灰度）。"""
+    path = Path(assets_dir or ASSETS_DIR) / RUNE_CD_TEMPLATE
+    gray = cv2.imread(str(path), cv2.IMREAD_GRAYSCALE)
+    if gray is None:
+        raise FileNotFoundError(f"符文 CD 模板读取失败：{path}")
+    return gray
+
+
+def find_rune_icon(frame, minimap_box=None):
+    """小地图上有没有符文菱形；有则返回它的 bbox，没有返回 None。
+
+    做法是**找紫罗兰色块**而不是模板匹配：
+    - 菱形是纯色方块（宽高比≈1），尺寸随 UI 缩放变化，模板匹配在缩放后会失配；
+    - 颜色块 + 尺寸/形状筛选对缩放天然兼容，实测 0.75×~2× 都能找到。
+
+    只在小地图**内容区**（去掉白框）里找，所以不会误命中 buff 栏或地面上的紫色特效。
+    """
+    if frame is None or getattr(frame, "size", 0) == 0:
+        return None
+    box = minimap_box if minimap_box is not None else minimap.find_minimap(frame)
+    if box is None:
+        return None
+    inner = box.inner()
+    crop = frame[inner.y:inner.bottom, inner.x:inner.right]
+    if crop.size == 0:
+        return None
+
+    scale = frame.shape[1] / BASE_WIDTH
+    side_min = RUNE_SIDE_MIN * scale
+    side_max = RUNE_SIDE_MAX * scale
+    area_min = RUNE_AREA_MIN * scale * scale
+    area_max = RUNE_AREA_MAX * scale * scale
+
+    filtered = utils.filter_color(crop, RUNE_RANGES)
+    mask = (cv2.cvtColor(filtered, cv2.COLOR_BGR2GRAY) > 0).astype(np.uint8)
+    if not mask.any():
+        return None
+
+    count, _labels, stats, _centroids = cv2.connectedComponentsWithStats(mask, 8)
+    best = None
+    for i in range(1, count):
+        x, y, w, h, area = (int(v) for v in stats[i])
+        if not (area_min <= area <= area_max):
+            continue
+        if not (side_min <= w <= side_max) or not (side_min <= h <= side_max):
+            continue
+        ratio = w / h
+        if not (0.55 <= ratio <= 1.8):
+            continue
+        if area / float(w * h) < 0.35:  # 太稀疏的色块不像实心菱形
+            continue
+        if best is None or area > best[0]:
+            best = (area, BBox(inner.x + x, inner.y + y, w, h))
+    return None if best is None else best[1]
+
+
+def rune_on_minimap(frame, minimap_box=None):
+    """小地图上是否有符文（便捷包装，只关心有/没有）。"""
+    return find_rune_icon(frame, minimap_box) is not None
+
+
+def rune_cd_visible(frame, assets_dir=None, threshold=CD_MATCH_THRESHOLD, scales=None):
+    """buff 栏里有没有「符文 CD」图标。
+
+    做法：只在右上角 buff 区域里，用图标**上半部分**做模板匹配 ——
+    下半部分的倒计时数字每次都不一样，裁掉它就不会影响匹配。
+
+    :return: ``(visible, score, bbox)``；bbox 是命中的上半部分区域，未命中为 None。
+    """
+    if frame is None or getattr(frame, "size", 0) == 0:
+        return False, 0.0, None
+    height, width = frame.shape[:2]
+    x0, y0 = int(width * BUFF_ROI[0]), int(height * BUFF_ROI[1])
+    x1 = min(width, x0 + int(width * BUFF_ROI[2]))
+    y1 = min(height, y0 + int(height * BUFF_ROI[3]))
+    if x1 - x0 < 20 or y1 - y0 < 10:
+        return False, 0.0, None
+
+    roi = cv2.cvtColor(frame[y0:y1, x0:x1], cv2.COLOR_BGR2GRAY)
+    template = load_cd_template(assets_dir)
+    if scales is None:
+        base = width / BASE_WIDTH
+        # UI 缩放不一定严格等于窗口宽度比例，给一点点余量
+        scales = (base,) if abs(base - 1.0) < 0.02 else (base * 0.94, base, base * 1.06)
+
+    best_score, best_box = -1.0, None
+    for scale in scales:
+        tpl = template
+        if abs(scale - 1.0) > 0.02:
+            tpl = cv2.resize(template, None, fx=scale, fy=scale,
+                             interpolation=cv2.INTER_AREA if scale < 1 else cv2.INTER_CUBIC)
+        if tpl.shape[0] > roi.shape[0] or tpl.shape[1] > roi.shape[1]:
+            continue
+        result = cv2.matchTemplate(roi, tpl, cv2.TM_CCOEFF_NORMED)
+        _, max_val, _, max_loc = cv2.minMaxLoc(result)
+        if max_val > best_score:
+            best_score = float(max_val)
+            best_box = BBox(x0 + max_loc[0], y0 + max_loc[1], tpl.shape[1], tpl.shape[0])
+
+    visible = best_score >= threshold and best_box is not None
+    return visible, max(0.0, best_score), (best_box if visible else None)
 
 
 def press_directions(directions, key_api=None, sleep=None, hold=HOLD, interval=INTERVAL, jitter=JITTER):

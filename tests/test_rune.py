@@ -226,7 +226,114 @@ class RealScreenshotTest(unittest.TestCase):
         self.assertLess(crop.shape[0], crop.shape[1])
 
 
-@unittest.skipUnless(REAL_IMAGE.is_file(), "根目录没有 rune_example.png，跳过真实截图用例")
+FIXTURES = ROOT / "tests" / "fixtures"
+
+
+class RuneIconTest(unittest.TestCase):
+    """小地图上的紫罗兰菱形检测（用从真实截图裁出来的固定样本）。"""
+
+    def load(self, name):
+        frame = cv2.imread(str(FIXTURES / name))
+        self.assertIsNotNone(frame, f"fixture 缺失：{name}")
+        return frame
+
+    def test_finds_diamond(self):
+        icon = rune.find_rune_icon(self.load("minimap_rune.png"))
+        self.assertIsNotNone(icon)
+        # 实测 (119, 114, 7, 7)
+        self.assertLessEqual(abs(icon.x - 120), 4, icon)
+        self.assertLessEqual(abs(icon.y - 115), 4, icon)
+        self.assertAlmostEqual(icon.w / icon.h, 1.0, delta=0.4)
+
+    def test_no_diamond(self):
+        self.assertIsNone(rune.find_rune_icon(self.load("minimap_no_rune.png")))
+
+    def test_predicate(self):
+        self.assertTrue(rune.rune_on_minimap(self.load("minimap_rune.png")))
+        self.assertFalse(rune.rune_on_minimap(self.load("minimap_no_rune.png")))
+
+    def test_scale_invariance(self):
+        base = self.load("minimap_rune.png")
+        for scale in (0.75, 1.5):
+            frame = cv2.resize(base, None, fx=scale, fy=scale,
+                               interpolation=cv2.INTER_AREA if scale < 1 else cv2.INTER_CUBIC)
+            icon = rune.find_rune_icon(frame)
+            self.assertIsNotNone(icon, f"scale={scale}")
+            self.assertAlmostEqual(icon.w / icon.h, 1.0, delta=0.6, msg=f"scale={scale} {icon}")
+
+    def test_missing_minimap_is_none(self):
+        frame = np.full((800, 1368, 3), (24, 22, 20), np.uint8)
+        self.assertIsNone(rune.find_rune_icon(frame))
+
+    def test_empty_frame(self):
+        self.assertIsNone(rune.find_rune_icon(None))
+        self.assertIsNone(rune.find_rune_icon(np.zeros((0, 0, 3), np.uint8)))
+
+    def test_purple_outside_minimap_is_ignored(self):
+        frame = self.load("minimap_rune.png")
+        cv2.rectangle(frame, (600, 400), (640, 440), (255, 0, 255), -1)  # 地图上的紫色块
+        icon = rune.find_rune_icon(frame)
+        self.assertIsNotNone(icon)
+        self.assertLess(icon.x, 300)
+
+
+class RuneCdTest(unittest.TestCase):
+    """buff 栏里的符文 CD 图标（只用图标上半部分匹配）。"""
+
+    def load(self, name):
+        frame = cv2.imread(str(FIXTURES / name))
+        self.assertIsNotNone(frame, f"fixture 缺失：{name}")
+        return frame
+
+    def test_cd_visible(self):
+        visible, score, box = rune.rune_cd_visible(self.load("buff_cd.png"))
+        self.assertTrue(visible)
+        self.assertGreaterEqual(score, 0.95)
+        self.assertLessEqual(abs(box.x - 1166), 3, box)
+        self.assertLessEqual(abs(box.y - 71), 3, box)
+        self.assertEqual((box.w, box.h), (33, 18))
+
+    def test_cd_absent(self):
+        visible, score, box = rune.rune_cd_visible(self.load("buff_no_cd.png"))
+        self.assertFalse(visible)
+        self.assertLess(score, 0.80)
+        self.assertIsNone(box)
+
+    def test_scores_are_separated(self):
+        positive = rune.rune_cd_visible(self.load("buff_cd.png"))[1]
+        negative = rune.rune_cd_visible(self.load("buff_no_cd.png"))[1]
+        self.assertGreater(positive - negative, 0.15, f"{positive:.3f} vs {negative:.3f}")
+
+    def test_scale_invariance(self):
+        for scale in (0.75, 1.5):
+            frame = cv2.resize(self.load("buff_cd.png"), None, fx=scale, fy=scale,
+                               interpolation=cv2.INTER_AREA if scale < 1 else cv2.INTER_CUBIC)
+            visible, score, _ = rune.rune_cd_visible(frame)
+            self.assertTrue(visible, f"scale={scale} score={score:.3f}")
+
+            frame = cv2.resize(self.load("buff_no_cd.png"), None, fx=scale, fy=scale,
+                               interpolation=cv2.INTER_AREA if scale < 1 else cv2.INTER_CUBIC)
+            visible, score, _ = rune.rune_cd_visible(frame)
+            self.assertFalse(visible, f"scale={scale} score={score:.3f}")
+
+    def test_template_shape(self):
+        template = rune.load_cd_template()
+        self.assertEqual(template.shape, (18, 33))
+        self.assertEqual(template.ndim, 2)
+
+    def test_missing_template_raises(self):
+        with self.assertRaises(FileNotFoundError):
+            rune.load_cd_template(assets_dir="__definitely_missing__")
+
+    def test_empty_frames(self):
+        self.assertEqual(rune.rune_cd_visible(None), (False, 0.0, None))
+        self.assertFalse(rune.rune_cd_visible(np.zeros((0, 0, 3), np.uint8))[0])
+
+    def test_tiny_frame_does_not_crash(self):
+        self.assertFalse(rune.rune_cd_visible(np.zeros((20, 20, 3), np.uint8))[0])
+
+
+@unittest.skipUnless(REAL_IMAGE.is_file(), "根目录没有 rune_example.png")
 class MainCliTest(unittest.TestCase):
     def _run(self, *args):
         from tests.helpers import run_python_raw
