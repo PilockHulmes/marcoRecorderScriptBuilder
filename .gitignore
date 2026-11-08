@@ -3,6 +3,10 @@ testImages/
 
 # 本地密钥（DeepSeek API key 等），绝不入库
 *.local.json
+# 本地笔记 / 交接文档（可能含个人信息）
+*.local.md
+# 挂机监测的取证截图（屏幕内容，可能含私人信息）
+detections/
 
 venv
 .git
