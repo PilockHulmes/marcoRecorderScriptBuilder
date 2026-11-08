@@ -245,12 +245,13 @@ class ChatSignalTest(unittest.TestCase):
     def test_roi_crop_from_game_frame(self):
         frame = np.zeros((600, 800, 3), np.uint8)
         frame[432:570, 0:360] = 200                 # 左下角亮块 = 聊天区
-        original = botcheck._window_rect
-        botcheck._window_rect = lambda title: None  # 假装没有独立聊天窗口
+        original = (botcheck._window_rect, botcheck.find_chat_rect)
+        botcheck._window_rect = lambda title: None        # 没有独立聊天窗口
+        botcheck.find_chat_rect = lambda *a, **k: None    # 位置兜底也找不到
         try:
             crop = botcheck.chat_crop(frame)
         finally:
-            botcheck._window_rect = original
+            botcheck._window_rect, botcheck.find_chat_rect = original
         self.assertIsNotNone(crop)
         self.assertGreater(crop.shape[0], 100)
 
@@ -258,12 +259,13 @@ class ChatSignalTest(unittest.TestCase):
         frame = np.zeros((600, 800, 3), np.uint8)
         cv2.putText(frame, "BLOCKED ACTION", (20, 500), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (255, 255, 255), 2)
         tpl = cv2.cvtColor(frame[480:520, 10:340], cv2.COLOR_BGR2GRAY)
-        original = botcheck._window_rect
+        original = (botcheck._window_rect, botcheck.find_chat_rect)
         botcheck._window_rect = lambda title: None
+        botcheck.find_chat_rect = lambda *a, **k: None
         try:
             found = botcheck.find_chat_line(frame, template=tpl)
         finally:
-            botcheck._window_rect = original
+            botcheck._window_rect, botcheck.find_chat_rect = original
         self.assertIsNotNone(found)
         self.assertGreaterEqual(found[0], 0.95)
 
