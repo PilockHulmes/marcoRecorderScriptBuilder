@@ -46,6 +46,7 @@ maplebot/                                ← 唯一实现（haikuScripts 与 aut
    utils.py     模板匹配 / 坐标换算 / HSV 过滤
    timing.py    精确等待（睡眠 + 短自旋，不烧 CPU）
    win32.py     窗口查找 / 矩形 / DPI
+   minimap.py   小地图定位（白色圆角边框，§5.8）
    capture.py   截屏线程 + 小地图识别
    stop.py      急停：stop key、按键记账、退出松键
    runner.py    统一入口实现（run.py 的 CLI）
@@ -331,6 +332,43 @@ $env:MAPLEBOT_PRECISE_DELAY=1; .\venv\Scripts\python.exe tests\bench_delay.py   
 
 **注意**：`delay()` 的参数一直是**秒**（`0.008`/`0.015`/`0.2`/`0.55`），旧参数名 `ms` 起错了，P0 里已改成 `seconds`。
 
+### 5.8 小地图定位（客户端改版后）
+
+旧做法靠两张角模板（`minimap_tl_template.png` / `minimap_br_template.png`）匹配小地图的左上/右下角。**客户端改版后这两张模板失效**：在新截图上标定出来是 966×682（几乎半屏），而真实小地图只有 190×78。
+
+现在改成找「白色圆角边框」（`maplebot/minimap.py`）：
+
+```
+近白掩码（V≥170, S≤45）→ 连通域 → 只保留满足这些的候选：
+   · 四条边大部分是白的（每边取 2px 带的最大覆盖率，容忍 UI 缩放后的 1~1.5px 细线）
+   · 内部是暗的（地图背景，平均 V < 150）
+   · 宽高比 1.3~5.5，尺寸在窗口的 4%~40% 之间
+→ 取面积最大的那个
+```
+
+实测（`rune_example.png`，1368×800）：
+
+| 缩放 | 白框 | 内容区（去掉 3px 边框） |
+|---|---|---|
+| 1.0× | (8, 99, 198, 82) | (11, 102, 192, 76) |
+| 0.75× | (6, 74, 148, 62) | (9, 77, 142, 56) |
+| 1.5× | (12, 149, 297, 122) | (15, 152, 291, 116) |
+| 2.0× | (16, 198, 396, 164) | (19, 201, 390, 158) |
+
+耗时 **0.6 ms**/次；没有白框时返回 `None`。
+
+`Capture` 的 `minimap_locator` 参数决定用哪种方式：
+
+- `"auto"`（默认）：先找白框，找不到再退回旧模板 —— 新客户端走白框，老客户端自动兼容；
+- `"white_border"`：只用白框（找不到就保持未标定，等下一轮）；
+- `"template"`：旧行为。
+
+命令行自查：
+
+```powershell
+python -m maplebot.minimap rune_example.png --save debug/mm.png
+```
+
 ---
 
 ## 6. `haikuScripts/catms/`：OCR 半自动（洗潜能 / 洗怪怪卡）
@@ -442,6 +480,7 @@ python -m maplebot.rune rune_example.png --save-crop debug/crop.png
 | `haikuScripts/input/keyboardmouse.py` | 只有一行 `from pydirectinput import ...` | 死文件 |
 | `maplebot/stop.py` | 急停只能拦 `pydirectinput.*` 与 `time.sleep` | 纯计算循环（`legionBoard.py`）不响应；进程被强杀时来不及松键 |
 | `maplebot/capture.py` | 仍在后台线程写全局 `config`（无锁） | 偶发读到半更新状态（既有行为，未改） |
+| 小地图角模板 | `minimap_tl/br_template.png` 是旧客户端 UI，新客户端匹配不到（会标定出半屏大小） | 已由 §5.8 的白框定位取代；`minimap_locator="auto"` 会先试白框、失败才退回模板 |
 | ~~`commandBuilderLib.py`~~ | ~~`delay()` 是自旋 busy-wait~~ | ✅ **已修复（P0，见 §5.7）**：单核占用 100% → 0.8%，精度不变 |
 | 全局 `config` | 跨线程读写无锁，靠轮询 | 偶发读到半更新状态（坐标/帧不同步），表现为「偶尔跳错方向」 |
 | 各脚本顶部 | 地图坐标、阈值、`+30` 标题栏、1366×768 全硬编码 | 换分辨率要重标全部常量 |
@@ -504,6 +543,7 @@ python -m maplebot.rune rune_example.png --save-crop debug/crop.png
 | `tests/test_cli.py` | `run.py` 端到端：无参退出码 2、`--list`、`--check`、`--dry-run`（含「不使用截屏」）、拼错脚本的建议、`--stop-after` 停住死循环 |
 | `tests/test_rune.py` | 符文面板定位（4 个色块、行聚类、尺寸/ROI 过滤、缩放与平移不变性）、裁剪（padding/放大/贴边收敛）、按键序列（顺序、100 ms±抖动、急停中断）、真实截图 `rune_example.png` 的 bbox、`python -m maplebot.rune --no-api` |
 | `tests/test_rune_api.py` | 凭据文件（JSON/裸 key/BOM/空 key/坏 JSON）、PNG 编码与 `data:` URL、模型回复解析（围栏/废话/裸数组/中文/箭头符号/数量或非法词报错）、请求参数契约（model/temperature/JSON 模式/thinking/图片块）、异常包装 |
+| `tests/test_minimap.py` | 白色圆角边框定位：合成白框、纯白块/断边/过小/过宽/ROI 外等反例、多候选取最大、缩放与平移不变性、`MinimapBox` 几何、真实截图的 (8,99,198,82)、`Capture` 集成（auto 优先白框、template 模式忽略白框、非法参数报错） |
 
 只跑 unittest：
 

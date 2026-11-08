@@ -9,6 +9,9 @@ import io
 import unittest
 from unittest import mock
 
+import cv2
+import numpy as np
+
 from maplebot import capture as capmod
 from maplebot import config
 from tests.helpers import ASSETS, FakeGrabber, asset, build_frame, temp_assets
@@ -55,6 +58,7 @@ class CalibrationTest(unittest.TestCase):
         cap, ok = self._calibrated()
         self.assertTrue(ok)
         self.assertTrue(cap.calibrated)
+        self.assertEqual(cap.minimap_source, "template")  # 合成图没有白框 → 走旧模板
         self.assertEqual(cap.window, {"left": 100, "top": 50, "width": WINDOW_W, "height": WINDOW_H})
 
         tl_x = self.tl_pos[1] + capmod.MINIMAP_BOTTOM_BORDER
@@ -117,6 +121,54 @@ class CalibrationTest(unittest.TestCase):
             cap.haiku_bot_testing_bottomright_position,
             (pos_br[1] + br.shape[1], pos_br[0] + br.shape[0]),
         )
+
+
+class WhiteBorderTest(unittest.TestCase):
+    """新版客户端：小地图靠白色圆角边框定位。"""
+
+    def setUp(self):
+        self._saved_capture = config.capture
+        self.frame = np.full((600, 800, 3), (40, 30, 25), np.uint8)
+        cv2.rectangle(self.frame, (20, 30), (220, 110), (228, 228, 228), 2)
+
+    def tearDown(self):
+        config.capture = self._saved_capture
+
+    def _calibrate(self, **kwargs):
+        cap = make_capture(**kwargs)
+        cap.screenshoter = FakeGrabber(self.frame)
+        with mock.patch.object(capmod.win32, "find_window", return_value=1), \
+                mock.patch.object(capmod.win32, "window_rect", return_value=(0, 0, 800, 600)):
+            ok = cap.calibrate()
+        return cap, ok
+
+    def test_calibrate_prefers_white_border(self):
+        cap, ok = self._calibrate()
+        self.assertTrue(ok)
+        self.assertEqual(cap.minimap_source, "white_border")
+        inner = capmod.minimap_mod.find_minimap(self.frame).inner()
+        self.assertEqual(cap.minimap_topleft_position, (inner.x, inner.y))
+        self.assertEqual(cap.minimap_bottomright_position, (inner.right, inner.bottom))
+        self.assertAlmostEqual(cap.minimap_ratio, inner.w / inner.h)
+        self.assertEqual(cap.minimap_sample.shape[:2], (inner.h, inner.w))
+
+    def test_white_border_mode_does_not_fall_back(self):
+        blank = np.zeros((600, 800, 3), np.uint8)
+        cap = make_capture(minimap_locator="white_border")
+        cap.screenshoter = FakeGrabber(blank)
+        with mock.patch.object(capmod.win32, "find_window", return_value=1), \
+                mock.patch.object(capmod.win32, "window_rect", return_value=(0, 0, 800, 600)):
+            self.assertFalse(cap.calibrate())
+        self.assertFalse(cap.calibrated)
+
+    def test_template_mode_ignores_white_border(self):
+        cap, ok = self._calibrate(minimap_locator="template")
+        self.assertTrue(ok)
+        self.assertEqual(cap.minimap_source, "template")
+
+    def test_unknown_locator_is_rejected(self):
+        with self.assertRaises(ValueError):
+            make_capture(minimap_locator="magic")
 
 
 class FlagTest(unittest.TestCase):

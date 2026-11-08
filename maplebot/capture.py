@@ -31,6 +31,7 @@ import mss.windows
 import numpy as np
 
 from . import config, utils, win32
+from . import minimap as minimap_mod
 
 # 小地图边框：上边距 5px，其余三边 9px（标定用）
 MINIMAP_TOP_BORDER = 5
@@ -133,6 +134,9 @@ class Capture:
     :param detect_rune_buff:  是否检测符文 buff 图标（auto-maple 开着）。
     :param detect_bot_testing:是否检测 `@bot` 验证码弹窗（haikuScripts 有模板）。
     :param frame_interval:    两次截图之间的间隔（秒）；haikuScripts 用 0.1，auto-maple 用 0.05。
+    :param minimap_locator:   小地图定位方式：``"auto"``（先找白色圆角边框，找不到再退回模板）、
+                              ``"white_border"``、``"template"``（旧行为）。
+                              客户端改版后旧角模板失效，默认 ``auto``。
     """
 
     def __init__(
@@ -146,6 +150,7 @@ class Capture:
         detect_rune_buff=False,
         detect_bot_testing=False,
         frame_interval=0.1,
+        minimap_locator="auto",
     ):
         config.capture = self
 
@@ -153,6 +158,10 @@ class Capture:
         self.assets_dir = str(assets_dir)
         self.window_name = config.window_override or window_name
         self.frame_interval = float(frame_interval)
+        if minimap_locator not in ("auto", "white_border", "template"):
+            raise ValueError(f"未知的 minimap_locator：{minimap_locator!r}")
+        self.minimap_locator = minimap_locator
+        self.minimap_source = None
 
         self.detect_other = bool(detect_other) and "other" in self.tpl
         self.detect_rune = bool(detect_rune) and "rune" in self.tpl
@@ -318,21 +327,44 @@ class Capture:
         self.window["width"] = max(right - left, self.tpl["minimap_hw"][1])
         self.window["height"] = max(bottom - top, self.tpl["minimap_hw"][0])
 
-        # 用「小地图左上角/右下角」两张模板找到小地图区域
+        # 定位小地图：新版客户端用「白色圆角边框」，老版回退到角模板
         self.frame = self.screenshot()
         if self.frame is None:
             self.calibrated = False
             return False
-        tl, _ = utils.single_match(self.frame, self.tpl["minimap_tl"])
-        _, br = utils.single_match(self.frame, self.tpl["minimap_br"])
-        self.minimap_topleft_position = (
-            tl[0] + MINIMAP_BOTTOM_BORDER,
-            tl[1] + MINIMAP_TOP_BORDER,
-        )
-        self.minimap_bottomright_position = (
-            max(self.minimap_topleft_position[0] + self.tpl["player_hw"][1], br[0] - MINIMAP_BOTTOM_BORDER),
-            max(self.minimap_topleft_position[1] + self.tpl["player_hw"][0], br[1] - MINIMAP_BOTTOM_BORDER),
-        )
+
+        box = None
+        if self.minimap_locator in ("auto", "white_border"):
+            box = minimap_mod.find_minimap(self.frame)
+
+        if box is not None:
+            inner = box.inner()
+            self.minimap_topleft_position = (inner.x, inner.y)
+            self.minimap_bottomright_position = (inner.right, inner.bottom)
+            source = "white_border"
+        elif self.minimap_locator in ("auto", "template"):
+            tl, _ = utils.single_match(self.frame, self.tpl["minimap_tl"])
+            _, br = utils.single_match(self.frame, self.tpl["minimap_br"])
+            self.minimap_topleft_position = (
+                tl[0] + MINIMAP_BOTTOM_BORDER,
+                tl[1] + MINIMAP_TOP_BORDER,
+            )
+            self.minimap_bottomright_position = (
+                max(self.minimap_topleft_position[0] + self.tpl["player_hw"][1],
+                    br[0] - MINIMAP_BOTTOM_BORDER),
+                max(self.minimap_topleft_position[1] + self.tpl["player_hw"][0],
+                    br[1] - MINIMAP_BOTTOM_BORDER),
+            )
+            source = "template"
+        else:
+            self.calibrated = False
+            return False
+
+        if source != self.minimap_source:
+            print(f"[capture] 小地图定位方式：{source} "
+                  f"{self.minimap_topleft_position}..{self.minimap_bottomright_position}")
+            self.minimap_source = source
+
         self.minimap_ratio = (
             (self.minimap_bottomright_position[0] - self.minimap_topleft_position[0])
             / (self.minimap_bottomright_position[1] - self.minimap_topleft_position[1])
