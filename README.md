@@ -47,6 +47,7 @@ maplebot/                                ← 唯一实现（haikuScripts 与 aut
    timing.py    精确等待（睡眠 + 短自旋，不烧 CPU）
    win32.py     窗口查找 / 矩形 / DPI
    minimap.py   小地图定位（白色圆角边框，§5.8）
+   player.py    角色定位/跟踪（黄点 + 白圈，§5.9）
    capture.py   截屏线程 + 小地图识别
    stop.py      急停：stop key、按键记账、退出松键
    runner.py    统一入口实现（run.py 的 CLI）
@@ -384,6 +385,41 @@ $env:MAPLEBOT_PRECISE_DELAY=1; .\venv\Scripts\python.exe tests\bench_delay.py   
 python -m maplebot.minimap rune_example.png --save debug/mm.png
 ```
 
+### 5.9 角色定位（黄点 + 白圈）
+
+小地图上的图标靠**颜色**区分身份：
+
+| 实体 | 图标 | 实测 HSV |
+|---|---|---|
+| **自己** | 白圈 + **黄点** | (28, 255, 254) |
+| 其他玩家 | 白圈 + **红点** | 红（H≈0） |
+| NPC / 传送点 | 白圈 + **绿点** | H≈60 |
+| 符文 | 紫菱形 | H≈143 |
+| 地形 / 平台 | 暗黄/棕 | (5, 221, 53) ~ (12, 245, 76)，亮度差一个量级 |
+
+所以 `maplebot/player.py` 的做法是：**黄色门控**（H 18–42、S≥190、V≥190）→ 尺寸/面积过滤 →
+**白圈校验**（半径 2.8–5.2 的环上要有一圈"亮且不饱和"的像素，V≥170、S≤90）。
+最后这条很关键：黄块本身 S=255 会被排除，只有真的白圈才算数，所以"没白圈的黄块"（比如地形）
+不会被误判；实测玩家环占比 0.31~0.41，平台/绿点/菱形/空地全是 0.00。
+
+**跟踪**（`PlayerTracker`）：
+
+| 情况 | 行为 |
+|---|---|
+| 多个候选 | 选离"上一帧位置 + 速度×dt"最近的 |
+| 位移超过内容区宽度的 10% | 视为切图/复活：直接对齐，`jumps += 1` |
+| 这一帧没找到 | **保持上一帧位置**，`config.player_stale = True`（0.35 s 后仍没找到则位置变 None） |
+| 1px 抖动 | 一阶低通（新测量占 65%），并估计速度 |
+
+`Capture` 每帧调用 `_update_player()`，写两个新的全局变量：
+
+- `config.player_position`：归一化坐标（和以前一样，两个轴都除以小地图宽度，保证各向同性）；
+- `config.player_stale`：位置是否不可信（**丢失时不再写 `(0,0)`**，脚本看到 stale 就别做依赖位置的动作）；
+- `config.player_score`：最近一次检测的置信分，调试用。
+
+性能（真实截图、缓存小地图框）：**0.115 ms/帧 → 30 Hz 下约 0.3% 单核**。对比截屏 6.6 ms/帧，
+位置识别不是瓶颈。`Capture.calibrate()` 会顺带 `player_tracker.reset()`（换图/换窗口时轨迹作废）。
+
 ---
 
 ## 6. `haikuScripts/catms/`：OCR 半自动（洗潜能 / 洗怪怪卡）
@@ -611,6 +647,7 @@ session = rune.RuneSession(open_panel=my_walk_to_rune_and_press_alt)
 | `tests/test_rune.py` | 符文面板定位（4 个色块、行聚类、尺寸/ROI 过滤、缩放与平移不变性）、裁剪（padding/放大/贴边收敛）、按键序列（顺序、100 ms±抖动、急停中断）、**小地图菱形**（有/无、缩放、地图上的紫色块不干扰）、**buff CD 图标**（有/无、分数分离 >0.15、缩放）、**状态机**（一次成功不按 alt/esc、3 次失败后 esc×2/alt×2、API 失败不按键、面板打不开不调 API、history/last_error、回城 TODO 输出）、真实截图用例、`python -m maplebot.rune --no-api` |
 | `tests/test_rune_api.py` | 凭据文件（JSON/裸 key/BOM/空 key/坏 JSON）、PNG 编码与 `data:` URL、模型回复解析（围栏/废话/裸数组/中文/箭头符号/数量或非法词报错）、请求参数契约（model/temperature/JSON 模式/thinking/图片块）、异常包装 |
 | `tests/test_minimap.py` | 白色圆角边框定位：合成白框、纯白块/断边/过小/过宽/ROI 外等反例、多候选取最大、缩放与平移不变性、`MinimapBox` 几何、真实截图的 (8,99,198,82)、`Capture` 集成（auto 优先白框、template 模式忽略白框、非法参数报错） |
+| `tests/test_player.py` | 角色定位：真实 fixture 找到玩家 (43,118)/(35,142)、绿点/红点/暗黄平台/无白圈黄块全部拒绝、多候选排序；跟踪：首次对齐、遮挡保留 + 过期、双候选选近的、远跳对齐计数、抖动被平滑、reset；`Capture._update_player()` 写归一化坐标 / 丢失保持上一帧并置 stale / 从未定位保持 (0,0) / 重标定重置轨迹 |
 
 只跑 unittest：
 

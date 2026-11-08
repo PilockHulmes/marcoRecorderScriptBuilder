@@ -14,6 +14,7 @@ import numpy as np
 
 from maplebot import capture as capmod
 from maplebot import config
+from maplebot import player as player_mod
 from tests.helpers import ASSETS, FakeGrabber, asset, build_frame, temp_assets
 
 WINDOW_RECT = (100, 50, 900, 650)  # left, top, right, bottom → 800x600
@@ -169,6 +170,89 @@ class WhiteBorderTest(unittest.TestCase):
     def test_unknown_locator_is_rejected(self):
         with self.assertRaises(ValueError):
             make_capture(minimap_locator="magic")
+
+
+class FakeClock:
+    def __init__(self, now=0.0):
+        self.now = float(now)
+
+    def __call__(self):
+        return self.now
+
+    def advance(self, dt):
+        self.now += float(dt)
+
+
+class PlayerUpdateTest(unittest.TestCase):
+    """Capture._update_player()：把 tracker 的结果写进 config。"""
+
+    def setUp(self):
+        self._saved = (config.capture, config.player_position, config.player_stale, config.player_score)
+        config.player_position = (0, 0)
+        config.player_stale = True
+        config.player_score = 0.0
+
+        self.frame = np.full((600, 800, 3), (13, 13, 25), np.uint8)
+        cv2.circle(self.frame, (100, 70), 3, (0, 239, 254), -1)   # 黄点
+        cv2.circle(self.frame, (100, 70), 4, (255, 255, 255), 1)  # 白圈
+        self.blank = np.full((600, 800, 3), (13, 13, 25), np.uint8)
+
+        self.clock = FakeClock()
+        self.cap = make_capture()
+        self.cap.minimap_content = (30, 40, 180, 60)
+        self.cap.player_tracker = player_mod.PlayerTracker(clock=self.clock)
+
+    def tearDown(self):
+        config.capture, config.player_position, config.player_stale, config.player_score = self._saved
+
+    def test_writes_normalized_position(self):
+        self.cap.frame = self.frame
+        self.cap._update_player()
+        # 与 utils.convert_to_relative 一致：两个轴都除以内容区宽度
+        self.assertAlmostEqual(config.player_position[0], (100 - 30) / 180, places=3)
+        self.assertAlmostEqual(config.player_position[1], (70 - 40) / 180, places=3)
+        self.assertFalse(config.player_stale)
+        self.assertGreater(config.player_score, 0.0)
+
+    def test_lost_tracking_keeps_last_position(self):
+        self.cap.frame = self.frame
+        self.cap._update_player()
+        first = config.player_position
+        self.clock.advance(0.2)
+
+        self.cap.frame = self.blank
+        self.cap._update_player()
+        self.assertEqual(config.player_position, first)     # 保持上一帧
+        self.assertFalse(config.player_stale)               # 还在容忍时间内
+
+        self.clock.advance(0.5)
+        self.cap._update_player()
+        self.assertEqual(config.player_position, first)     # 仍然不归零
+        self.assertTrue(config.player_stale)                # 但标记为不可信
+
+    def test_never_located_stays_zero_and_stale(self):
+        self.cap.frame = self.blank
+        self.cap._update_player()
+        self.assertEqual(config.player_position, (0, 0))
+        self.assertTrue(config.player_stale)
+        self.assertEqual(config.player_score, 0.0)
+
+    def test_missing_minimap_content_marks_stale(self):
+        self.cap.frame = self.frame
+        self.cap.minimap_content = None
+        self.cap._update_player()
+        self.assertTrue(config.player_stale)
+        self.assertEqual(config.player_position, (0, 0))
+
+    def test_recalibration_resets_tracker(self):
+        self.cap.frame = self.frame
+        self.cap._update_player()
+        self.assertIsNotNone(self.cap.player_tracker.position)
+        self.cap.screenshoter = FakeGrabber(self.frame)
+        with mock.patch.object(capmod.win32, "find_window", return_value=1), \
+                mock.patch.object(capmod.win32, "window_rect", return_value=(0, 0, 800, 600)):
+            self.cap.calibrate()
+        self.assertIsNone(self.cap.player_tracker.position)
 
 
 class FlagTest(unittest.TestCase):

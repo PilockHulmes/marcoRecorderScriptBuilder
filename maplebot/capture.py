@@ -32,6 +32,7 @@ import numpy as np
 
 from . import config, utils, win32
 from . import minimap as minimap_mod
+from . import player as player_mod
 
 # 小地图边框：上边距 5px，其余三边 9px（标定用）
 MINIMAP_TOP_BORDER = 5
@@ -162,6 +163,10 @@ class Capture:
             raise ValueError(f"未知的 minimap_locator：{minimap_locator!r}")
         self.minimap_locator = minimap_locator
         self.minimap_source = None
+        #: 小地图内容区 (x, y, w, h)，标定后才有值
+        self.minimap_content = None
+        #: 角色位置跟踪器（颜色识别 + 连续性 + 平滑 + 丢失标记）
+        self.player_tracker = player_mod.PlayerTracker()
 
         self.detect_other = bool(detect_other) and "other" in self.tpl
         self.detect_rune = bool(detect_rune) and "rune" in self.tpl
@@ -236,11 +241,7 @@ class Capture:
                     config.minimap = minimap
 
                     # Determine the player's position
-                    player = utils.multi_match(minimap, self.tpl["player"], threshold=0.8)
-                    if player:
-                        config.player_position = utils.convert_to_relative(player[0], minimap)
-                    else:
-                        config.player_position = (0, 0)
+                    self._update_player()
 
                     # 符文位置（haikuScripts 默认关闭，auto-maple 开启）
                     if self.detect_rune:
@@ -294,6 +295,31 @@ class Capture:
                     time.sleep(self.frame_interval)
 
     # ------------------------------------------------------------------ 工具
+    def _update_player(self):
+        """把当前帧的角色位置写进 ``config``（每帧调用，也可单独测试）。
+
+        - 定位成功：写平滑后的归一化坐标，``player_stale=False``；
+        - 跟踪丢失（被遮挡/切图）：**保持上一次的值**，不写 ``(0, 0)``，只把
+          ``player_stale`` 置 True；
+        - 从来没定位到：保持 ``(0, 0)``，``player_stale=True``。
+        """
+        rect = self.minimap_content
+        if rect is None or self.frame is None:
+            config.player_stale = True
+            return None
+
+        position = self.player_tracker.update(self.frame, rect)
+        config.player_stale = self.player_tracker.stale or position is None
+        if position is None:
+            return None
+
+        x0, y0, width, _height = rect
+        # 与 utils.convert_to_relative 一致：两个轴都除以宽度，保证各向同性
+        config.player_position = ((position[0] - x0) / width, (position[1] - y0) / width)
+        raw = self.player_tracker.raw
+        config.player_score = float(raw.score) if raw is not None else 0.0
+        return config.player_position
+
     def collectFrames(self, count=10, interval=0.1):
         with mss.mss() as screenshoter:
             result = [np.array(screenshoter.grab(self.window))]
@@ -364,6 +390,15 @@ class Capture:
             print(f"[capture] 小地图定位方式：{source} "
                   f"{self.minimap_topleft_position}..{self.minimap_bottomright_position}")
             self.minimap_source = source
+
+        self.minimap_content = (
+            self.minimap_topleft_position[0],
+            self.minimap_topleft_position[1],
+            self.minimap_bottomright_position[0] - self.minimap_topleft_position[0],
+            self.minimap_bottomright_position[1] - self.minimap_topleft_position[1],
+        )
+        # 重新标定 = 可能换了地图/窗口，跟踪轨迹作废
+        self.player_tracker.reset()
 
         self.minimap_ratio = (
             (self.minimap_bottomright_position[0] - self.minimap_topleft_position[0])

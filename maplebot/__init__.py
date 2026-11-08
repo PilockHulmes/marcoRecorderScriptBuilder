@@ -11,6 +11,7 @@
 - :mod:`maplebot.timing` —— 精确等待（睡眠 + 短自旋，不烧 CPU）
 - :mod:`maplebot.win32` —— 窗口查找 / 矩形 / DPI
 - :mod:`maplebot.minimap` —— 小地图定位（白色圆角边框）
+- :mod:`maplebot.player` —— 小地图上的角色定位与跟踪（黄点 + 白圈）
 - :mod:`maplebot.capture` —— 截屏线程 + 小地图识别
 - :mod:`maplebot.stop` —— 全局急停（stop key、按键记账、退出时松键）
 - :mod:`maplebot.runner` —— 统一入口（`run.py` 的实现）
@@ -18,6 +19,6 @@
 - :mod:`maplebot.rune_api` —— DeepSeek 视觉 API 封装（截图 → 4 个方向）
 """
 
-__all__ = ["capture", "config", "minimap", "runner", "rune", "rune_api", "stop", "timing", "utils", "win32"]
+__all__ = ["capture", "config", "minimap", "player", "runner", "rune", "rune_api", "stop", "timing", "utils", "win32"]
 
 __version__ = "2.0.0"
