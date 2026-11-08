@@ -68,6 +68,25 @@ class QQSendTest(unittest.TestCase):
         self.assertTrue(result.reason.startswith("clipboard_failed"))
 
 
+    def test_falls_back_to_qq_main_window(self):
+        # 新版 QQ 的主窗口标题就是 "QQ"，群名只出现在窗口内部
+        calls = []
+
+        def find(name):
+            calls.append(name)
+            return (10, 20, 1000, 800) if name == "QQ" else None
+
+        sender = qq.QQSender(
+            group_title="猫叶物语T", dry_run=True, find_window=find,
+            activate=lambda name: True, click=lambda x, y: None,
+            hotkey=lambda keys: None, set_clipboard=lambda png: None,
+            sleep=lambda _s: None,
+        )
+        result = sender.send(b"x")
+        self.assertTrue(result.sent)
+        self.assertEqual(calls[:2], ["猫叶物语T", "QQ"])
+
+
 class FindChatTitleTest(unittest.TestCase):
     def test_substring_match(self):
         titles = ["微信", "猫叶物语T (1002)", "QQ"]

@@ -35,6 +35,8 @@ PANEL_THRESHOLD = 0.80
 PANEL_SCALES = (0.9, 1.0, 1.1)
 #: 验证码框相对"文字块模板左上角"的偏移 (dx, dy, w, h)，实测
 CAPTCHA_OFFSET = (-33, 70, 224, 60)
+#: 「請先點擊再輸入」那行字的中心，相对文字块左上角的偏移（面板提示点这里）
+CLICK_OFFSET = (77, 138)
 
 #: OCR 兜底：把画面缩到这个宽度再识别（1000 px 实测 366 ms 且稳定）
 OCR_WIDTH = 1000
@@ -66,11 +68,19 @@ class BotCheckPanel:
     text_bbox: tuple      # 文字块 (x, y, w, h)
     captcha_bbox: tuple   # 验证码框 (x, y, w, h)
     score: float
+    scale: float = 1.0    # 相对模板的缩放（OCR 兜底时按文字行宽估算）
 
     @property
     def center(self):
         x, y, w, h = self.captcha_bbox
         return x + w // 2, y + h // 2
+
+    @property
+    def click_point(self):
+        """点击位置：「請先點擊再輸入」那行字的中心。"""
+        dx, dy = CLICK_OFFSET
+        x, y = self.text_bbox[0], self.text_bbox[1]
+        return int(x + dx * self.scale), int(y + dy * self.scale)
 
 
 def load_panel_template(assets_dir=None):
@@ -114,7 +124,7 @@ def find_panel(frame, assets_dir=None, threshold=PANEL_THRESHOLD):
         min(cw, frame.shape[1] - max(0, x + dx)),
         min(ch, frame.shape[0] - max(0, y + dy)),
     )
-    return BotCheckPanel(text_bbox=bbox, captcha_bbox=captcha, score=score)
+    return BotCheckPanel(text_bbox=bbox, captcha_bbox=captcha, score=score, scale=w / 156.0)
 
 
 def confirm_panel_with_ocr(frame, ocr=None, width=OCR_WIDTH):
@@ -181,7 +191,7 @@ def find_panel_ocr(frame, ocr=None, width=OCR_WIDTH):
             int(cw * scale),
             int(ch * scale),
         )
-        return BotCheckPanel(text_bbox=text_bbox, captcha_bbox=captcha_bbox, score=0.0)
+        return BotCheckPanel(text_bbox=text_bbox, captcha_bbox=captcha_bbox, score=0.0, scale=scale)
     return None
 
 
@@ -354,8 +364,8 @@ class BotCheckGuard:
             return GuardResult(False, "captcha_uncertain", evidence=evidence,
                                panel_score=panel.score)
 
-        # 3) 点击验证码框 → 输入 → 回车
-        cx, cy = panel.center
+        # 3) 点击「請先點擊再輸入」→ 输入 → 回车
+        cx, cy = panel.click_point
         self._click(cx, cy)
         self._sleep(0.2)
         type_text(captcha, key_api=self.key_api, sleep=self._sleep)

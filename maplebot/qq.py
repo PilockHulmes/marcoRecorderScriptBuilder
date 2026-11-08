@@ -16,6 +16,8 @@ import time
 from dataclasses import dataclass
 
 DEFAULT_GROUP = "猫叶物语T"
+#: 群名找不到时的兜底窗口标题（新版 QQ 的主窗口标题就是 "QQ"，群聊是里面的一栏）
+FALLBACK_TITLES = ("QQ",)
 #: 输入框在窗口内的相对位置（右下角小块区域）
 DEFAULT_INPUT_BOX = (0.45, 0.90)
 
@@ -92,10 +94,10 @@ class QQSender:
 
     def send(self, png_bytes):
         """返回 :class:`SendResult`；任何一步失败都返回 ``sent=False``。"""
-        rect = self._find_window(self.group_title)
+        name, rect = self._locate()
         if rect is None:
             return self._finish(False, "window_not_found")
-        if not self._activate(self.group_title):
+        if not self._activate(name):
             return self._finish(False, "activate_failed")
 
         x, y, w, h = rect
@@ -117,6 +119,14 @@ class QQSender:
         self._hotkey(("enter",))
         self._sleep(0.2)
         return self._finish(True, "sent")
+
+    def _locate(self):
+        """先按群名找（老版 QQ 的独立聊天窗口），再退回 "QQ" 主窗口。"""
+        for name in (self.group_title,) + tuple(FALLBACK_TITLES):
+            rect = self._find_window(name)
+            if rect is not None:
+                return name, rect
+        return self.group_title, None
 
     def _finish(self, sent, reason):
         self.last = SendResult(sent=sent, reason=reason, window=self.group_title)

@@ -208,8 +208,21 @@ class GuardTest(unittest.TestCase):
         self.assertEqual(result.captcha, "QZD")
         # 先取证，再点击/输入
         self.assertEqual(self.order[0][0], "evidence")
-        self.assertEqual(self.clicks[0], (botcheck.find_panel(self.panel_frame).center))
+        panel = botcheck.find_panel(self.panel_frame)
+        self.assertEqual(self.clicks[0], panel.click_point)
         self.assertEqual(self.keys.typed(), "qzdenter")   # 大写用 shift + 小写字母
+
+    def test_click_point_is_the_hint_line(self):
+        panel = botcheck.find_panel(self.panel_frame)
+        x, y = panel.click_point
+        captcha_x, captcha_y, captcha_w, captcha_h = panel.captcha_bbox
+        # 提示文字在验证码框下方、水平方向在框内
+        self.assertGreater(y, captcha_y + captcha_h - 10)
+        self.assertTrue(captcha_x < x < captcha_x + captcha_w)
+        # 缩放变化时点击点跟着缩放
+        big = botcheck.BotCheckPanel(panel.text_bbox, panel.captcha_bbox, 1.0, scale=2.0)
+        self.assertEqual(big.click_point[1] - panel.text_bbox[1],
+                         2 * (panel.click_point[1] - panel.text_bbox[1]))
 
     def test_still_there_types_only_once(self):
         guard = self.make([self.panel_frame])
