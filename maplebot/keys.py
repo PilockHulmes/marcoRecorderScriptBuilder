@@ -173,6 +173,27 @@ class Keyboard:
         self.pressed.clear()
 
 
+class precise_timer:
+    """临时把系统定时器精度提到 1ms，退出时保证恢复（异常也恢复、可嵌套）。
+
+    只在真正需要毫秒级按住的动作前后使用；长时间持有会抬高整机时钟中断频率。
+    """
+
+    _depth = 0
+
+    def __enter__(self):
+        if precise_timer._depth == 0:
+            time_begin()
+        precise_timer._depth += 1
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        precise_timer._depth = max(0, precise_timer._depth - 1)
+        if precise_timer._depth == 0:
+            time_end()
+        return False
+
+
 _shared = None
 
 
@@ -233,6 +254,7 @@ __all__ = [
     "keyDown",
     "keyUp",
     "press",
+    "precise_timer",
     "release_all",
     "shared",
     "tap",

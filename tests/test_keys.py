@@ -69,6 +69,35 @@ class KeyboardTest(unittest.TestCase):
         self.assertEqual(keys.virtual_key("f5"), 0x74)
 
 
+class PreciseTimerTest(unittest.TestCase):
+    def setUp(self):
+        self.calls = []
+        self._orig = (keys.time_begin, keys.time_end)
+        keys.time_begin = lambda: self.calls.append("begin")
+        keys.time_end = lambda: self.calls.append("end")
+
+    def tearDown(self):
+        keys.time_begin, keys.time_end = self._orig
+        keys.precise_timer._depth = 0
+
+    def test_begin_and_end_around_block(self):
+        with keys.precise_timer():
+            self.assertEqual(self.calls, ["begin"])
+        self.assertEqual(self.calls, ["begin", "end"])
+
+    def test_end_even_on_exception(self):
+        with self.assertRaises(ValueError):
+            with keys.precise_timer():
+                raise ValueError("boom")
+        self.assertEqual(self.calls, ["begin", "end"])
+
+    def test_nested_switches_only_once(self):
+        with keys.precise_timer():
+            with keys.precise_timer():
+                pass
+        self.assertEqual(self.calls, ["begin", "end"])
+
+
 @unittest.skipUnless(hasattr(time, "perf_counter"), "需要 Windows")
 class RealtimeTest(unittest.TestCase):
     def test_hold_duration_is_accurate(self):

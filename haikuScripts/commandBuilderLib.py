@@ -47,7 +47,8 @@ FAST_HOLD = 0.04
 def keyboardClick(button, interval = INTERVAL_CLICK):
     if _USE_FAST_KEYS:
         from maplebot import keys as _fast_keys      # 延迟导入，避免影响旧的 sys.path 引导
-        _fast_keys.tap(button, hold=FAST_HOLD)
+        with _fast_keys.precise_timer():            # 只在按住这一下提高定时器精度
+            _fast_keys.tap(button, hold=FAST_HOLD)
         delay(interval)
         return
     pydirectinput.keyDown(button)
