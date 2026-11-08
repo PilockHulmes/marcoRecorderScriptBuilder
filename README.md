@@ -648,6 +648,8 @@ session = rune.RuneSession(open_panel=my_walk_to_rune_and_press_alt)
 | `tests/test_rune_api.py` | 凭据文件（JSON/裸 key/BOM/空 key/坏 JSON）、PNG 编码与 `data:` URL、模型回复解析（围栏/废话/裸数组/中文/箭头符号/数量或非法词报错）、请求参数契约（model/temperature/JSON 模式/thinking/图片块）、异常包装 |
 | `tests/test_minimap.py` | 白色圆角边框定位：合成白框、纯白块/断边/过小/过宽/ROI 外等反例、多候选取最大、缩放与平移不变性、`MinimapBox` 几何、真实截图的 (8,99,198,82)、`Capture` 集成（auto 优先白框、template 模式忽略白框、非法参数报错） |
 | `tests/test_player.py` | 角色定位：真实 fixture 找到玩家 (43,118)/(35,142)、绿点/红点/暗黄平台/无白圈黄块全部拒绝、多候选排序；跟踪：首次对齐、遮挡保留 + 过期、双候选选近的、远跳对齐计数、抖动被平滑、reset；`Capture._update_player()` 写归一化坐标 / 丢失保持上一帧并置 stale / 从未定位保持 (0,0) / 重标定重置轨迹 |
+| `tests/test_botcheck.py` | 挂机监测：4 张同尺度截图模板命中、OCR 兜底定位（detection3）、验证码裁剪与放大、`clean_captcha` 字符集/长度/UNKNOWN、三次一致才返回（含不一致/网络错误）、大写用 shift 输入并回车、`BotCheckGuard` 全链路（无面板不取证、验证码不确定仍先取证、先取证后输入、面板不消失只输入一次） |
+| `tests/test_qq.py` | QQ 发送（全假窗口）：`dry_run` 只贴图不回车、点击位置在输入框、真发送按回车、窗口找不到/激活失败/剪贴板异常各自返回 `sent=False`、标题子串匹配 |
 
 只跑 unittest：
 
@@ -677,3 +679,85 @@ $env:MAPLEBOT_PRECISE_DELAY=1; .\venv\Scripts\python.exe tests\bench_delay.py   
 - **语法自检**（只做 AST 解析，不写盘）：`.\venv\Scripts\python.exe run.py --check`
 - **目录权限**：本机该目录的权限继承曾被断开，受限账户在目录内写文件会被拒。恢复：`icacls "E:\workspace\marcoRecorderScriptBuilder" /inheritance:e`。
 - **`.mcr` 产物与 `z_*.png` 都不入库**（`.gitignore` 忽略 `*.mcr`；`z_*.png` 属于误提交残留）。
+
+---
+
+## 12. 挂机监测（bot check）：检测 / 取证 / 验证码
+
+私服管理员会人工触发挂机监测：屏幕上弹出一块半透明蓝面板（约 210×200），里面是
+「將下方圖片中的文字 / 輸入顯示的內容後 / 請按下ENTER鍵」+ 一张验证码图 + 倒计时（约 60s）。
+处理方式：**先截图发 QQ 群当证据，再输入验证码**；输入错就靠那张截图自证。
+
+### 12.1 面板检测（`maplebot/botcheck.py`）
+
+| 方法 | 成本 | 可靠度（7 张真实截图实测） |
+|---|---|---|
+| 文字块模板匹配（3 个尺度） | ~5 ms | 4/7 命中（0.90~1.00），换尺度/亮背景掉到 0.2~0.4 |
+| PaddleOCR（缩到 1000 px 宽） | ~366 ms | 3/3 都能认出「請按下ENTER鍵」，500 px 就认不出 |
+
+所以用法是：**每帧模板快速筛，模板没命中时每隔几秒跑一次 OCR 兜底**。
+OCR 命中后还能用文字行的位置 + 缩放反推验证码框（`find_panel_ocr`），
+实测三张不同尺度的截图都裁到了正确的验证码。
+
+关键常量（都实测过）：
+
+- `PANEL_TEMPLATE = "botcheck_text.png"`（`haikuScripts/assets/`，156×64 的三行文字）
+- `CAPTCHA_OFFSET = (-33, 70, 224, 60)`：验证码框相对文字块左上角的偏移
+- 面板**位置不固定**（左下/中上/顶部都有），所以只能内容识别，不能写死坐标
+
+### 12.2 验证码读取：三次一致才答
+
+```python
+crop = botcheck.captcha_crop(frame, panel, upscale=3.0)
+text = botcheck.read_captcha(crop, attempts=3)   # 三次完全一致才返回，否则 None
+```
+
+- 提示词要求「只输出字符，看不清输出 UNKNOWN」；`clean_captcha` 会校验字符集和长度（3~10）；
+- 任何一次 UNKNOWN / 三次不一致 / 网络错误 → 返回 `None`，**宁可不答**；
+- 实测两张样本各问两次，结果都稳定一致（`igood` / `QZD`），但没有 ground truth，
+  准确率只能靠"三次一致"来保证一致性，不能保证正确性。
+
+### 12.3 输入与验收
+
+```
+点击验证码框中心 → 等 0.2s → 逐字符输入（大写用 shift，每字间隔 60ms）→ 回车
+→ 3 秒内面板消失 = 成功
+→ 面板还在 = 失败，**不重复输入**（答错代价未知，只答一次）
+```
+
+`type_text` 走的是 `pydirectinput`，每个字符前都会 `stop.check()`，急停随时打断。
+
+### 12.4 发 QQ 群（`maplebot/qq.py`）
+
+```python
+sender = qq.QQSender(group_title="猫叶物语T", dry_run=True)   # 测试务必 dry_run
+sender.send(png_bytes)
+```
+
+流程：按标题子串找窗口 → 激活 → 点输入框（相对位置 0.45/0.90）→ 剪贴板放 PNG（CF_DIB）
+→ `Ctrl+V` → `Enter`。
+
+- **`dry_run=True` 时只贴图、随后清空输入框，绝不按回车**；
+- 窗口找不到 / 激活失败 / 剪贴板被占用都会返回 `SendResult(sent=False, reason=...)`；
+- 测试建议把 `group_title` 指向「文件传输助手」，正式跑再改回群名（或之后换群图标识别）。
+
+### 12.5 整条链路（`BotCheckGuard`）
+
+```python
+guard = botcheck.BotCheckGuard(send_evidence=my_qq_send)   # 取证动作可注入
+result = guard.handle()
+# result.handled / result.reason(solved|still_there|captcha_uncertain|no_panel) / result.captcha
+```
+
+顺序固定：**检测 → 取证（先发群）→ 读验证码 → 点击输入 → 验收**。
+取证失败会记 `evidence="failed"`，但不会中断后续输入——证据能补，检测不能等。
+
+> ⚠️ 测试期间绝对不能把截图发到真群：`QQSender` 默认 `dry_run=True`，
+> 单测里所有发送动作都是假的（[tests/test_qq.py](tests/test_qq.py)）。
+
+### 12.6 已知的未知
+
+- **输入前是否需要精确点击某个位置**：面板写着「請先點擊再輸入」，我们点验证码框中心；
+  是否需要点输入框、是否需要先激活游戏窗口，只能在真监测出现时验证；
+- **答错的后果未知**：所以只答一次，失败就报警（截图已经发群，可作为自证）；
+- **验证码字符集**：目前按「字母+数字、3~10 位」处理，遇到别的字符会判为不可读。
