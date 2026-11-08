@@ -84,9 +84,10 @@ class FindMinimapTest(unittest.TestCase):
     def test_debug_info(self):
         box, info = minimap.find_minimap(make_frame(), debug=True)
         self.assertIsNotNone(box)
-        self.assertEqual(len(info["edges"]), 4)
-        self.assertGreater(min(info["edges"]), minimap.EDGE_MIN)
-        self.assertLess(info["inner_v"], minimap.INNER_V_MAX)
+        self.assertEqual(len(info["sides"]), 4)
+        self.assertGreaterEqual(min(info["sides"]), minimap.SIDE_MIN)
+        self.assertIn("threshold", info)
+        self.assertGreater(info["border_v"], info["outer_v"])
 
     def test_scale_invariance(self):
         base = make_frame()
@@ -110,6 +111,57 @@ class FindMinimapTest(unittest.TestCase):
         frame = np.full((FRAME[0], FRAME[1], 3), (240, 240, 240), np.uint8)
         cv2.rectangle(frame, (20, 30), (220, 110), BORDER, 2)
         self.assertIsNone(minimap.find_minimap(frame))
+
+
+class ToleranceTest(unittest.TestCase):
+    """现实约束：小地图尺寸不固定、边框半透明且随背景变色。"""
+
+    PANEL_BG = (40, 40, 40)
+
+    def make_panel(self, map_v=60, alpha=0.8, box=(20, 30, 200, 80), thickness=2):
+        """深色面板 + 可变亮度的地图内容 + 半透明白框。"""
+        frame = np.full((FRAME[0], FRAME[1], 3), self.PANEL_BG, np.uint8)
+        x, y, w, h = box
+        frame[y + thickness:y + h - thickness + 1,
+              x + thickness:x + w - thickness + 1] = map_v
+        # 地图里有地形纹理（纯色地图会和"纯白色块"混淆，这里故意加点细节）
+        for offset in range(10, w - 10, 40):
+            cv2.line(frame, (x + offset, y + thickness + 2),
+                     (x + offset, y + h - thickness - 2), (map_v // 2, map_v // 2, map_v // 2), 1)
+        border = tuple(int(alpha * 255 + (1 - alpha) * c) for c in self.PANEL_BG)
+        cv2.rectangle(frame, (x, y), (x + w, y + h), border, thickness)
+        return frame, border
+
+    def assert_box(self, box, expected, scale=1.0):
+        self.assertIsNotNone(box)
+        for got, want in zip(box.as_tuple(), expected):
+            self.assertLessEqual(abs(got - want * scale), 4, f"{box} vs {expected}")
+
+    def test_border_transparency_ladder(self):
+        for alpha in (0.4, 0.6, 0.8, 1.0):
+            frame, border = self.make_panel(alpha=alpha)
+            with self.subTest(alpha=alpha, border=border):
+                self.assert_box(minimap.find_minimap(frame), (20, 30, 201, 81))
+
+    def test_map_brightness_variants(self):
+        # 地图内部可能是很暗也可能很亮；判据是"边框比外侧环亮"，不是"内部暗"
+        for map_v in (30, 60, 120, 180, 220):
+            frame, _ = self.make_panel(map_v=map_v)
+            with self.subTest(map_v=map_v):
+                self.assert_box(minimap.find_minimap(frame), (20, 30, 201, 81))
+
+    def test_size_and_shape_variants(self):
+        for box in ((20, 30, 200, 80), (20, 30, 120, 120), (20, 30, 400, 90),
+                    (20, 30, 140, 55), (20, 30, 300, 200)):
+            frame, _ = self.make_panel(box=box)
+            with self.subTest(size=box[2:]):
+                self.assert_box(minimap.find_minimap(frame), box)
+
+    def test_transparency_beats_fixed_white_threshold(self):
+        """半透明边框的亮度会低于"纯白"，必须仍然找到。"""
+        frame, border = self.make_panel(alpha=0.4)
+        self.assertLess(border[0], minimap.THRESHOLDS[0][0])  # 比最严的阈值还暗
+        self.assertIsNotNone(minimap.find_minimap(frame))
 
 
 class BoxTest(unittest.TestCase):
