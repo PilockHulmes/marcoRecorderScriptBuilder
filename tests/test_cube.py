@@ -127,6 +127,8 @@ class FakeOCR:
     def ocr(self, image):
         self.calls += 1
         text = self.texts[min(self.calls - 1, len(self.texts) - 1)]
+        if not text:
+            return []
         box = [[0, 0], [10, 0], [10, 10], [0, 10]]
         return [[[box, (text, 0.99)]]]
 
@@ -215,6 +217,24 @@ class RollerTest(unittest.TestCase):
         self.assertTrue(ok)
         self.assertIn('esc', self.keys.taps)
         self.assertEqual(roller.rolls, 1)
+
+
+
+
+class ReadLinesTest(unittest.TestCase):
+    def test_retries_right_half_when_full_line_fails(self):
+        # 整行认不出时，裁右半段重试："STR +2" 就读出来了
+        ocr = FakeOCR(["以角色等级為准每9级", "STR +2", "LUK +9%", "全屬性 +6%"])
+        lines = cube.read_lines(np.zeros((807, 1382, 3), np.uint8), ocr=ocr)
+        self.assertEqual(len(lines), 3)
+        self.assertEqual((lines[0].stat, lines[0].kind, lines[0].value), ("STR", "perlevel", 2))
+        self.assertEqual(lines[1].stat, "LUK")
+        self.assertEqual(lines[2].stat, "ALL")
+
+    def test_no_retry_when_first_read_succeeds(self):
+        ocr = FakeOCR(["LUK +9%", "LUK +8%", "LUK +7%"])
+        cube.read_lines(np.zeros((807, 1382, 3), np.uint8), ocr=ocr)
+        self.assertEqual(ocr.calls, 3)
 
 
 if __name__ == "__main__":

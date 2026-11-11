@@ -144,8 +144,26 @@ def row_boxes(frame):
     return boxes
 
 
-def read_lines(frame, ocr=None, upscale=3.0):
-    """读出三行属性（OCR 只识别文字区，等级用徽章颜色）。"""
+def _ocr_text(ocr, crop, upscale=3.0, pad=16):
+    """裁图 → 放大 → 四周垫一圈像素 → OCR（小图垫边后识别率明显更高）。"""
+    if crop is None or crop.size == 0:
+        return ""
+    if upscale and abs(upscale - 1.0) > 0.01:
+        crop = cv2.resize(crop, None, fx=upscale, fy=upscale, interpolation=cv2.INTER_CUBIC)
+    if pad:
+        crop = cv2.copyMakeBorder(crop, pad, pad, pad, pad, cv2.BORDER_REPLICATE)
+    result = ocr.ocr(crop)
+    if result and result[0]:
+        return " ".join(str(item[1][0]) for item in result[0])
+    return ""
+
+
+def read_lines(frame, ocr=None, upscale=3.0, pad=16):
+    """读出三行属性（OCR 只识别文字区，等级用徽章颜色）。
+
+    先整行识别；认不出来时再只裁右半段（"属性 +X" 那部分）重试，
+    内容越少 PaddleOCR 通常越稳。
+    """
     if frame is None or getattr(frame, "size", 0) == 0:
         return []
     if ocr is None:
@@ -164,15 +182,21 @@ def read_lines(frame, ocr=None, upscale=3.0):
 
         tx, ty, tw, th = text
         crop = frame[ty:ty + th, tx:tx + tw]
-        raw = ""
-        if crop.size:
-            if upscale and abs(upscale - 1.0) > 0.01:
-                crop = cv2.resize(crop, None, fx=upscale, fy=upscale,
-                                  interpolation=cv2.INTER_CUBIC)
-            result = ocr.ocr(crop)
-            if result and result[0]:
-                raw = " ".join(str(item[1][0]) for item in result[0])
+        raw = _ocr_text(ocr, crop, upscale=upscale, pad=pad)
         stat, kind, value = parse_line(raw)
+
+        # 整行里出现了"每…級"但属性没认出来：右半段只裁到 "STR +2"，需要补回 perlevel 语义
+        per_level_hint = ("每" in raw) and ("級" in raw or "级" in raw)
+
+        if not stat and tw > 40:
+            half = crop[:, int(crop.shape[1] * 0.45):]
+            raw2 = _ocr_text(ocr, half, upscale=upscale, pad=pad)
+            stat2, kind2, value2 = parse_line(raw2)
+            if stat2:
+                if per_level_hint and kind2 == "flat":
+                    kind2 = "perlevel"
+                raw, stat, kind, value = raw2, stat2, kind2, value2
+
         lines.append(PotentialLine(raw=raw, grade=grade, stat=stat, kind=kind, value=value))
     return lines
 
