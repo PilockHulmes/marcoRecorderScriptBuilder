@@ -18,6 +18,7 @@
 依据是**数值反推**装备档位，不需要读装备等级。
 """
 
+import difflib
 import re
 import time
 from dataclasses import dataclass
@@ -49,8 +50,8 @@ PER_LEVEL_VALUE = 2           # 每9級 +2 才有用
 
 MAIN_STATS = ("STR", "DEX", "INT", "LUK")
 
-_RE_PCT = re.compile(r"(STR|DEX|INT|LUK|全屬性|全属性)\s*[+＋]\s*(\d+)\s*%")
-_RE_FLAT = re.compile(r"(STR|DEX|INT|LUK|全屬性|全属性)\s*[+＋]\s*(\d+)\s*$")
+_RE_PCT = re.compile(r"(STR|DEX|INT|LUK|全[屬属]?[性]?)\s*[+＋]\s*(\d+)\s*%")
+_RE_FLAT = re.compile(r"(STR|DEX|INT|LUK|全[屬属]?[性]?)\s*[+＋]\s*(\d+)\s*$")
 _RE_PER_LEVEL = re.compile(r"每\s*9\s*[級级]\s*(?:為準|为准)?\s*([A-Za-z]{1,3})\s*[+＋]\s*(\d+)")
 
 #: OCR 常把 DEX 認成 DE、LUK 認成 LU，這裡做前綴補全
@@ -63,9 +64,21 @@ _STAT_ALIASES = {
 
 
 def normalize_stat(name):
-    """把 OCR 出来属性名补全成 STR/DEX/INT/LUK（认不出返回原样）。"""
+    """把 OCR 出来的属性名补全成 STR/DEX/INT/LUK/ALL（认不出返回原样）。
+
+    先查别名表，再按相似度就近匹配（OCR 常见 DEK/ETR 这种错一个字母的情况）。
+    """
     key = (name or "").upper().strip()
-    return _STAT_ALIASES.get(key, key)
+    if key in _STAT_ALIASES:
+        return _STAT_ALIASES[key]
+    if key.startswith("全"):
+        return "ALL"
+    best, score = key, 0.0
+    for stat in MAIN_STATS:
+        ratio = difflib.SequenceMatcher(None, key, stat).ratio()
+        if ratio > score:
+            best, score = stat, ratio
+    return best if score >= 0.6 else key
 #: 兜底：其它属性行（MaxHP、攻擊力…）也要认出来，只是判定为"没用"
 _RE_ANY = re.compile(r"([A-Za-z][A-Za-z ]*|[\u4e00-\u9fff]+)\s*[+＋]\s*(\d+)\s*(%?)")
 
@@ -102,15 +115,16 @@ def parse_line(text):
         return normalize_stat(match.group(1)), "perlevel", int(match.group(2))
     match = _RE_PCT.search(body)
     if match:
-        stat = "ALL" if match.group(1) in ("全屬性", "全属性") else match.group(1)
-        return stat, "pct", int(match.group(2))
+        return normalize_stat(match.group(1)), "pct", int(match.group(2))
     match = _RE_FLAT.search(body)
     if match:
-        stat = "ALL" if match.group(1) in ("全屬性", "全属性") else match.group(1)
-        return stat, "flat", int(match.group(2))
+        return normalize_stat(match.group(1)), "flat", int(match.group(2))
     match = _RE_ANY.search(body)
     if match:
-        return "OTHER", ("pct" if match.group(3) else "flat"), int(match.group(2))
+        stat = normalize_stat(match.group(1))
+        if stat != "ALL" and stat not in MAIN_STATS:
+            stat = "OTHER"
+        return stat, ("pct" if match.group(3) else "flat"), int(match.group(2))
     return "", "", 0
 
 

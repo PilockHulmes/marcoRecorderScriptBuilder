@@ -37,6 +37,17 @@ class ParseLineTest(unittest.TestCase):
         self.assertEqual(cube.normalize_stat("LU"), "LUK")
         self.assertEqual(cube.normalize_stat("st"), "STR")
 
+
+    def test_fuzzy_stat_names_from_real_ocr(self):
+        # 这几种都是真实洗魔方时 OCR 读出来的错拼
+        self.assertEqual(cube.parse_line("全性 +5%"), ("ALL", "pct", 5))
+        self.assertEqual(cube.parse_line("ETR +18"), ("STR", "flat", 18))
+        self.assertEqual(cube.parse_line("DEK +2"), ("DEX", "flat", 2))
+
+    def test_unknown_lines_stay_other(self):
+        for text in ("MAXMP +11%", "道具掉落率+5%", "物理攻擎力 +16", "MaxHP +300"):
+            self.assertEqual(cube.parse_line(text)[0], "OTHER", text)
+
     def test_garbage(self):
         self.assertEqual(cube.parse_line(""), ("", "", 0))
         self.assertEqual(cube.parse_line("無法辨識"), ("", "", 0))

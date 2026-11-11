@@ -29,6 +29,7 @@ def main(argv=None):
     parser.add_argument("--dry", action="store_true", help="只检查选中状态，不洗")
     parser.add_argument("--main", default="LUK")
     parser.add_argument("--key", default="enter", help="确认键：enter 或 space")
+    parser.add_argument("--rolls", type=int, default=1, help="最多洗几次")
     args = parser.parse_args(argv)
 
     print("管理员权限:", keys.is_elevated())
@@ -57,18 +58,27 @@ def main(argv=None):
         roll_key=args.key,
     )
 
-    frame_before = grab(window)
-    lines = roller.roll_once()
-    print("洗出结果:")
-    for line in lines:
-        print(f"  {line.grade}  {line.raw!r:28} -> stat={line.stat:5s} "
-              f"kind={line.kind:9s} value={line.value}")
     shots = ROOT / "screenshots" / "cube_rolls"
     shots.mkdir(parents=True, exist_ok=True)
     import cv2
-    cv2.imwrite(str(shots / f"roll_{time.strftime('%Y%m%d_%H%M%S')}.png"), grab(window))
-    keep, reason = cube.judge(lines, main=args.main)
-    print("判定:", keep, reason)
+
+    keep = False
+    reason = ""
+    for index in range(1, args.rolls + 1):
+        lines = roller.roll_once()
+        stamp = time.strftime("%Y%m%d_%H%M%S")
+        image = shots / f"roll_{index:02d}_{stamp}.png"
+        cv2.imwrite(str(image), grab(window))
+        keep, reason = cube.judge(lines, main=args.main)
+        print(f"第 {index} 次 [{image.name}] keep={keep} ({reason})")
+        for line in lines:
+            print(f"    {line.grade}  {line.raw!r:34} -> {line.stat:5s} {line.kind:9s} {line.value}")
+        if keep:
+            roller._keys.tap("esc", hold=0.04)
+            roller._sleep(0.4)
+            print("满足条件，已按 Esc 退出洗魔方界面")
+            break
+    print("总计:", roller.rolls, "次; 保留:", keep, reason)
     return 0 if keep else 0
 
 
