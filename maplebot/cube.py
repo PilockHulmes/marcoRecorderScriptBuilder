@@ -19,6 +19,7 @@
 """
 
 import re
+import time
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -50,7 +51,21 @@ MAIN_STATS = ("STR", "DEX", "INT", "LUK")
 
 _RE_PCT = re.compile(r"(STR|DEX|INT|LUK|全屬性|全属性)\s*[+＋]\s*(\d+)\s*%")
 _RE_FLAT = re.compile(r"(STR|DEX|INT|LUK|全屬性|全属性)\s*[+＋]\s*(\d+)\s*$")
-_RE_PER_LEVEL = re.compile(r"每\s*9\s*[級级]\s*(STR|DEX|INT|LUK)\s*[+＋]\s*(\d+)")
+_RE_PER_LEVEL = re.compile(r"每\s*9\s*[級级]\s*(?:為準|为准)?\s*([A-Za-z]{1,3})\s*[+＋]\s*(\d+)")
+
+#: OCR 常把 DEX 認成 DE、LUK 認成 LU，這裡做前綴補全
+_STAT_ALIASES = {
+    "STR": "STR", "ST": "STR", "S": "STR",
+    "DEX": "DEX", "DE": "DEX", "DX": "DEX", "D": "DEX",
+    "INT": "INT", "IN": "INT", "I": "INT",
+    "LUK": "LUK", "LU": "LUK", "LK": "LUK", "L": "LUK",
+}
+
+
+def normalize_stat(name):
+    """把 OCR 出来属性名补全成 STR/DEX/INT/LUK（认不出返回原样）。"""
+    key = (name or "").upper().strip()
+    return _STAT_ALIASES.get(key, key)
 #: 兜底：其它属性行（MaxHP、攻擊力…）也要认出来，只是判定为"没用"
 _RE_ANY = re.compile(r"([A-Za-z][A-Za-z ]*|[\u4e00-\u9fff]+)\s*[+＋]\s*(\d+)\s*(%?)")
 
@@ -84,7 +99,7 @@ def parse_line(text):
         return "", "", 0
     match = _RE_PER_LEVEL.search(body)
     if match:
-        return match.group(1), "perlevel", int(match.group(2))
+        return normalize_stat(match.group(1)), "perlevel", int(match.group(2))
     match = _RE_PCT.search(body)
     if match:
         stat = "ALL" if match.group(1) in ("全屬性", "全属性") else match.group(1)
@@ -205,8 +220,133 @@ def judge(lines, main="LUK"):
     return False, "不满足保留条件"
 
 
+# ---------------------------------------------------------------- 交互层
+#: 粉色魔方图标（窗口内比例，基于 1382×807 实测）
+PINK_CUBE_BOX = (200 / 1382, 515 / 807, 250 / 1382, 565 / 807)
+#: 「重新設定」按钮
+RESET_BTN_BOX = (255 / 1382, 695 / 807, 460 / 1382, 750 / 807)
+#: 选中时图标外框的青色像素数量（实测：未选 0，已选 161）
+CYAN_MIN_PIXELS = 50
+CYAN_HUE = (80, 105)
+
+
+def box_pixels(frame, frac_box):
+    """比例框 → 像素框 (x0, y0, x1, y1)。"""
+    height, width = frame.shape[:2]
+    x0, y0, x1, y1 = frac_box
+    return int(x0 * width), int(y0 * height), int(x1 * width), int(y1 * height)
+
+
+def box_center(frame, frac_box):
+    x0, y0, x1, y1 = box_pixels(frame, frac_box)
+    return (x0 + x1) // 2, (y0 + y1) // 2
+
+
+def cyan_pixels(frame, frac_box):
+    """框内"青色"像素数（选中高亮框）。"""
+    x0, y0, x1, y1 = box_pixels(frame, frac_box)
+    crop = frame[y0:y1, x0:x1]
+    if crop.size == 0:
+        return 0
+    hsv = cv2.cvtColor(crop, cv2.COLOR_BGR2HSV)
+    mask = (
+        (hsv[:, :, 0] >= CYAN_HUE[0]) & (hsv[:, :, 0] <= CYAN_HUE[1])
+        & (hsv[:, :, 1] > 150) & (hsv[:, :, 2] > 150)
+    )
+    return int(mask.sum())
+
+
+def is_selected(frame):
+    """粉色魔方是否已被选中。"""
+    return cyan_pixels(frame, PINK_CUBE_BOX) >= CYAN_MIN_PIXELS
+
+
+class RollError(RuntimeError):
+    """洗魔方流程中某一步没成功。"""
+
+
+class CubeRoller:
+    """把"选中粉色魔方 → 点重新設定 → Enter → 读三行"串起来。
+
+    所有外部动作都可注入，方便离线测试：
+
+    :param grab:      ``() -> BGR frame``（游戏窗口截图）
+    :param click:     ``(x, y) -> None``
+    :param key_api:   :class:`maplebot.keys.Keyboard` 或假实现（只用 tap）
+    :param ocr:       PaddleOCR 实例或假实现
+    :param sleep:     等待函数
+    """
+
+    def __init__(self, grab, click, key_api, ocr=None, sleep=None, main="LUK"):
+        self._grab = grab
+        self._click = click
+        self._keys = key_api
+        self._ocr = ocr
+        self._sleep = sleep or time.sleep
+        self.main = main
+        self.rolls = 0
+        self.history = []
+
+    # ------------------------------------------------------------ 单步
+    def select_pink(self):
+        frame = self._grab()
+        if is_selected(frame):
+            return True
+        x, y = box_center(frame, PINK_CUBE_BOX)
+        self._click(x, y)
+        self._sleep(0.35)
+        return is_selected(self._grab())
+
+    def open_dialog(self):
+        frame = self._grab()
+        x, y = box_center(frame, RESET_BTN_BOX)
+        self._click(x, y)
+        self._sleep(0.45)
+
+    def confirm(self):
+        self._keys.tap("enter", hold=0.05)
+        self._sleep(0.85)          # 关掉动画后约 0.5s 稳定，留余量
+
+    def read(self):
+        return read_lines(self._grab(), ocr=self._ocr)
+
+    # ------------------------------------------------------------ 整轮
+    def roll_once(self):
+        """洗一次并返回三行结果；失败抛 :class:`RollError`。"""
+        if not self.select_pink():
+            raise RollError("粉色魔方没有被选中")
+        self.open_dialog()
+        self.confirm()
+        lines = self.read()
+        self.rolls += 1
+        keep, reason = judge(lines, main=self.main)
+        self.history.append({"roll": self.rolls, "lines": lines, "keep": keep, "reason": reason})
+        return lines
+
+    def run_until(self, max_rolls=50, exit_with_esc=True):
+        """一直洗到满足条件（或到达次数上限）。
+
+        保留时按一次 Esc 退出洗魔方界面，避免手滑重洗。
+        """
+        for _ in range(max_rolls):
+            lines = self.roll_once()
+            keep, reason = self.history[-1]["keep"], self.history[-1]["reason"]
+            if keep:
+                if exit_with_esc:
+                    self._keys.tap("esc", hold=0.04)
+                    self._sleep(0.4)
+                return True, self.history[-1]
+        return False, self.history[-1] if self.history else {}
+
+
 __all__ = [
+    "CubeRoller",
     "PotentialLine",
+    "RollError",
+    "box_center",
+    "box_pixels",
+    "cyan_pixels",
+    "is_selected",
     "grade_from_badge",
     "is_useful_main",
     "judge",

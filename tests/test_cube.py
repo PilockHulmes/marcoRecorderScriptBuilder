@@ -2,6 +2,7 @@
 
 import unittest
 
+import cv2
 import numpy as np
 
 from maplebot import cube
@@ -25,6 +26,16 @@ class ParseLineTest(unittest.TestCase):
 
     def test_fullwidth_and_spaces(self):
         self.assertEqual(cube.parse_line("LUK ＋９％"), ("LUK", "pct", 9))
+
+
+    def test_per_level_with_dropped_letter(self):
+        # 真实 OCR 结果：DEX 被认成 DE，繁体被识别成简体
+        self.assertEqual(cube.parse_line("以角色等级為准每9级DE+2"), ("DEX", "perlevel", 2))
+
+    def test_stat_aliases(self):
+        self.assertEqual(cube.normalize_stat("de"), "DEX")
+        self.assertEqual(cube.normalize_stat("LU"), "LUK")
+        self.assertEqual(cube.normalize_stat("st"), "STR")
 
     def test_garbage(self):
         self.assertEqual(cube.parse_line(""), ("", "", 0))
@@ -104,6 +115,106 @@ class RowBoxTest(unittest.TestCase):
         self.assertEqual(len(rows), 3)
         ys = [row[1][1] for row in rows]
         self.assertEqual(ys, sorted(ys))
+
+
+
+
+class FakeOCR:
+    def __init__(self, texts):
+        self.texts = list(texts)
+        self.calls = 0
+
+    def ocr(self, image):
+        self.calls += 1
+        text = self.texts[min(self.calls - 1, len(self.texts) - 1)]
+        box = [[0, 0], [10, 0], [10, 10], [0, 10]]
+        return [[[box, (text, 0.99)]]]
+
+
+class FakeKeys:
+    def __init__(self):
+        self.taps = []
+
+    def tap(self, key, hold=0.04):
+        self.taps.append(key)
+
+
+class FakeGrab:
+    def __init__(self, frames):
+        self.frames = list(frames)
+        self.index = 0
+
+    def __call__(self):
+        frame = self.frames[min(self.index, len(self.frames) - 1)]
+        self.index += 1
+        return frame
+
+
+def make_frame(selected=False):
+    frame = np.zeros((807, 1382, 3), np.uint8)
+    x0, y0, x1, y1 = cube.box_pixels(frame, cube.PINK_CUBE_BOX)
+    if selected:
+        cv2.rectangle(frame, (x0, y0), (x1, y1), (255, 255, 0), 3)   # 青色（BGR）
+    return frame
+
+
+class SelectedTest(unittest.TestCase):
+    def test_cyan_border_means_selected(self):
+        self.assertTrue(cube.is_selected(make_frame(selected=True)))
+
+    def test_plain_frame_is_not_selected(self):
+        self.assertFalse(cube.is_selected(make_frame(selected=False)))
+
+    def test_centres(self):
+        frame = make_frame()
+        self.assertEqual(cube.box_center(frame, cube.PINK_CUBE_BOX), (225, 540))
+        self.assertEqual(cube.box_center(frame, cube.RESET_BTN_BOX), (357, 722))
+
+
+class RollerTest(unittest.TestCase):
+    def make(self, frames, texts, main='LUK'):
+        self.clicks = []
+        self.keys = FakeKeys()
+        self.grab = FakeGrab(frames)
+        roller = cube.CubeRoller(
+            grab=self.grab,
+            click=lambda x, y: self.clicks.append((x, y)),
+            key_api=self.keys,
+            ocr=FakeOCR(texts),
+            sleep=lambda _s: None,
+            main=main,
+        )
+        return roller
+
+    def test_roll_once_selects_clicks_and_enters(self):
+        frames = [make_frame(False), make_frame(True), make_frame(True), make_frame(True)]
+        roller = self.make(frames, ['LUK +9%', '全屬性 +6%', '每9級 LUK +2'])
+        lines = roller.roll_once()
+        self.assertEqual(len(lines), 3)
+        self.assertEqual(lines[0].stat, 'LUK')
+        self.assertEqual(self.clicks[0], (225, 540))       # 点魔方
+        self.assertEqual(self.clicks[1], (357, 722))       # 点重新設定
+        self.assertEqual(self.keys.taps, ['enter'])
+
+    def test_already_selected_skips_cube_click(self):
+        frames = [make_frame(True)] * 4
+        roller = self.make(frames, ['LUK +9%', 'LUK +8%', 'LUK +7%'])
+        roller.roll_once()
+        self.assertEqual(self.clicks, [(357, 722)])
+
+    def test_failure_to_select_raises(self):
+        frames = [make_frame(False)] * 3
+        roller = self.make(frames, ['LUK +9%'] * 3)
+        with self.assertRaises(cube.RollError):
+            roller.roll_once()
+
+    def test_run_until_stops_and_presses_esc(self):
+        frames = [make_frame(True)] * 8
+        roller = self.make(frames, ['LUK +9%', 'LUK +8%', 'LUK +7%'])
+        ok, record = roller.run_until(max_rolls=5)
+        self.assertTrue(ok)
+        self.assertIn('esc', self.keys.taps)
+        self.assertEqual(roller.rolls, 1)
 
 
 if __name__ == "__main__":
