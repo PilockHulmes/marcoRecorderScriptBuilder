@@ -163,11 +163,15 @@ class FakeGrab:
         return frame
 
 
-def make_frame(selected=False):
+def make_frame(selected=False, badges=True):
     frame = np.zeros((807, 1382, 3), np.uint8)
     x0, y0, x1, y1 = cube.box_pixels(frame, cube.PINK_CUBE_BOX)
     if selected:
         cv2.rectangle(frame, (x0, y0), (x1, y1), (255, 255, 0), 3)   # 青色（BGR）
+    if badges:
+        for badge, _text in cube.row_boxes(frame):
+            bx, by, bw, bh = badge
+            cv2.rectangle(frame, (bx, by), (bx + bw, by + bh), (0, 255, 204), -1)
     return frame
 
 
@@ -200,7 +204,7 @@ class RollerTest(unittest.TestCase):
         return roller
 
     def test_roll_once_selects_clicks_and_enters(self):
-        frames = [make_frame(False), make_frame(True), make_frame(True), make_frame(True)]
+        frames = [make_frame(False), make_frame(False), make_frame(True), make_frame(True), make_frame(True)]
         roller = self.make(frames, ['LUK +9%', '全屬性 +6%', '每9級 LUK +2'])
         lines = roller.roll_once()
         self.assertEqual(len(lines), 3)

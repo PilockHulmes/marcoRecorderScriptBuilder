@@ -294,6 +294,22 @@ def cyan_pixels(frame, frac_box):
     return int(mask.sum())
 
 
+def grade_count(frame):
+    """三行徽章里能认出 L/U 的个数；面板在不在就看它。"""
+    count = 0
+    for badge, _text in row_boxes(frame):
+        bx, by, bw, bh = badge
+        patch = frame[by:by + bh, bx:bx + bw]
+        if patch.size and grade_from_badge(patch) in ("L", "U"):
+            count += 1
+    return count
+
+
+def panel_visible(frame, minimum=2):
+    """洗魔方面板是否真的在前台（窗口被遮挡/关闭时为 False，避免白洗）。"""
+    return grade_count(frame) >= minimum
+
+
 def is_selected(frame):
     """粉色魔方是否已被选中。"""
     return cyan_pixels(frame, PINK_CUBE_BOX) >= CYAN_MIN_PIXELS
@@ -315,7 +331,8 @@ class CubeRoller:
     :param sleep:     等待函数
     """
 
-    def __init__(self, grab, click, key_api, ocr=None, sleep=None, main="LUK", roll_key="enter"):
+    def __init__(self, grab, click, key_api, ocr=None, sleep=None, main="LUK", roll_key="enter",
+                 guard=None):
         self._grab = grab
         self._click = click
         self._keys = key_api
@@ -323,6 +340,7 @@ class CubeRoller:
         self._sleep = sleep or time.sleep
         self.main = main
         self.roll_key = roll_key      # 实测空格也能触发洗魔方
+        self._guard = guard           # () -> bool：游戏窗口是否仍在前台
         self.rolls = 0
         self.history = []
 
@@ -352,6 +370,10 @@ class CubeRoller:
     # ------------------------------------------------------------ 整轮
     def roll_once(self):
         """洗一次并返回三行结果；失败抛 :class:`RollError`。"""
+        if self._guard is not None and not self._guard():
+            raise RollError("游戏窗口不在前台（被遮挡或已切走），停止以免白洗")
+        if not panel_visible(self._grab()):
+            raise RollError("洗魔方面板不可见（窗口被遮挡或已关闭）")
         if not self.select_pink():
             raise RollError("粉色魔方没有被选中")
         self.open_dialog()
@@ -385,7 +407,9 @@ __all__ = [
     "box_center",
     "box_pixels",
     "cyan_pixels",
+    "grade_count",
     "is_selected",
+    "panel_visible",
     "grade_from_badge",
     "is_useful_main",
     "judge",

@@ -56,16 +56,30 @@ def main(argv=None):
         sleep=time.sleep,
         main=args.main,
         roll_key=args.key,
+        guard=lambda: __import__("win32gui").GetForegroundWindow() == hwnd,
     )
 
     shots = ROOT / "screenshots" / "cube_rolls"
     shots.mkdir(parents=True, exist_ok=True)
     import cv2
 
+    import csv
+
+    log_path = shots / "rolls_log.csv"
+    new_log = not log_path.exists()
+    log_file = log_path.open("a", newline="", encoding="utf-8")
+    writer = csv.writer(log_file)
+    if new_log:
+        writer.writerow(["index", "time", "image", "keep", "reason", "line1", "line2", "line3"])
+
     keep = False
     reason = ""
     for index in range(1, args.rolls + 1):
-        lines = roller.roll_once()
+        try:
+            lines = roller.roll_once()
+        except cube.RollError as exc:
+            print("中止:", exc)
+            break
         stamp = time.strftime("%Y%m%d_%H%M%S")
         image = shots / f"roll_{index:02d}_{stamp}.png"
         cv2.imwrite(str(image), grab(window))
@@ -73,12 +87,16 @@ def main(argv=None):
         print(f"第 {index} 次 [{image.name}] keep={keep} ({reason})")
         for line in lines:
             print(f"    {line.grade}  {line.raw!r:34} -> {line.stat:5s} {line.kind:9s} {line.value}")
+        writer.writerow([index, stamp, image.name, int(keep), reason] + [line.raw for line in lines])
+        log_file.flush()
         if keep:
             roller._keys.tap("esc", hold=0.04)
             roller._sleep(0.4)
             print("满足条件，已按 Esc 退出洗魔方界面")
             break
+    log_file.close()
     print("总计:", roller.rolls, "次; 保留:", keep, reason)
+    print("日志:", log_path)
     return 0 if keep else 0
 
 
