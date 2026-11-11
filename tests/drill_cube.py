@@ -28,6 +28,7 @@ def main(argv=None):
     parser = argparse.ArgumentParser()
     parser.add_argument("--dry", action="store_true", help="只检查选中状态，不洗")
     parser.add_argument("--main", default="LUK")
+    parser.add_argument("--key", default="enter", help="确认键：enter 或 space")
     args = parser.parse_args(argv)
 
     print("管理员权限:", keys.is_elevated())
@@ -53,6 +54,7 @@ def main(argv=None):
         ocr=PaddleOCR(lang="ch", show_log=False),
         sleep=time.sleep,
         main=args.main,
+        roll_key=args.key,
     )
 
     frame_before = grab(window)

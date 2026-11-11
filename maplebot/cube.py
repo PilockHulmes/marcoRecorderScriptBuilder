@@ -277,13 +277,14 @@ class CubeRoller:
     :param sleep:     等待函数
     """
 
-    def __init__(self, grab, click, key_api, ocr=None, sleep=None, main="LUK"):
+    def __init__(self, grab, click, key_api, ocr=None, sleep=None, main="LUK", roll_key="enter"):
         self._grab = grab
         self._click = click
         self._keys = key_api
         self._ocr = ocr
         self._sleep = sleep or time.sleep
         self.main = main
+        self.roll_key = roll_key      # 实测空格也能触发洗魔方
         self.rolls = 0
         self.history = []
 
@@ -304,7 +305,7 @@ class CubeRoller:
         self._sleep(0.45)
 
     def confirm(self):
-        self._keys.tap("enter", hold=0.05)
+        self._keys.tap(self.roll_key, hold=0.05)
         self._sleep(0.85)          # 关掉动画后约 0.5s 稳定，留余量
 
     def read(self):
