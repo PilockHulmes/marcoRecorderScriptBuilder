@@ -38,9 +38,14 @@ def main(argv=None):
     time.sleep(0.5)
 
     frame = grab(window)
-    print("粉色魔方已选中:", cube.is_selected(frame),
-          "| 青色像素:", cube.cyan_pixels(frame, cube.PINK_CUBE_BOX))
+    header_ocr = None
     if args.dry:
+        from paddleocr import PaddleOCR as _P
+        import logging as _l
+        _l.getLogger("ppocr").setLevel(_l.ERROR)
+        header_ocr = _P(lang="ch", show_log=False)
+        print("标题:", cube.read_header(frame, header_ocr))
+        print("粉色魔方已选中:", cube.is_pink_selected(frame, header_ocr))
         return 0
 
     from paddleocr import PaddleOCR

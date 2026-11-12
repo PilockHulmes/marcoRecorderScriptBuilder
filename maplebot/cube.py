@@ -263,9 +263,17 @@ def judge(lines, main="LUK"):
 PINK_CUBE_BOX = (200 / 1382, 515 / 807, 250 / 1382, 565 / 807)
 #: 「重新設定」按钮
 RESET_BTN_BOX = (255 / 1382, 695 / 807, 460 / 1382, 750 / 807)
-#: 选中时图标外框的青色像素数量（实测：未选 0，已选 161）
+#: 选中时图标外框的青色像素数量（旧判据，遇到青色方块会误判，已改为看标题）
 CYAN_MIN_PIXELS = 50
 CYAN_HUE = (80, 105)
+
+#: 「使用货빕」标题栏：显示当前选中的是哪种方块（珍貴/恢復/…）
+HEADER_BOX = (175 / 1382, 492 / 807, 570 / 1382, 520 / 807)
+#: 六个可能的方块槽中心（窗口内 x 比例，槽宽约 27px、间距约 41px）
+SLOT_X = tuple(x / 1382 for x in (191, 232, 273, 314, 355, 396))
+SLOT_Y = 540 / 807
+#: 粉色（珍貴）方块在标题里的名字
+PINK_KEYWORD = "珍貴"
 
 
 def box_pixels(frame, frac_box):
@@ -310,8 +318,27 @@ def panel_visible(frame, minimum=2):
     return grade_count(frame) >= minimum
 
 
-def is_selected(frame):
-    """粉色魔方是否已被选中。"""
+def read_header(frame, ocr):
+    """读「使用货빕」后面那段文字：当前选中的方块名字。"""
+    x0, y0, x1, y1 = box_pixels(frame, HEADER_BOX)
+    crop = frame[y0:y1, x0:x1]
+    if crop is None or crop.size == 0:
+        return ""
+    return _ocr_text(ocr, crop, upscale=2.5, pad=12)
+
+
+def is_pink_selected(frame, ocr):
+    """粉色魔方是否已被选中：看标题栏是不是写着「珍貴附加方塊」。
+
+    不再用"青色像素"判断——背包里出现了青色的新方块，会误判。
+    """
+    return PINK_KEYWORD in read_header(frame, ocr)
+
+
+def is_selected(frame, ocr=None):
+    """兼容旧接口：有 OCR 就按标题判断，没有就退回青色像素。"""
+    if ocr is not None:
+        return is_pink_selected(frame, ocr)
     return cyan_pixels(frame, PINK_CUBE_BOX) >= CYAN_MIN_PIXELS
 
 
@@ -345,14 +372,22 @@ class CubeRoller:
         self.history = []
 
     # ------------------------------------------------------------ 单步
-    def select_pink(self):
+    def select_pink(self, slots=SLOT_X):
+        """按标题找粉色方块：逐个点槽位，直到标题变成「珍貴附加方塊」。
+
+        比按位置/颜色判断可靠：方块数量、顺序、颜色都会变，但名字不会。
+        """
         frame = self._grab()
-        if is_selected(frame):
+        if is_pink_selected(frame, self._ocr):
             return True
-        x, y = box_center(frame, PINK_CUBE_BOX)
-        self._click(x, y)
-        self._sleep(0.35)
-        return is_selected(self._grab())
+        height, width = frame.shape[:2]
+        y = int(SLOT_Y * height)
+        for frac in slots:
+            self._click(int(frac * width), y)
+            self._sleep(0.35)
+            if is_pink_selected(self._grab(), self._ocr):
+                return True
+        return False
 
     def open_dialog(self):
         frame = self._grab()

@@ -189,7 +189,7 @@ class SelectedTest(unittest.TestCase):
 
 
 class RollerTest(unittest.TestCase):
-    def make(self, frames, texts, main='LUK'):
+    def make(self, frames, texts, main="LUK", header="珍貴附加方塊"):
         self.clicks = []
         self.keys = FakeKeys()
         self.grab = FakeGrab(frames)
@@ -197,7 +197,7 @@ class RollerTest(unittest.TestCase):
             grab=self.grab,
             click=lambda x, y: self.clicks.append((x, y)),
             key_api=self.keys,
-            ocr=FakeOCR(texts),
+            ocr=FakeOCR([header] + list(texts)),
             sleep=lambda _s: None,
             main=main,
         )
@@ -205,35 +205,34 @@ class RollerTest(unittest.TestCase):
 
     def test_roll_once_selects_clicks_and_enters(self):
         frames = [make_frame(False), make_frame(False), make_frame(True), make_frame(True), make_frame(True)]
-        roller = self.make(frames, ['LUK +9%', '全屬性 +6%', '每9級 LUK +2'])
+        roller = self.make(frames, ["珍貴附加方塊", "LUK +9%", "全屬性 +6%", "每9級 LUK +2"],
+                           header="恢復附加方塊")
         lines = roller.roll_once()
         self.assertEqual(len(lines), 3)
-        self.assertEqual(lines[0].stat, 'LUK')
-        self.assertEqual(self.clicks[0], (225, 540))       # 点魔方
+        self.assertEqual(lines[0].stat, "LUK")
+        self.assertEqual(self.clicks[0], (int(cube.SLOT_X[0] * 1382), 540))       # 点第一个槽位
         self.assertEqual(self.clicks[1], (357, 722))       # 点重新設定
-        self.assertEqual(self.keys.taps, ['enter'])
+        self.assertEqual(self.keys.taps, ["enter"])
 
     def test_already_selected_skips_cube_click(self):
         frames = [make_frame(True)] * 4
-        roller = self.make(frames, ['LUK +9%', 'LUK +8%', 'LUK +7%'])
+        roller = self.make(frames, ["LUK +9%", "LUK +8%", "LUK +7%"])
         roller.roll_once()
-        self.assertEqual(self.clicks, [(357, 722)])
+        self.assertEqual(self.clicks, [(357, 722)])        # 已选中时只点重新設定
 
     def test_failure_to_select_raises(self):
         frames = [make_frame(False)] * 3
-        roller = self.make(frames, ['LUK +9%'] * 3)
+        roller = self.make(frames, ["LUK +9%"] * 8, header="恢復附加方塊")
         with self.assertRaises(cube.RollError):
             roller.roll_once()
 
     def test_run_until_stops_and_presses_esc(self):
         frames = [make_frame(True)] * 8
-        roller = self.make(frames, ['LUK +9%', 'LUK +8%', 'LUK +7%'])
-        ok, record = roller.run_until(max_rolls=5)
+        roller = self.make(frames, ["LUK +9%", "LUK +8%", "LUK +7%"])
+        ok, _ = roller.run_until(max_rolls=5)
         self.assertTrue(ok)
-        self.assertIn('esc', self.keys.taps)
+        self.assertIn("esc", self.keys.taps)
         self.assertEqual(roller.rolls, 1)
-
-
 
 
 class ReadLinesTest(unittest.TestCase):
