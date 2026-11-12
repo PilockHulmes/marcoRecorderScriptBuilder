@@ -30,6 +30,8 @@ def main(argv=None):
     parser.add_argument("--main", default="LUK")
     parser.add_argument("--key", default="enter", help="确认键：enter 或 space")
     parser.add_argument("--rolls", type=int, default=1, help="最多洗几次")
+    parser.add_argument("--cube", default="pink", choices=("pink", "cyan", "orange"),
+                        help="用哪种方块洗")
     args = parser.parse_args(argv)
 
     print("管理员权限:", keys.is_elevated())
@@ -45,7 +47,7 @@ def main(argv=None):
         _l.getLogger("ppocr").setLevel(_l.ERROR)
         header_ocr = _P(lang="ch", show_log=False)
         print("标题:", cube.read_header(frame, header_ocr))
-        print("粉色魔方已选中:", cube.is_pink_selected(frame, header_ocr))
+        print("当前方块:", args.cube, "已选中:", cube.is_cube_selected(frame, header_ocr, args.cube))
         return 0
 
     from paddleocr import PaddleOCR
@@ -61,6 +63,7 @@ def main(argv=None):
         sleep=time.sleep,
         main=args.main,
         roll_key=args.key,
+        cube=args.cube,
         guard=lambda: __import__("win32gui").GetForegroundWindow() == hwnd,
     )
 

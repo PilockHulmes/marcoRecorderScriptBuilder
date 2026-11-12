@@ -272,8 +272,10 @@ HEADER_BOX = (175 / 1382, 492 / 807, 570 / 1382, 520 / 807)
 #: 六个可能的方块槽中心（窗口内 x 比例，槽宽约 27px、间距约 41px）
 SLOT_X = tuple(x / 1382 for x in (191, 232, 273, 314, 355, 396))
 SLOT_Y = 540 / 807
-#: 粉色（珍貴）方块在标题里的名字
-PINK_KEYWORD = "珍貴"
+#: 方块在标题栏里的关键字（实测：橙色=恢復，青色=對，粉色=珍貴）
+CUBE_KEYWORDS = {"pink": "珍貴", "cyan": "對", "orange": "恢復"}
+#: 默认洗粉色（兼容旧调用）
+PINK_KEYWORD = CUBE_KEYWORDS["pink"]
 
 
 def box_pixels(frame, frac_box):
@@ -327,12 +329,20 @@ def read_header(frame, ocr):
     return _ocr_text(ocr, crop, upscale=2.5, pad=12)
 
 
-def is_pink_selected(frame, ocr):
-    """粉色魔方是否已被选中：看标题栏是不是写着「珍貴附加方塊」。
+def header_matches(frame, ocr, keyword):
+    """标题栏里是否出现指定关键字（方块名字）。"""
+    return keyword in read_header(frame, ocr)
 
-    不再用"青色像素"判断——背包里出现了青色的新方块，会误判。
-    """
-    return PINK_KEYWORD in read_header(frame, ocr)
+
+def is_cube_selected(frame, ocr, cube="pink"):
+    """指定方块是否已被选中（按标题栏里的名字判断）。"""
+    keyword = CUBE_KEYWORDS.get(cube, cube)
+    return header_matches(frame, ocr, keyword)
+
+
+def is_pink_selected(frame, ocr):
+    """粉色魔方是否已被选中（兼容旧接口）。"""
+    return is_cube_selected(frame, ocr, "pink")
 
 
 def is_selected(frame, ocr=None):
@@ -359,35 +369,41 @@ class CubeRoller:
     """
 
     def __init__(self, grab, click, key_api, ocr=None, sleep=None, main="LUK", roll_key="enter",
-                 guard=None):
+                 guard=None, cube="pink"):
         self._grab = grab
         self._click = click
         self._keys = key_api
         self._ocr = ocr
         self._sleep = sleep or time.sleep
         self.main = main
+        self.cube = cube              # "pink" / "cyan" / "orange"
         self.roll_key = roll_key      # 实测空格也能触发洗魔方
         self._guard = guard           # () -> bool：游戏窗口是否仍在前台
         self.rolls = 0
         self.history = []
 
     # ------------------------------------------------------------ 单步
-    def select_pink(self, slots=SLOT_X):
-        """按标题找粉色方块：逐个点槽位，直到标题变成「珍貴附加方塊」。
+    def select_cube(self, slots=SLOT_X):
+        """按标题找指定方块：逐个点槽位，直到标题变成目标名字。
 
         比按位置/颜色判断可靠：方块数量、顺序、颜色都会变，但名字不会。
         """
         frame = self._grab()
-        if is_pink_selected(frame, self._ocr):
+        if is_cube_selected(frame, self._ocr, self.cube):
             return True
         height, width = frame.shape[:2]
         y = int(SLOT_Y * height)
         for frac in slots:
             self._click(int(frac * width), y)
             self._sleep(0.35)
-            if is_pink_selected(self._grab(), self._ocr):
+            if is_cube_selected(self._grab(), self._ocr, self.cube):
                 return True
         return False
+
+    def select_pink(self, slots=SLOT_X):
+        """兼容旧接口：选粉色。"""
+        self.cube = "pink"
+        return self.select_cube(slots)
 
     def open_dialog(self):
         frame = self._grab()
@@ -409,8 +425,8 @@ class CubeRoller:
             raise RollError("游戏窗口不在前台（被遮挡或已切走），停止以免白洗")
         if not panel_visible(self._grab()):
             raise RollError("洗魔方面板不可见（窗口被遮挡或已关闭）")
-        if not self.select_pink():
-            raise RollError("粉色魔方没有被选中")
+        if not self.select_cube():
+            raise RollError(f"{self.cube} 方块没有被选中（标题里没出现 {CUBE_KEYWORDS.get(self.cube, self.cube)}）")
         self.open_dialog()
         self.confirm()
         lines = self.read()
@@ -442,7 +458,10 @@ __all__ = [
     "box_center",
     "box_pixels",
     "cyan_pixels",
+    "CUBE_KEYWORDS",
     "grade_count",
+    "is_cube_selected",
+    "header_matches",
     "is_selected",
     "panel_visible",
     "grade_from_badge",

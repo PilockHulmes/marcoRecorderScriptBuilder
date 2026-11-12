@@ -220,6 +220,20 @@ class RollerTest(unittest.TestCase):
         roller.roll_once()
         self.assertEqual(self.clicks, [(357, 722)])        # 已选中时只点重新設定
 
+
+    def test_selects_cyan_by_header(self):
+        frames = [make_frame(False)] * 4
+        roller = self.make(frames, ["LUK +9%", "LUK +8%", "LUK +7%"], header="對附加方塊")
+        roller.cube = "cyan"
+        self.assertTrue(roller.select_cube())
+
+    def test_cyan_header_does_not_count_as_pink(self):
+        frame = make_frame(True)
+        self.assertTrue(cube.is_cube_selected(frame, FakeOCR(["珍貴附加方塊"]), "pink"))
+        self.assertFalse(cube.is_cube_selected(frame, FakeOCR(["對附加方塊"]), "pink"))
+        self.assertTrue(cube.is_cube_selected(frame, FakeOCR(["對附加方塊"]), "cyan"))
+        self.assertFalse(cube.is_cube_selected(frame, FakeOCR(["恢復附加方塊"]), "cyan"))
+
     def test_failure_to_select_raises(self):
         frames = [make_frame(False)] * 3
         roller = self.make(frames, ["LUK +9%"] * 8, header="恢復附加方塊")
