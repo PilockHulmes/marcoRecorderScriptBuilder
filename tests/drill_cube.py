@@ -32,6 +32,8 @@ def main(argv=None):
     parser.add_argument("--rolls", type=int, default=1, help="最多洗几次")
     parser.add_argument("--cube", default="pink", choices=("pink", "cyan", "orange"),
                         help="用哪种方块洗")
+    parser.add_argument("--fast", action="store_true",
+                        help="只查指纹表、不调 OCR（表里没有的行会退回 OCR）")
     args = parser.parse_args(argv)
 
     print("管理员权限:", keys.is_elevated())
@@ -66,6 +68,7 @@ def main(argv=None):
         cube=args.cube,
         guard=lambda: __import__("win32gui").GetForegroundWindow() == hwnd,
     )
+    roller.fast = args.fast
 
     shots = ROOT / "screenshots" / "cube_rolls"
     shots.mkdir(parents=True, exist_ok=True)
