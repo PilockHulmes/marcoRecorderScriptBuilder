@@ -568,8 +568,14 @@ class CubeRoller:
         self.cube = "pink"
         return self.select_cube(slots)
 
-    def open_dialog(self, attempts=4):
-        """点「重新設定」并确认对话框出现；游戏偶尔会忽略太快的一次点击。"""
+    def open_dialog(self, attempts=8, total_wait=4.0):
+        """点「重新設定」并等确认框出现。
+
+        偶尔（几百次里一两次）游戏会把这次点击"咽掉"或者对话框出得慢，所以
+        重试预算放到约 4 秒、间隔递增；**不做 Esc 恢复**——按 Esc 反而会关掉
+        正在打开的对话框，把状态搞乱。预算用完就报错，并留一张现场截图。
+        """
+        deadline = time.monotonic() + float(total_wait)
         for attempt in range(attempts):
             frame = self._grab()
             x, y = box_center(frame, RESET_BTN_BOX)
@@ -577,8 +583,25 @@ class CubeRoller:
             self._sleep(DIALOG_WAIT)
             if dialog_open(self._grab()):
                 return True
-            self._sleep(0.20 * (attempt + 1))
-        raise RollError("点了重新設定但确认框没有出现")
+            if time.monotonic() >= deadline:
+                break
+            self._sleep(min(0.10 * (attempt + 1), 0.40))
+        self._save_frame("dialog_missing")
+        raise RollError(
+            f"点了重新設定但确认框没有出现（重试 {attempts} 次、共约 {total_wait:.0f}s）"
+        )
+
+    def _save_frame(self, tag):
+        """出问题时留一张截图，方便事后看卡在什么状态。"""
+        try:
+            folder = Path.cwd() / "screenshots" / "cube_rolls"
+            folder.mkdir(parents=True, exist_ok=True)
+            frame = self._grab()
+            path = folder / f"{tag}_{time.strftime('%Y%m%d_%H%M%S')}.png"
+            cv2.imwrite(str(path), frame)
+            print(f"[cube] 现场截图：{path}")
+        except Exception:
+            pass
 
     def confirm(self):
         self._keys.tap(self.roll_key, hold=0.05)
