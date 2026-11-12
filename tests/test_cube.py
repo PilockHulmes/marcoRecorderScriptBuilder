@@ -169,6 +169,9 @@ def make_frame(selected=False, badges=True):
     if selected:
         cv2.rectangle(frame, (x0, y0), (x1, y1), (255, 255, 0), 3)   # 青色（BGR）
     if badges:
+        cx0, cy0, cx1, cy1 = cube.box_pixels(frame, cube.CONFIRM_BOX)
+        frame[cy0:cy1, cx0:cx1] = (102, 182, 165)      # 假装确认框开着
+    if badges:
         for badge, _text in cube.row_boxes(frame):
             bx, by, bw, bh = badge
             cv2.rectangle(frame, (bx, by), (bx + bw, by + bh), (0, 255, 204), -1)

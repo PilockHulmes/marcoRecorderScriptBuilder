@@ -269,6 +269,13 @@ CYAN_HUE = (80, 105)
 
 #: 「使用货빕」标题栏：显示当前选中的是哪种方块（珍貴/恢復/…）
 HEADER_BOX = (175 / 1382, 492 / 807, 570 / 1382, 520 / 807)
+#: 点完「重新設定」后等对话框出现（实测 p50 17ms、max 17ms）
+DIALOG_WAIT = 0.12
+#: 按确认后等新属性渲染（实测 p50 64ms、p95 85ms、max 86ms）
+CONFIRM_WAIT = 0.25
+#: 确认框里「確認」按钮的位置（窗口内比例）：框打开时这里是亮绿色
+CONFIRM_BOX = (605 / 1382, 486 / 807, 690 / 1382, 506 / 807)
+CONFIRM_BRIGHT = 110
 #: 六个可能的方块槽中心（窗口内 x 比例，槽宽约 27px、间距约 41px）
 SLOT_X = tuple(x / 1382 for x in (191, 232, 273, 314, 355, 396))
 SLOT_Y = 540 / 807
@@ -325,6 +332,13 @@ def grade_count(frame):
 def panel_visible(frame, minimum=2):
     """洗魔方面板是否真的在前台（窗口被遮挡/关闭时为 False，避免白洗）。"""
     return grade_count(frame) >= minimum
+
+
+def dialog_open(frame):
+    """确认框是否已经弹出来（看「確認」按钮那块亮不亮）。"""
+    x0, y0, x1, y1 = box_pixels(frame, CONFIRM_BOX)
+    region = frame[y0:y1, x0:x1]
+    return region.size > 0 and float(region.mean()) > CONFIRM_BRIGHT
 
 
 def read_header(frame, ocr):
@@ -418,15 +432,21 @@ class CubeRoller:
         self.cube = "pink"
         return self.select_cube(slots)
 
-    def open_dialog(self):
-        frame = self._grab()
-        x, y = box_center(frame, RESET_BTN_BOX)
-        self._click(x, y)
-        self._sleep(0.45)
+    def open_dialog(self, attempts=4):
+        """点「重新設定」并确认对话框出现；游戏偶尔会忽略太快的一次点击。"""
+        for attempt in range(attempts):
+            frame = self._grab()
+            x, y = box_center(frame, RESET_BTN_BOX)
+            self._click(x, y)
+            self._sleep(DIALOG_WAIT)
+            if dialog_open(self._grab()):
+                return True
+            self._sleep(0.20 * (attempt + 1))
+        raise RollError("点了重新設定但确认框没有出现")
 
     def confirm(self):
         self._keys.tap(self.roll_key, hold=0.05)
-        self._sleep(0.85)          # 关掉动画后约 0.5s 稳定，留余量
+        self._sleep(CONFIRM_WAIT)  # 实测属性 <=86ms 就渲染完成
 
     def read(self):
         return read_lines(self._grab(), ocr=self._ocr)
@@ -474,7 +494,12 @@ __all__ = [
     "box_center",
     "box_pixels",
     "cyan_pixels",
+    "CONFIRM_WAIT",
     "CUBE_KEYWORDS",
+    "CONFIRM_BOX",
+    "CONFIRM_BRIGHT",
+    "DIALOG_WAIT",
+    "dialog_open",
     "keywords_of",
     "grade_count",
     "is_cube_selected",
