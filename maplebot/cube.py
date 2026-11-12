@@ -286,7 +286,7 @@ TEMPLATE_DIR = Path(__file__).resolve().parents[1] / "screenshots" / "cube_templ
 #: 每个标签最多留几张图给人工确认
 MAX_SAMPLES_PER_LABEL = 5
 #: 指纹尺寸（宽 × 高）
-FINGERPRINT_SIZE = (40, 8)
+FINGERPRINT_SIZE = (60, 12)
 #: IoU 容错阈值
 FINGERPRINT_IOU = 0.98
 
@@ -374,16 +374,28 @@ def ink_mask(crop):
     return mask if mask.any() else None
 
 
-def fingerprint(crop, size=FINGERPRINT_SIZE):
-    """墨迹掩膜 → 紧包围盒 → 缩放到固定尺寸 → 位串（位置/背景无关）。"""
+def fingerprint(crop, size=FINGERPRINT_SIZE, min_ink=3):
+    """墨迹掩膜 → 紧包围盒 → max 池化到固定网格 → 位串。
+
+    用 max 池化而不是面积平均：属性字体的笔画很细，平均之后会整格变 0，
+    导致所有行的指纹都一样（撞车）。每格"有墨迹就是 1"才稳。
+    """
     mask = ink_mask(crop)
     if mask is None:
         return None, None
     ys, xs = np.nonzero(mask)
     tight = mask[ys.min():ys.max() + 1, xs.min():xs.max() + 1]
-    small = cv2.resize(tight.astype(np.float32), size, interpolation=cv2.INTER_AREA)
-    bits = (small > 0.5).astype(np.uint8)
-    return bits.tobytes().hex(), bits
+
+    cols, rows = int(size[0]), int(size[1])
+    pad_h = (-tight.shape[0]) % rows
+    pad_w = (-tight.shape[1]) % cols
+    padded = np.pad(tight, ((0, pad_h), (0, pad_w)), mode="constant")
+    blocks = padded.reshape(rows, padded.shape[0] // rows, cols, padded.shape[1] // cols)
+    cells = blocks.max(axis=(1, 3)).astype(np.uint8)
+
+    if int(cells.sum()) < min_ink:
+        return None, None          # 墨迹太少，当作无效指纹，别登记也别查
+    return cells.tobytes().hex(), cells
 
 
 class TemplateStore:
