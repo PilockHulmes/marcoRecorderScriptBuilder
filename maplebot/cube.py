@@ -272,8 +272,15 @@ HEADER_BOX = (175 / 1382, 492 / 807, 570 / 1382, 520 / 807)
 #: 六个可能的方块槽中心（窗口内 x 比例，槽宽约 27px、间距约 41px）
 SLOT_X = tuple(x / 1382 for x in (191, 232, 273, 314, 355, 396))
 SLOT_Y = 540 / 807
-#: 方块在标题栏里的关键字（实测：橙色=恢復，青色=對，粉色=珍貴）
-CUBE_KEYWORDS = {"pink": "珍貴", "cyan": "對", "orange": "恢復"}
+#: 方块在标题栏里的关键字（实测）
+#:   橙色 = 恢復附加方塊
+#:   青色 = 絕對附加方塊   （PaddleOCR 一律把「絕」丢掉，读成「對附加方塊」，所以两个写法都认）
+#:   粉色 = 珍貴附加方塊
+CUBE_KEYWORDS = {
+    "pink": ("珍貴", "珍贵"),
+    "cyan": ("絕對", "绝对", "對附加"),
+    "orange": ("恢復", "恢复"),
+}
 #: 默认洗粉色（兼容旧调用）
 PINK_KEYWORD = CUBE_KEYWORDS["pink"]
 
@@ -329,15 +336,21 @@ def read_header(frame, ocr):
     return _ocr_text(ocr, crop, upscale=2.5, pad=12)
 
 
+def keywords_of(cube):
+    """把 cube 参数（名字或别名）换成关键字元组。"""
+    value = CUBE_KEYWORDS.get(cube, cube)
+    return value if isinstance(value, tuple) else (value,)
+
+
 def header_matches(frame, ocr, keyword):
-    """标题栏里是否出现指定关键字（方块名字）。"""
-    return keyword in read_header(frame, ocr)
+    """标题栏里是否出现指定关键字（方块名字，可以是多个别名）。"""
+    header = read_header(frame, ocr)
+    return any(word in header for word in keywords_of(keyword))
 
 
 def is_cube_selected(frame, ocr, cube="pink"):
     """指定方块是否已被选中（按标题栏里的名字判断）。"""
-    keyword = CUBE_KEYWORDS.get(cube, cube)
-    return header_matches(frame, ocr, keyword)
+    return header_matches(frame, ocr, cube)
 
 
 def is_pink_selected(frame, ocr):
@@ -426,7 +439,10 @@ class CubeRoller:
         if not panel_visible(self._grab()):
             raise RollError("洗魔方面板不可见（窗口被遮挡或已关闭）")
         if not self.select_cube():
-            raise RollError(f"{self.cube} 方块没有被选中（标题里没出现 {CUBE_KEYWORDS.get(self.cube, self.cube)}）")
+            raise RollError(
+                f"{self.cube} 方块没有被选中（标题里没出现 {keywords_of(self.cube)}；"
+                "如果背包里没有这种方块，就是这里报错）"
+            )
         self.open_dialog()
         self.confirm()
         lines = self.read()
@@ -459,6 +475,7 @@ __all__ = [
     "box_pixels",
     "cyan_pixels",
     "CUBE_KEYWORDS",
+    "keywords_of",
     "grade_count",
     "is_cube_selected",
     "header_matches",

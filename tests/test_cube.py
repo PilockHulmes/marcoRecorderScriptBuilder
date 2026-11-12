@@ -234,6 +234,20 @@ class RollerTest(unittest.TestCase):
         self.assertTrue(cube.is_cube_selected(frame, FakeOCR(["對附加方塊"]), "cyan"))
         self.assertFalse(cube.is_cube_selected(frame, FakeOCR(["恢復附加方塊"]), "cyan"))
 
+
+    def test_header_matrix(self):
+        frame = make_frame(True)
+        cases = {
+            "使用货 珍貴附加方境": "pink",
+            "使用货 對附加方境": "cyan",      # OCR 把「絕」丢了
+            "使用货 絕對附加方塊": "cyan",    # 完整名字
+            "使用货 恢復附加方境": "orange",
+        }
+        for header, expected in cases.items():
+            for kind in ("pink", "cyan", "orange"):
+                got = cube.is_cube_selected(frame, FakeOCR([header]), kind)
+                self.assertEqual(got, kind == expected, f"{header} -> {kind}")
+
     def test_failure_to_select_raises(self):
         frames = [make_frame(False)] * 3
         roller = self.make(frames, ["LUK +9%"] * 8, header="恢復附加方塊")
