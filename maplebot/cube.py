@@ -19,6 +19,7 @@
 """
 
 import difflib
+import json
 import re
 import time
 from dataclasses import dataclass
@@ -172,7 +173,7 @@ def _ocr_text(ocr, crop, upscale=3.0, pad=16):
     return ""
 
 
-def read_lines(frame, ocr=None, upscale=3.0, pad=16):
+def read_lines(frame, ocr=None, upscale=3.0, pad=16, store=None, fast=False):
     """读出三行属性（OCR 只识别文字区，等级用徽章颜色）。
 
     先整行识别；认不出来时再只裁右半段（"属性 +X" 那部分）重试，
@@ -196,6 +197,17 @@ def read_lines(frame, ocr=None, upscale=3.0, pad=16):
 
         tx, ty, tw, th = text
         crop = frame[ty:ty + th, tx:tx + tw]
+        width = frame.shape[1]
+
+        if store is not None and fast:
+            bits_hex, bits = fingerprint(crop)
+            hit = store.lookup(width, bits_hex, bits) if bits_hex else None
+            if hit:
+                lines.append(PotentialLine(raw=hit.get("raw", [""])[0], grade=grade,
+                                           stat=hit["stat"], kind=hit["kind"],
+                                           value=hit["value"]))
+                continue
+
         raw = _ocr_text(ocr, crop, upscale=upscale, pad=pad)
         stat, kind, value = parse_line(raw)
 
@@ -212,6 +224,8 @@ def read_lines(frame, ocr=None, upscale=3.0, pad=16):
                 raw, stat, kind, value = raw2, stat2, kind2, value2
 
         lines.append(PotentialLine(raw=raw, grade=grade, stat=stat, kind=kind, value=value))
+        if store is not None and stat:
+            store.record(crop, (stat, kind, value), raw, width)
     return lines
 
 
@@ -266,6 +280,15 @@ RESET_BTN_BOX = (255 / 1382, 695 / 807, 460 / 1382, 750 / 807)
 #: 选中时图标外框的青色像素数量（旧判据，遇到青色方块会误判，已改为看标题）
 CYAN_MIN_PIXELS = 50
 CYAN_HUE = (80, 105)
+
+#: 模板素材目录（gitignore 里的 screenshots/ 下面）
+TEMPLATE_DIR = Path(__file__).resolve().parents[1] / "screenshots" / "cube_templates"
+#: 每个标签最多留几张图给人工确认
+MAX_SAMPLES_PER_LABEL = 5
+#: 指纹尺寸（宽 × 高）
+FINGERPRINT_SIZE = (40, 8)
+#: IoU 容错阈值
+FINGERPRINT_IOU = 0.98
 
 #: 「使用货빕」标题栏：显示当前选中的是哪种方块（珍貴/恢復/…）
 HEADER_BOX = (175 / 1382, 492 / 807, 570 / 1382, 520 / 807)
@@ -341,6 +364,100 @@ def dialog_open(frame):
     return region.size > 0 and float(region.mean()) > CONFIRM_BRIGHT
 
 
+def ink_mask(crop):
+    """取文字墨迹：背景被压暗到 ~55，文字 >=200，用自适应阈值分开。"""
+    if crop is None or getattr(crop, "size", 0) == 0:
+        return None
+    value = crop.max(axis=2).astype(int)
+    threshold = max(180, int(np.median(value)) + 100)
+    mask = (value >= threshold).astype(np.uint8)
+    return mask if mask.any() else None
+
+
+def fingerprint(crop, size=FINGERPRINT_SIZE):
+    """墨迹掩膜 → 紧包围盒 → 缩放到固定尺寸 → 位串（位置/背景无关）。"""
+    mask = ink_mask(crop)
+    if mask is None:
+        return None, None
+    ys, xs = np.nonzero(mask)
+    tight = mask[ys.min():ys.max() + 1, xs.min():xs.max() + 1]
+    small = cv2.resize(tight.astype(np.float32), size, interpolation=cv2.INTER_AREA)
+    bits = (small > 0.5).astype(np.uint8)
+    return bits.tobytes().hex(), bits
+
+
+class TemplateStore:
+    """把"这一行是什么属性"记成 指纹 → 标签，并把前几张图存下来供人工看。"""
+
+    def __init__(self, path=None, max_samples=MAX_SAMPLES_PER_LABEL):
+        self.path = Path(path) if path else TEMPLATE_DIR / "index.json"
+        self.max_samples = max_samples
+        self.entries = {}
+        self._load()
+
+    def _load(self):
+        try:
+            self.entries = json.loads(self.path.read_text(encoding="utf-8"))
+        except Exception:
+            self.entries = {}
+
+    def _save(self):
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        self.path.write_text(json.dumps(self.entries, ensure_ascii=False, indent=1), encoding="utf-8")
+
+    @staticmethod
+    def key(width, bits_hex):
+        return f"{int(width)}:{bits_hex}"
+
+    def lookup(self, width, bits_hex, bits=None):
+        """先精确命中，再按 IoU 容错（不同帧边缘像素可能有 1~2 位抖动）。"""
+        exact = self.entries.get(self.key(width, bits_hex))
+        if exact:
+            return dict(exact, iou=1.0)
+        if bits is None:
+            return None
+        for name, entry in self.entries.items():
+            if not name.startswith(f"{int(width)}:"):
+                continue
+            mask_hex = entry.get("mask")
+            if not mask_hex:
+                continue
+            stored = np.frombuffer(bytes.fromhex(mask_hex), dtype=np.uint8).reshape(FINGERPRINT_SIZE)
+            inter = np.logical_and(stored, bits).sum()
+            union = np.logical_or(stored, bits).sum()
+            iou = float(inter) / union if union else 0.0
+            if iou >= FINGERPRINT_IOU:
+                return dict(entry, iou=iou)
+        return None
+
+    def record(self, crop, parsed, raw, frame_width):
+        """登记一次观测：解析成功才写；同一指纹出现不同标签会记 conflicted。"""
+        stat, kind, value = parsed
+        bits_hex, bits = fingerprint(crop)
+        if bits_hex is None or not stat:
+            return None
+        label = f"{stat}_{kind}_{value}"
+        name = self.key(frame_width, bits_hex)
+        entry = self.entries.get(name)
+        if entry is None:
+            entry = {"label": label, "stat": stat, "kind": kind, "value": value,
+                     "mask": bits.tobytes().hex(), "count": 0, "samples": [], "raw": []}
+            self.entries[name] = entry
+        elif entry["label"] != label:
+            entry["conflicted"] = sorted(set(entry.get("conflicted", []) + [label]))
+        entry["count"] = int(entry.get("count", 0)) + 1
+        if raw and raw not in entry["raw"]:
+            entry["raw"] = (entry.get("raw") or [])[:4] + [raw]
+        if len(entry["samples"]) < self.max_samples:
+            folder = self.path.parent / label
+            folder.mkdir(parents=True, exist_ok=True)
+            filename = folder / f"{time.strftime('%Y%m%d_%H%M%S')}_{entry['count']:03d}.png"
+            cv2.imwrite(str(filename), crop)
+            entry["samples"].append(str(filename.relative_to(self.path.parent.parent.parent)))
+        self._save()
+        return entry
+
+
 def read_header(frame, ocr):
     """读「使用货빕」后面那段文字：当前选中的方块名字。"""
     x0, y0, x1, y1 = box_pixels(frame, HEADER_BOX)
@@ -406,6 +523,8 @@ class CubeRoller:
         self.cube = cube              # "pink" / "cyan" / "orange"
         self.roll_key = roll_key      # 实测空格也能触发洗魔方
         self._guard = guard           # () -> bool：游戏窗口是否仍在前台
+        self.store = TemplateStore()  # 收集模板素材（指纹 + 每类前几张图）
+        self.fast = False             # 表够全后可切成只查表
         self.rolls = 0
         self.history = []
 
@@ -449,7 +568,7 @@ class CubeRoller:
         self._sleep(CONFIRM_WAIT)  # 实测属性 <=86ms 就渲染完成
 
     def read(self):
-        return read_lines(self._grab(), ocr=self._ocr)
+        return read_lines(self._grab(), ocr=self._ocr, store=self.store, fast=self.fast)
 
     # ------------------------------------------------------------ 整轮
     def roll_once(self):
@@ -496,6 +615,11 @@ __all__ = [
     "cyan_pixels",
     "CONFIRM_WAIT",
     "CUBE_KEYWORDS",
+    "MAX_SAMPLES_PER_LABEL",
+    "TEMPLATE_DIR",
+    "TemplateStore",
+    "fingerprint",
+    "ink_mask",
     "CONFIRM_BOX",
     "CONFIRM_BRIGHT",
     "DIALOG_WAIT",
