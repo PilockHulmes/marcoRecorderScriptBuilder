@@ -422,7 +422,12 @@ class TemplateStore:
             mask_hex = entry.get("mask")
             if not mask_hex:
                 continue
-            stored = np.frombuffer(bytes.fromhex(mask_hex), dtype=np.uint8).reshape(FINGERPRINT_SIZE)
+            expected = FINGERPRINT_SIZE[0] * FINGERPRINT_SIZE[1]
+            if len(mask_hex) != expected * 2:
+                continue
+            # cv2.resize 的 size 是 (宽, 高)，所以数组形状是 (高, 宽)
+            stored = np.frombuffer(bytes.fromhex(mask_hex), dtype=np.uint8).reshape(
+                FINGERPRINT_SIZE[1], FINGERPRINT_SIZE[0])
             inter = np.logical_and(stored, bits).sum()
             union = np.logical_or(stored, bits).sum()
             iou = float(inter) / union if union else 0.0
