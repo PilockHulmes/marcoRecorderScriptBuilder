@@ -67,7 +67,7 @@ def load_icon_templates():
         image = cv2.imdecode(np.fromfile(str(path), dtype=np.uint8), cv2.IMREAD_COLOR)
         if image is None:
             continue
-        templates[good_id] = cv2.resize(image, ICON_MATCH_SIZE, interpolation=cv2.INTER_AREA)
+        templates[good_id] = image      # 保存原始尺寸，按用途各自缩放
     return templates
 
 
@@ -78,7 +78,8 @@ def match_icon(patch, templates):
     query = cv2.resize(patch, ICON_MATCH_SIZE, interpolation=cv2.INTER_AREA)
     best, best_id = 0.0, ""
     for good_id, template in templates.items():
-        result = cv2.matchTemplate(query, template, cv2.TM_CCOEFF_NORMED)
+        small = cv2.resize(template, ICON_MATCH_SIZE, interpolation=cv2.INTER_AREA)
+        result = cv2.matchTemplate(query, small, cv2.TM_CCOEFF_NORMED)
         if result.size:
             score = float(result.max())
             if score > best:
@@ -134,28 +135,53 @@ def countdown_seconds(text):
     return 0
 
 
-#: CARGO 里物品行的扫描参数（1368x800 整窗坐标，由 trade.crop_box 换算）
-CARGO_LIST_X = 700
-CARGO_LIST_Y = 258
-CARGO_ROW_H = 50
-CARGO_ROWS = 6
-CARGO_ICON = 44
+#: 货舱物品行（实测，@1368x800 整窗坐标；客户区 x-1, y-32）
+CARGO_ICON_X = 546
+CARGO_ICON_Y = 287
+CARGO_ROW_H = 33
+CARGO_ROWS = 8
+CARGO_ICON = 35
 
 
 def read_cargo_items(frame, templates=None):
-    """读身上带着哪些货（只认商品，数量暂不读）。"""
+    """读身上带着哪些货；只认商品，不读价格（最近購買金額不能当成本）。"""
     templates = templates if templates is not None else load_icon_templates()
     found = []
     for index in range(CARGO_ROWS):
-        y = CARGO_LIST_Y + index * CARGO_ROW_H
+        y = CARGO_ICON_Y + index * CARGO_ROW_H
         try:
-            patch = trade.crop_box(frame, CARGO_LIST_X, y, CARGO_ICON, CARGO_ICON)
+            patch = trade.crop_box(frame, CARGO_ICON_X - 4, y - 4,
+                                   CARGO_ICON + 10, CARGO_ICON + 10)
         except Exception:
             continue
-        good_id, score = match_icon(patch, templates)
+        good_id, score = match_icon_half(patch, templates)
         if good_id and score >= 0.80:
             found.append(good_id)
     return found
+
+
+#: 货舱图标是商店图标的 50%，用滑动匹配（不要去拉伸模板）
+CARGO_ICON_SCALE = 0.5
+CARGO_MATCH_THRESHOLD = 0.70
+
+
+def match_icon_half(region, templates, scale=CARGO_ICON_SCALE):
+    """在 region 里滑动 50% 大小的模板，返回 (good_id, score)。"""
+    if region is None or region.size == 0:
+        return "", 0.0
+    best, best_id = 0.0, ""
+    for good_id, template in templates.items():
+        small = cv2.resize(template, (max(8, int(template.shape[1] * scale)),
+                                      max(8, int(template.shape[0] * scale))),
+                           interpolation=cv2.INTER_AREA)
+        if small.shape[0] > region.shape[0] or small.shape[1] > region.shape[1]:
+            continue
+        result = cv2.matchTemplate(region, small, cv2.TM_CCOEFF_NORMED)
+        if result.size:
+            score = float(result.max())
+            if score > best:
+                best, best_id = score, good_id
+    return (best_id if best >= CARGO_MATCH_THRESHOLD else ""), best
 
 
 def identify(map_name):
