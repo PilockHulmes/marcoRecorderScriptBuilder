@@ -642,6 +642,12 @@ class MapWatcher:
                     self._alarm("name_ocr", f"地图名 OCR 抛异常：{exc}", now)
                 if sub:
                     name = self._correct_name(sub)
+                    if name not in KNOWN_EXTRA:
+                        # 不在跑商地图白名单：说明已离开跑商（回城/活动结束），
+                        # 不能当成新地图记进图
+                        print(f"[mapwatch] 已离开跑商地图（读到：{name}），暂停记录", flush=True)
+                        self._alarm("left_trade", f"读到非跑商地图名：{name}，已暂停记录", now)
+                        name = ""
                     try:
                         # 即使名字来自白名单也存模板，下一帧就能直接匹配
                         save_name_template(name, crop)
