@@ -66,6 +66,53 @@ class ControllerTest(unittest.TestCase):
             state = self.controller.update(self.frame, now=1.0)
         self.assertTrue(state.cargo)
 
+    def test_board_carries_merchant_and_good_ids(self):
+        """看板要带 merchant_id / good_id 才能画头像和商品图标。"""
+        self.ledger.load.return_value = [{
+            "merchant": "石铁", "merchant_id": "dour_4", "map": "A",
+            "refresh_in": 120, "t": 1.0,
+            "rows": [{"good_id": "pork", "good": "猪肉", "side": "sell", "price": 10}],
+        }]
+        self.ledger.valid_until = lambda observation: 121.0
+        with mock.patch.object(gui.trade, "find_shop_window", return_value=False), \
+                mock.patch.object(gui.trade, "find_cargo_window", return_value=False):
+            state = self.controller.update(self.frame, now=3.0)
+        self.assertEqual(len(state.board), 1)
+        entry = state.board[0]
+        self.assertEqual(entry["merchant_id"], "dour_4")
+        self.assertEqual(entry["until"], 121.0)
+        self.assertEqual(entry["rows"][0]["good_id"], "pork")
+
+    def test_board_merchant_id_falls_back_to_map(self):
+        """老记录没有 merchant_id 时按地图反查。"""
+        self.ledger.load.return_value = [{
+            "merchant": "史莱", "map": "A", "refresh_in": 60, "t": 1.0, "rows": [],
+        }]
+        self.ledger.valid_until = lambda observation: 61.0
+        with mock.patch.object(gui.trade, "find_shop_window", return_value=False), \
+                mock.patch.object(gui.trade, "find_cargo_window", return_value=False), \
+                mock.patch.object(gui.shop, "load_merchant_maps",
+                                  return_value={"A": {"merchant_id": "dour_4"}}):
+            state = self.controller.update(self.frame, now=3.0)
+        self.assertEqual(state.board[0]["merchant_id"], "dour_4")
+
+
+class StatusColorTest(unittest.TestCase):
+    def test_thresholds(self):
+        self.assertEqual(gui.status_color(61), gui.COLOR_GREEN)
+        self.assertEqual(gui.status_color(60), gui.COLOR_YELLOW)
+        self.assertEqual(gui.status_color(0), gui.COLOR_GRAY)
+        self.assertEqual(gui.status_color(-5), gui.COLOR_GRAY)
+
+
+class IconKeyTest(unittest.TestCase):
+    def test_rejects_path_traversal(self):
+        self.assertTrue(gui._valid_key("pork"))
+        self.assertFalse(gui._valid_key(""))
+        self.assertFalse(gui._valid_key("../pork"))
+        self.assertFalse(gui._valid_key("icons/pork"))
+        self.assertFalse(gui._valid_key(None))
+
 
 if __name__ == "__main__":
     unittest.main()
