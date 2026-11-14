@@ -886,8 +886,10 @@ def run_gui(interval=0.1):
     shown = {"state": None}
 
     def paint(state):
-        advice_box.delete("1.0", "end")
-        advice_box.insert("end", "\n".join(state.advice) or "（打开商人界面后显示）")
+        advice_text = "\n".join(state.advice) or "（打开商人界面后显示）"
+        if advice_box.get("1.0", "end-1c") != advice_text:   # 内容没变就别重写，否则选中会被清掉
+            advice_box.delete("1.0", "end")
+            advice_box.insert("end", advice_text)
         draw_board(canvas, state.board, icons=icons, width=canvas.winfo_width())
         status.config(text=f"{state.map or '(未知地图)'}　{state.note}")
         shown["state"] = state

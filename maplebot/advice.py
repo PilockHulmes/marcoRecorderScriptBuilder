@@ -258,8 +258,10 @@ def explore_plan(ledger=None, travel=None, now=0.0, current_map="",
     travel = travel if travel is not None else MapTravel()
     where = _merchant_maps()
     names = {}
-    for item in _read_json("merchant_index.json", {}).get("merchants", []):
-        names[item.get("id")] = item.get("name", "")
+    for item in _read_json("merchant_maps.json", {}).values():
+        merchant_id = item.get("merchant_id")
+        if merchant_id:
+            names[merchant_id] = item.get("game_name") or item.get("merchant", "")
     last_seen = {}
     for observation in ledger.load():
         merchant_id = observation.get("merchant_id")
