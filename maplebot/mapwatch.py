@@ -247,49 +247,6 @@ def save_name_template(name, crop):
     load_name_templates()[name] = crop
 
 
-def name_mask(crop):
-    """名字区域二值化成墨迹蒙版：半透明背景被阈值吃掉，只留文字。"""
-    if crop is None or crop.size == 0:
-        return None
-    text = crop[:, 40:] if crop.shape[1] > 60 else crop
-    gray = cv2.cvtColor(text, cv2.COLOR_BGR2GRAY)
-    return (gray >= max(180, int(np.median(gray)) + 100)).astype(np.uint8)
-
-
-def mask_iou(a, b):
-    if a is None or b is None or a.shape != b.shape:
-        return 0.0
-    inter = int(np.logical_and(a, b).sum())
-    union = int(np.logical_or(a, b).sum())
-    return inter / union if union else 0.0
-
-
-def match_name(crop, threshold=NAME_THRESHOLD):
-    """和已存的名字截图比对；返回 (name, score)。"""
-    best_name, best_score = "", 0.0
-    for name, tpl in load_name_templates().items():
-        if tpl.shape[:2] != crop.shape[:2]:
-            tpl = cv2.resize(tpl, (crop.shape[1], crop.shape[0]))
-        result = cv2.matchTemplate(crop, tpl, cv2.TM_CCOEFF_NORMED)
-        score = float(result.max()) if result.size else 0.0
-        if score > best_score:
-            best_name, best_score = name, score
-    return (best_name if best_score >= threshold else ""), best_score
-
-
-def save_name_template(name, crop):
-    NAMES_DIR.mkdir(parents=True, exist_ok=True)
-    path = NAMES_DIR / f"{name}.png"
-    if not path.exists():
-        ok, buffer = cv2.imencode(".png", crop)
-        if ok:
-            buffer.tofile(str(path))
-    load_name_templates()[name] = crop
-
-
-UI_WORDS = ("指南", "道具", "技能", "任務", "裝備", "選單", "地圖", "說明", "活動")
-
-
 def plausible_name(name):
     """名字必须是白名单里的，或 3~10 个汉字且不含 UI 词。"""
     if not name or len(name) > 12:
