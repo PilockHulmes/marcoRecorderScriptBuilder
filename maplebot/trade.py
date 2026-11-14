@@ -48,6 +48,26 @@ BASE_HEIGHT = 800.0
 #: SHOP 窗口**内容区**（不含外框）：x 415..651，y 223..568。
 #: 这是 (x, y, w, h)，单位是 @1368×800 的像素；`find_shop_window` 用它判断
 #: 标题和图标槽，`read_rows` 用它裁行。
+# 玩家给的截图是整窗（1368x800，含标题栏）；实时抓帧是客户区（1366x768）。
+# 几何常量都按整窗标定，所以喂客户区帧时要先减去这个偏移，不垫像素。
+WINDOW_FRAME_SIZE = (1368, 800)
+CLIENT_OFFSET = (1, 32)
+
+
+def client_offset(frame):
+    h, w = frame.shape[:2]
+    if (w, h) == WINDOW_FRAME_SIZE:
+        return 0, 0
+    return CLIENT_OFFSET
+
+
+def crop_box(frame, x, y, w, h):
+    dx, dy = client_offset(frame)
+    x0 = max(0, x - dx)
+    y0 = max(0, y - dy)
+    return frame[y0:y0 + h, x0:x0 + w]
+
+
 SHOP_BOX = (415, 223, 236, 345)
 
 #: 商品列表视口：标题栏下沿到窗口底边（y 281..568）。
@@ -157,7 +177,7 @@ def _crop(frame, box):
     x, y, w, h = _box(frame, box)
     if w <= 0 or h <= 0:
         return None
-    return frame[y:y + h, x:x + w]
+    return crop_box(frame, x, y, w, h)
 
 
 def _split(frame, box):
@@ -166,7 +186,7 @@ def _split(frame, box):
     x, y, w, h = rect
     if w <= 0 or h <= 0:
         return None, rect
-    return frame[y:y + h, x:x + w], rect
+    return crop_box(frame, x, y, w, h), rect
 
 
 def _color_masks(crop):
@@ -386,7 +406,7 @@ def _row_present(frame, icon_box, clip_bottom=None):
         h = max(0, min(y + h, clip_bottom) - y)
     if w <= 0 or h <= 0:
         return False
-    crop = frame[y:y + h, x:x + w]
+    crop = crop_box(frame, x, y, w, h)
     if crop.size == 0:
         return False
     _yellow, _white, light = _color_masks(crop)
