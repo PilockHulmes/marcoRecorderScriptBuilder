@@ -1,0 +1,77 @@
+{
+  "卡勒奇沙.png": {
+    "merchant_id": "ore_5",
+    "merchant": "卡勒卡萨",
+    "map": "通往瑪迦提亞貿易區的路"
+  },
+  "史來.png": {
+    "merchant_id": "dour_4",
+    "merchant": "史莱",
+    "map": "孤獨的沙漠-1"
+  },
+  "哲利.png": {
+    "merchant_id": "ore_7",
+    "merchant": "哲里",
+    "map": "瑪迦提亞貿易區-4"
+  },
+  "奇里營.png": {
+    "merchant_id": "kobi_2",
+    "merchant": "奇里文",
+    "map": "豐饒的沙漠-2"
+  },
+  "寇比.png": {
+    "merchant_id": "kobi_5",
+    "merchant": "柯比",
+    "map": "通往古代遺跡的路"
+  },
+  "幹員 0.png": {
+    "merchant_id": "ore_4",
+    "merchant": "工作人员0",
+    "map": "孤獨的沙漠-2"
+  },
+  "查比爾.png": {
+    "merchant_id": "kobi_7",
+    "merchant": "扎比埃尔",
+    "map": "古代遺跡地內部-4"
+  },
+  "沙吉達.png": {
+    "merchant_id": "dour_7",
+    "merchant": "萨哥特",
+    "map": "納希貿易區-4"
+  },
+  "瑪帕.png": {
+    "merchant_id": "kobi_4",
+    "merchant": "玛帕",
+    "map": "孤獨的沙漠-3"
+  },
+  "石鉄.png": {
+    "merchant_id": "kobi_1",
+    "merchant": "石铁",
+    "map": "豐饒的沙漠-1"
+  },
+  "羅森.png": {
+    "merchant_id": "ore_6",
+    "merchant": "罗森",
+    "map": "瑪迦提亞貿易區-2"
+  },
+  "藍明.png": {
+    "merchant_id": "kobi_3",
+    "merchant": "兰明",
+    "map": "豐饒的沙漠-3"
+  },
+  "財務大臣烏特宛.png": {
+    "merchant_id": "kobi_6",
+    "merchant": "伍德万",
+    "map": "古代遺跡地內部-2"
+  },
+  "道勒.png": {
+    "merchant_id": "dour_5",
+    "merchant": "豆尔",
+    "map": "通往納希貿易區的路"
+  },
+  "雅斯敏.png": {
+    "merchant_id": "dour_6",
+    "merchant": "雅思敏",
+    "map": "納希貿易區-2"
+  }
+}
