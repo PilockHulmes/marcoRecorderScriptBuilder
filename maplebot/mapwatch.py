@@ -191,26 +191,6 @@ def name_crop(frame):
     return crop
 
 
-def name_mask(crop):
-    """名字区域二值化为墨迹蒙版：半透明背景被阈值吃掉，只留文字。"""
-    if crop is None or crop.size == 0:
-        return None
-    text = crop[:, 40:] if crop.shape[1] > 60 else crop
-    gray = cv2.cvtColor(text, cv2.COLOR_BGR2GRAY)
-    return (gray >= max(180, int(np.median(gray)) + 100)).astype(np.uint8)
-
-
-_NAME_MASKS_MASK = {}
-
-
-def mask_iou(a, b):
-    if a is None or b is None or a.shape != b.shape:
-        return 0.0
-    inter = int(np.logical_and(a, b).sum())
-    union = int(np.logical_or(a, b).sum())
-    return inter / union if union else 0.0
-
-
 def match_name(crop, threshold=NAME_THRESHOLD, margin=NAME_MARGIN):
     """和名字模板比对，返回 (name, best, second)。
 
@@ -244,26 +224,6 @@ def save_name_template(name, crop):
         if ok:
             buffer.tofile(str(path))
     load_name_templates()[name] = crop
-
-
-def name_mask(crop):
-    """名字区域二值化为墨迹蒙版：半透明背景被阈值吃掉，只留文字。"""
-    if crop is None or crop.size == 0:
-        return None
-    text = crop[:, 40:] if crop.shape[1] > 60 else crop
-    gray = cv2.cvtColor(text, cv2.COLOR_BGR2GRAY)
-    return (gray >= max(180, int(np.median(gray)) + 100)).astype(np.uint8)
-
-
-_NAME_MASKS_MASK = {}
-
-
-def mask_iou(a, b):
-    if a is None or b is None or a.shape != b.shape:
-        return 0.0
-    inter = int(np.logical_and(a, b).sum())
-    union = int(np.logical_or(a, b).sum())
-    return inter / union if union else 0.0
 
 
 def match_name(crop, threshold=NAME_THRESHOLD):
@@ -662,17 +622,7 @@ class MapWatcher:
             self._alarm("name_crop", f"截取地图名区域抛异常：{exc}", now)
         if crop is not None:
             try:
-                mask = name_mask(crop)
                 name, _score = match_name(crop)
-                if name:
-                    stored = _NAME_MASKS_MASK.get(name)
-                    if stored is None:
-                        tpl = load_name_templates().get(name)
-                        stored = name_mask(tpl) if tpl is not None else None
-                        if stored is not None:
-                            _NAME_MASKS_MASK[name] = stored
-                    if stored is not None and mask_iou(mask, stored) < 0.95:
-                        name = ""     # 差一个数字的名字（NCC 0.994）在这里被拦下
             except Exception as exc:
                 self._error(f"match_name: {exc}")
                 self._alarm("name_match", f"地图名模板匹配抛异常：{exc}", now)
@@ -701,8 +651,6 @@ class MapWatcher:
                     try:
                         # 即使名字来自白名单也存模板，下一帧就能直接匹配
                         save_name_template(name, crop)
-                        if mask is not None:
-                            _NAME_MASKS_MASK[name] = mask
                         print(f"[mapwatch] 新地图名入库：{name}", flush=True)
                     except Exception as exc:
                         self._error(f"save_template: {exc}")
