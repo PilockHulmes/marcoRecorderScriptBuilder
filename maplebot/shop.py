@@ -50,7 +50,8 @@ def load_merchant_maps():
         map_name = item.get("map")
         if map_name:
             out[map_name] = {"merchant_id": item.get("merchant_id", ""),
-                             "merchant": item.get("merchant", "")}
+                             "merchant": item.get("merchant", ""),
+                             "game_name": item.get("game_name", "")}
     return out
 
 
@@ -188,7 +189,9 @@ def identify(map_name):
     """地图 -> (merchant_id, merchant, kind)。"""
     entry = load_merchant_maps().get(map_name)
     if entry:
-        return entry["merchant_id"], entry["merchant"], "fixed"
+        # 优先用游戏内繁体名（截图文件名里带的），没有才退回文档简体名
+        name = entry.get("game_name") or entry["merchant"]
+        return entry["merchant_id"], name, "fixed"
     return "", "", "random" if map_name else "unknown"
 
 

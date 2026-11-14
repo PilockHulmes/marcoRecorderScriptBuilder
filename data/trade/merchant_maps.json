@@ -2,76 +2,91 @@
   "卡勒奇沙.png": {
     "merchant_id": "ore_5",
     "merchant": "卡勒卡萨",
-    "map": "通往瑪迦提亞貿易區的路"
+    "map": "通往瑪迦提亞貿易區的路",
+    "game_name": "卡勒奇沙"
   },
   "史來.png": {
     "merchant_id": "dour_4",
     "merchant": "史莱",
-    "map": "孤獨的沙漠-1"
+    "map": "孤獨的沙漠-1",
+    "game_name": "史來"
   },
   "哲利.png": {
     "merchant_id": "ore_7",
     "merchant": "哲里",
-    "map": "瑪迦提亞貿易區-4"
+    "map": "瑪迦提亞貿易區-4",
+    "game_name": "哲利"
   },
   "奇里營.png": {
     "merchant_id": "kobi_2",
     "merchant": "奇里文",
-    "map": "豐饒的沙漠-2"
+    "map": "豐饒的沙漠-2",
+    "game_name": "奇里營"
   },
   "寇比.png": {
     "merchant_id": "kobi_5",
     "merchant": "柯比",
-    "map": "通往古代遺跡的路"
+    "map": "通往古代遺跡的路",
+    "game_name": "寇比"
   },
   "幹員 0.png": {
     "merchant_id": "ore_4",
     "merchant": "工作人员0",
-    "map": "孤獨的沙漠-2"
+    "map": "孤獨的沙漠-2",
+    "game_name": "幹員 0"
   },
   "查比爾.png": {
     "merchant_id": "kobi_7",
     "merchant": "扎比埃尔",
-    "map": "古代遺跡地內部-4"
+    "map": "古代遺跡地內部-4",
+    "game_name": "查比爾"
   },
   "沙吉達.png": {
     "merchant_id": "dour_7",
     "merchant": "萨哥特",
-    "map": "納希貿易區-4"
+    "map": "納希貿易區-4",
+    "game_name": "沙吉達"
   },
   "瑪帕.png": {
     "merchant_id": "kobi_4",
     "merchant": "玛帕",
-    "map": "孤獨的沙漠-3"
+    "map": "孤獨的沙漠-3",
+    "game_name": "瑪帕"
   },
   "石鉄.png": {
     "merchant_id": "kobi_1",
     "merchant": "石铁",
-    "map": "豐饒的沙漠-1"
+    "map": "豐饒的沙漠-1",
+    "game_name": "石鉄"
   },
   "羅森.png": {
     "merchant_id": "ore_6",
     "merchant": "罗森",
-    "map": "瑪迦提亞貿易區-2"
+    "map": "瑪迦提亞貿易區-2",
+    "game_name": "羅森"
   },
   "藍明.png": {
     "merchant_id": "kobi_3",
     "merchant": "兰明",
-    "map": "豐饒的沙漠-3"
+    "map": "豐饒的沙漠-3",
+    "game_name": "藍明"
   },
   "財務大臣烏特宛.png": {
     "merchant_id": "kobi_6",
     "merchant": "伍德万",
-    "map": "古代遺跡地內部-2"
+    "map": "古代遺跡地內部-2",
+    "game_name": "財務大臣烏特宛"
   },
   "道勒.png": {
     "merchant_id": "dour_5",
     "merchant": "豆尔",
-    "map": "通往納希貿易區的路"
+    "map": "通往納希貿易區的路",
+    "game_name": "道勒"
   },
   "雅斯敏.png": {
     "merchant_id": "dour_6",
     "merchant": "雅思敏",
-    "map": "納希貿易區-2"
+    "map": "納希貿易區-2",
+    "game_name": "雅斯敏"
   }
 }

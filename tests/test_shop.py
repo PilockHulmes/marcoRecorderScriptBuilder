@@ -32,7 +32,7 @@ class IdentifyTest(unittest.TestCase):
         merchant_id, name, kind = shop.identify("豐饒的沙漠-1")
         self.assertEqual(kind, "fixed")
         self.assertEqual(merchant_id, "kobi_1")
-        self.assertEqual(name, "石铁")
+        self.assertEqual(name, "石鉄")
 
     def test_random_merchant_map(self):
         merchant_id, name, kind = shop.identify("貿易地帶岔道")
@@ -50,7 +50,7 @@ class ReadVisitTest(unittest.TestCase):
         cls.visit = shop.read_visit(load(SHOT), "豐饒的沙漠-1")
 
     def test_merchant_and_cargo(self):
-        self.assertEqual(self.visit.merchant, "石铁")
+        self.assertEqual(self.visit.merchant, "石鉄")
         self.assertEqual(self.visit.refresh_in, 78)
         self.assertEqual(self.visit.coins, 11)
         self.assertEqual(self.visit.weight, 3)
