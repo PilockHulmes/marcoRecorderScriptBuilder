@@ -40,6 +40,7 @@ def run_check_scripts():
             capture_output=True,
             text=True,
             encoding="utf-8",
+            errors="replace",
         )
         tail = [line for line in proc.stdout.splitlines() if line.startswith(("FAIL", "FAILED", "ALL PASS"))]
         print(f"[{'ok' if proc.returncode == 0 else 'FAIL'}] {name}: " + (" | ".join(tail[-2:]) or f"rc={proc.returncode}"))

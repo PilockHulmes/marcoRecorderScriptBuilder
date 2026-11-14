@@ -34,6 +34,7 @@ __all__ = [
     "rune_api",
     "stop",
     "timing",
+    "trade",
     "utils",
     "vision",
     "win32",
