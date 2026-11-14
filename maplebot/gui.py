@@ -144,10 +144,9 @@ class Controller:
             if key not in latest or observation.get("t", 0) > latest[key].get("t", 0):
                 latest[key] = observation
         for key, observation in sorted(latest.items()):
-            left = self.ledger.valid_until(observation) - now
+            until = self.ledger.valid_until(observation)
             board.append({"merchant": key, "map": observation.get("map", ""),
-                          "left": max(0.0, left),
-                          "fresh": left > 0,
+                          "until": until,
                           "rows": observation.get("rows", [])})
         self.state.board = board
         self.state.version += 1
@@ -201,10 +200,12 @@ def run_gui(interval=0.1):
         cargo_box.delete("1.0", "end")
         cargo_box.insert("end", "\n".join(state.cargo) or "（打开货舱后显示）")
         board_box.delete("1.0", "end")
+        now = time.monotonic()
         for item in state.board:
-            if item["fresh"]:
-                mark = "●" if item["left"] > 60 else "◐"
-                line = f"{mark} {item['merchant']}@{item['map']} 剩 {int(item['left'])}s"
+            left = item["until"] - now
+            if left > 0:
+                mark = "●" if left > 60 else "◐"
+                line = f"{mark} {item['merchant']}@{item['map']} 剩 {int(left)}s"
             else:
                 line = f"○ {item['merchant']}@{item['map']} 已过期"
             board_box.insert("end", line + "\n")
@@ -221,7 +222,8 @@ def run_gui(interval=0.1):
         if state is None:
             root.after(int(interval * 1000), tick)
             return
-        if state.version != painted["version"] or now - painted["at"] >= REPAINT_EVERY:
+        if (state.version != painted["version"] or now - painted["at"] >= REPAINT_EVERY
+                or state.board):
             paint(state)
             painted["version"] = state.version
             painted["at"] = now
