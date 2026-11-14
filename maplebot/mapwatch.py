@@ -38,7 +38,8 @@ PORTALS_PATH = ROOT / "data" / "trade" / "seen_portals.json"
 NAMES_DIR = ROOT / "data" / "trade" / "map_names"
 NAME_THRESHOLD = 0.92
 NAME_MARGIN = 0.08
-NAME_SIZE = (240, 44)   # 固定裁剪尺寸：锚定小地图左上角，不随面板宽度变化
+NAME_SIZE = (240, 44)
+_CROP_NAMES = {}   # 裁剪像素哈希 -> 名字：同一画面不重复问视觉   # 固定裁剪尺寸：锚定小地图左上角，不随面板宽度变化
 NAMES_PATH = ROOT / "data" / "trade" / "map_names.json"
 
 #: 小地图图标颜色（实测：NPC 蓝点 H 85~110，传送门绿圈 H 40~80）
@@ -236,15 +237,19 @@ def match_name(crop, threshold=NAME_THRESHOLD, margin=NAME_MARGIN):
 
 
 def save_name_template(name, crop):
+    """保存模板；返回 True 表示是新建（用于只在首次打印）。"""
     if crop is None or crop.shape[:2] != (NAME_SIZE[1], NAME_SIZE[0]):
-        return
+        return False
     NAMES_DIR.mkdir(parents=True, exist_ok=True)
     path = NAMES_DIR / f"{name}.png"
+    created = False
     if not path.exists():
         ok, buffer = cv2.imencode(".png", crop)
         if ok:
             buffer.tofile(str(path))
+            created = True
     load_name_templates()[name] = crop
+    return created
 
 
 def plausible_name(name):
@@ -616,8 +621,13 @@ class MapWatcher:
             self._error(f"crop: {exc}")
             self._alarm("name_crop", f"截取地图名区域抛异常：{exc}", now)
         if crop is not None:
+            import hashlib as _hashlib
+            _crop_key = _hashlib.md5(crop.tobytes()).hexdigest()
+            name = _CROP_NAMES.get(_crop_key, "")
+            _score = 1.0 if name else 0.0
             try:
-                name, _score = match_name(crop)
+                if not name:
+                    name, _score = match_name(crop)
             except Exception as exc:
                 self._error(f"match_name: {exc}")
                 self._alarm("name_match", f"地图名模板匹配抛异常：{exc}", now)
@@ -637,6 +647,8 @@ class MapWatcher:
                     self._alarm("name_ocr", f"地图名 OCR 抛异常：{exc}", now)
                 if sub:
                     name = self._correct_name(sub)
+                    if name:
+                        _CROP_NAMES[_crop_key] = name
                     if name not in KNOWN_EXTRA:
                         # 不在跑商地图白名单：说明已离开跑商（回城/活动结束），
                         # 不能当成新地图记进图
@@ -645,8 +657,8 @@ class MapWatcher:
                         name = ""
                     try:
                         # 即使名字来自白名单也存模板，下一帧就能直接匹配
-                        save_name_template(name, crop)
-                        print(f"[mapwatch] 新地图名入库：{name}", flush=True)
+                        if save_name_template(name, crop):
+                            print(f"[mapwatch] 新地图名入库：{name}", flush=True)
                     except Exception as exc:
                         self._error(f"save_template: {exc}")
         if name and not usable_id(name):
