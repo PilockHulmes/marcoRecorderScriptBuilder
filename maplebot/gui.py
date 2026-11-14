@@ -11,6 +11,14 @@
 逻辑与界面分离：`Controller` 只处理画面 -> 状态，测试不需要显示环境。
 「商人看板」是 Canvas：商人 16×16 头像 + 商品 16×16 图标；PhotoImage 缓存在
 `IconCache` 里并由调用方长期持有，否则 Tk 会回收图片、画布上什么都不显示。
+
+看板布局（760×930 窗口）：
+
+- 商人条目排成 **两列**，列优先：左列先排，接近总高度一半后再换右列；
+- 每个商人的商品 **每列最多 3 件**，按列排（4 件 -> 2×2，5~6 件 -> 2×3），
+  所有商品都占位置，不截断；
+- 只画固定商人；``merchant`` / ``merchant_id`` 为空的随机商人由 Controller 过滤掉，
+  布局函数里也再挡一层。
 """
 
 import time
@@ -32,6 +40,15 @@ ROOT = Path(__file__).resolve().parents[1]
 ICON_DIR = ROOT / "data" / "trade" / "icons"
 PORTRAIT_DIR = ROOT / "data" / "trade" / "merchants"
 
+#: 窗口尺寸：宽度 380 -> 760（加倍），高度 620 -> 930（×1.5）。
+#: 多出来的高度全部给商人看板，当前建议仍是固定 8 行。
+WINDOW_W = 760
+WINDOW_H = 930
+ADVICE_ROWS = 8
+ADVICE_COLS = 88
+#: 首帧 canvas 还没实际宽度时的兜底（760 窗口减去内边距和滚动条）
+DEFAULT_BOARD_W = WINDOW_W - 24
+
 #: 看板尺寸 / 间距（TRADE_DESIGN.md 15.2 / 15.3）
 ICON_SIZE = 16
 HEAD_H = 22
@@ -40,6 +57,11 @@ BLOCK_GAP = 2
 BOARD_PAD = 4
 ROW_INDENT = 10
 ICON_GAP = 4
+
+#: 商人两列 + 每个商人的商品多列
+COLUMN_GAP = 12          # 两个商人列之间的空隙
+GOODS_PER_COLUMN = 3     # 商品每列最多 3 件
+MIN_MERCHANT_COL = 260   # 单列至少这么宽才排两列，窄窗口自动退回一列
 
 #: 倒计时颜色（15.5）：>60s 绿、≤60s 黄、已过期灰
 COLOR_GREEN = "#2e7d32"
@@ -59,6 +81,44 @@ class State:
     board: list = field(default_factory=list)
     note: str = ""
     version: int = 0
+
+
+@dataclass
+class BoardItem:
+    """看板上的一个条目（商人标题或一件商品）以及它的矩形框。
+
+    ``x/y/w/h`` 是布局阶段算好的坐标（像素），离屏测试直接打印这些值即可验证
+    两列布局和边界；``owner`` 是所属商人，便于测试把商品分回商人。
+    """
+
+    kind: str                    # merchant | good | placeholder
+    x: int
+    y: int
+    w: int
+    h: int
+    owner: str = ""
+    text: str = ""
+    suffix: str = ""             # 商人标题右侧的倒计时
+    color: str = COLOR_ROW
+    suffix_color: str = ""
+    icon_kind: str = ""          # merchant | good | ""
+    icon_key: str = ""
+    anchor: str = "nw"
+
+
+@dataclass
+class BoardLayout:
+    """``layout_board()`` 的纯计算结果（不依赖 Tk）。"""
+
+    width: int
+    height: int
+    columns: int                 # 实际使用的商人列数（1 / 2；空看板 0）
+    column_width: int            # 每个商人列的宽度
+    split: int = 0               # 左列放前 split 个商人
+    items: list = field(default_factory=list)
+
+    def of_kind(self, kind):
+        return [item for item in self.items if item.kind == kind]
 
 
 class Controller:
@@ -158,6 +218,7 @@ class Controller:
         self.state.version += 1
 
     def _read_board(self, now):
+        """只看固定商人；随机商人（merchant / merchant_id 为空）不进看板。"""
         board = []
         try:
             observations = self.ledger.load()
@@ -165,7 +226,9 @@ class Controller:
             observations = []
         latest = {}
         for observation in observations:
-            key = observation.get("merchant") or observation.get("map")
+            if not self._is_fixed_merchant(observation):
+                continue
+            key = observation.get("merchant")
             if not key:
                 continue
             if key not in latest or observation.get("t", 0) > latest[key].get("t", 0):
@@ -182,6 +245,32 @@ class Controller:
                                    if isinstance(row, dict)]})
         self.state.board = board
         self.state.version += 1
+
+    def _is_fixed_merchant(self, observation):
+        """固定商人的判定：merchant 非空，且 merchant_id 在 merchant_maps.json 里。
+
+        随机商人没有 merchant / merchant_id（老记录甚至只剩地图名），一律过滤。
+        读不到 merchant_maps.json 时退化为只要求两个字段非空，避免整个看板空掉。
+        """
+        if not observation.get("merchant"):
+            return False
+        merchant_id = observation.get("merchant_id", "")
+        if not merchant_id:
+            merchant_id = self._merchant_id_for(observation.get("map", ""))
+        if not merchant_id:
+            return False
+        known = self._known_merchant_ids()
+        return not known or merchant_id in known
+
+    def _known_merchant_ids(self):
+        if self._merchant_maps is None:
+            try:
+                self._merchant_maps = shop.load_merchant_maps()
+            except Exception:
+                self._merchant_maps = {}
+        return {entry.get("merchant_id")
+                for entry in self._merchant_maps.values()
+                if isinstance(entry, dict) and entry.get("merchant_id")}
 
     def _merchant_id_for(self, map_name):
         """老记录没存 merchant_id 时按地图反查（merchant_maps.json）。"""
@@ -314,12 +403,141 @@ class IconCache:
         self.sizes.clear()
 
 
+def _goods_grid(count):
+    """一个商人的商品网格：(列数, 每列行数)。
+
+    每列最多 ``GOODS_PER_COLUMN`` 件；列数取够用的最小值，行数在各列间尽量均衡：
+    4 件 -> 2×2，5 件 -> 2×3（最后一列 2 件），6 件 -> 2×3。
+    """
+    if count <= 0:
+        return 1, 0
+    columns = (count + GOODS_PER_COLUMN - 1) // GOODS_PER_COLUMN
+    rows = (count + columns - 1) // columns
+    return columns, rows
+
+
+def _block_height(entry):
+    _, rows = _goods_grid(len(entry.get("rows") or []))
+    return HEAD_H + rows * ROW_H + BLOCK_GAP
+
+
+def _split_board(entries):
+    """列优先分配：左列先排，累计高度达到总高度一半就换右列。"""
+    if len(entries) <= 1:
+        return len(entries)
+    heights = [_block_height(entry) for entry in entries]
+    half = sum(heights) / 2.0
+    accumulated = 0
+    for index, height in enumerate(heights[:-1], start=1):
+        accumulated += height
+        if accumulated >= half:
+            return index
+    return len(entries) - 1
+
+
+def _merchant_label(entry):
+    return f"{entry.get('merchant') or '?'}@{entry.get('map') or '?'}"
+
+
+def _remaining(entry, now):
+    try:
+        return float(entry.get("until", 0)) - now
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def layout_board(board, width, now=None):
+    """纯计算看板布局（不碰 Tk），返回 :class:`BoardLayout`。
+
+    - 只保留有 ``merchant`` / ``merchant_id`` 的固定商人；随机商人直接跳过；
+    - 商人条目排成两列（窗口太窄时退回一列），列优先：左列先排，接近总高度
+      一半后再换右列；
+    - 每个商人的商品每列最多 3 件，按列填（divmod 按每列行数），全部商品都占位置，
+      不截断；
+    - 倒计时在这里现算（``until - now``），颜色仍走 :func:`status_color`。
+    """
+    if now is None:
+        now = time.monotonic()
+    try:
+        width = int(width)
+    except (TypeError, ValueError):
+        width = DEFAULT_BOARD_W
+    width = max(width, 1)
+
+    entries = [entry for entry in (board or [])
+               if isinstance(entry, dict) and entry.get("merchant")
+               and entry.get("merchant_id")]
+    if not entries:
+        return BoardLayout(
+            width=width, height=40, columns=0, column_width=width,
+            items=[BoardItem(kind="placeholder", x=width // 2, y=12,
+                             w=width, h=40, text="（打开商人界面后显示）",
+                             color=COLOR_GRAY, anchor="n")],
+        )
+
+    content = max(width - 2 * BOARD_PAD, 1)
+    if content >= 2 * MIN_MERCHANT_COL + COLUMN_GAP:
+        columns = 2
+        column_width = (content - COLUMN_GAP) // 2
+        split = _split_board(entries)
+        chunks = [entries[:split], entries[split:]]
+    else:
+        columns = 1
+        column_width = content
+        split = len(entries)
+        chunks = [entries]
+
+    items = []
+    bottom = BOARD_PAD
+    for column_index, chunk in enumerate(chunks):
+        column_x = BOARD_PAD + column_index * (column_width + COLUMN_GAP)
+        y = BOARD_PAD
+        for entry in chunk:
+            rows = list(entry.get("rows") or [])
+            left = _remaining(entry, now)
+            expired = left <= 0
+            color = status_color(left)
+            items.append(BoardItem(
+                kind="merchant", x=column_x, y=y, w=column_width, h=HEAD_H,
+                owner=entry.get("merchant") or "",
+                text=_merchant_label(entry),
+                suffix="已过期" if expired else f"剩 {int(left)}s",
+                color=color, suffix_color=color,
+                icon_kind="merchant" if entry.get("merchant_id") else "",
+                icon_key=entry.get("merchant_id") or ""))
+
+            count = len(rows)
+            goods_columns, goods_rows = _goods_grid(count)
+            goods_width = max(1, (column_width - ROW_INDENT) // goods_columns)
+            for index, row in enumerate(rows):
+                column, line = divmod(index, goods_rows)
+                side = "卖" if row.get("side") == "sell" else "收"
+                text = (f"{row.get('good') or row.get('good_id') or '?'} "
+                        f"{side} {row.get('price', 0)}")
+                items.append(BoardItem(
+                    kind="good",
+                    x=column_x + ROW_INDENT + column * goods_width,
+                    y=y + HEAD_H + line * ROW_H,
+                    w=goods_width, h=ROW_H,
+                    owner=entry.get("merchant") or "",
+                    text=text,
+                    color=COLOR_GRAY if expired else COLOR_ROW,
+                    icon_kind="good" if row.get("good_id") else "",
+                    icon_key=row.get("good_id") or ""))
+
+            y += HEAD_H + goods_rows * ROW_H + BLOCK_GAP
+        bottom = max(bottom, y)
+
+    return BoardLayout(width=width, height=max(bottom, 1), columns=columns,
+                       column_width=column_width, split=split, items=items)
+
+
 def draw_board(canvas, board, now=None, icons=None, width=None):
     """把 `State.board` 画到 Canvas 上，返回画布内容高度（像素）。
 
-    - 倒计时在这里现算（``until - now``），不缓存剩余秒数；
+    - 布局由 :func:`layout_board` 纯计算；倒计时在这里现算（``until - now``）；
     - `icons` 必须是调用方持有的 :class:`IconCache`（PhotoImage 生命周期）；
-    - `board` 为空时画一行占位提示。
+    - 看板只画固定商人；没有可画的条目时显示一行占位提示。
     """
     if now is None:
         now = time.monotonic()
@@ -329,59 +547,39 @@ def draw_board(canvas, board, now=None, icons=None, width=None):
         except Exception:
             width = 1
         if width <= 1:
-            width = 372
+            width = DEFAULT_BOARD_W
+
+    layout = layout_board(board, width, now=now)
 
     canvas.delete("all")
-    if not board:
-        canvas.create_text(width // 2, 12, anchor="n",
-                           text="（打开商人界面后显示）",
-                           fill=COLOR_GRAY, font=ROW_FONT)
-        canvas.configure(scrollregion=(0, 0, width, 40))
-        return 40
-
-    y = BOARD_PAD
-    for item in board:
-        try:
-            left = float(item.get("until", 0)) - now
-        except (TypeError, ValueError):
-            left = 0.0
-        expired = left <= 0
-        color = status_color(left)
-
-        x = BOARD_PAD
-        avatar = (icons.get("merchant", item.get("merchant_id"))
-                  if icons is not None else None)
-        if avatar is not None:
-            canvas.create_image(x, y + (HEAD_H - ICON_SIZE) // 2,
-                                image=avatar, anchor="nw")
-            x += ICON_SIZE + ICON_GAP
-
-        label = f"{item.get('merchant') or '?'}@{item.get('map') or '?'}"
-        suffix = "已过期" if expired else f"剩 {int(left)}s"
-        canvas.create_text(x, y + HEAD_H // 2, text=f"{label}　{suffix}",
-                           anchor="w", fill=color, font=HEAD_FONT)
-        y += HEAD_H
-
-        for row in item.get("rows") or []:
-            rx = BOARD_PAD + ROW_INDENT
-            icon = (icons.get("good", row.get("good_id"))
-                    if icons is not None else None)
-            if icon is not None:
-                canvas.create_image(rx, y + (ROW_H - ICON_SIZE) // 2,
-                                    image=icon, anchor="nw")
-                rx += ICON_SIZE + ICON_GAP
-            side = "卖" if row.get("side") == "sell" else "收"
-            text = (f"{row.get('good') or row.get('good_id') or '?'} "
-                    f"{side} {row.get('price', 0)}")
-            canvas.create_text(rx, y + ROW_H // 2, text=text, anchor="w",
-                               fill=COLOR_GRAY if expired else COLOR_ROW,
+    for item in layout.items:
+        if item.kind == "placeholder":
+            canvas.create_text(item.x, item.y, text=item.text,
+                               anchor=item.anchor, fill=item.color,
                                font=ROW_FONT)
-            y += ROW_H
-        y += BLOCK_GAP
+            continue
 
-    height = max(y, 1)
-    canvas.configure(scrollregion=(0, 0, width, height))
-    return height
+        image = None
+        if icons is not None and item.icon_key:
+            image = icons.get(item.icon_kind, item.icon_key)
+        text_x = item.x
+        if image is not None:
+            canvas.create_image(item.x, item.y + (item.h - ICON_SIZE) // 2,
+                                image=image, anchor="nw")
+            text_x += ICON_SIZE + ICON_GAP
+
+        font = HEAD_FONT if item.kind == "merchant" else ROW_FONT
+        canvas.create_text(text_x, item.y + item.h // 2, text=item.text,
+                           anchor="w", fill=item.color, font=font)
+        if item.kind == "merchant" and item.suffix:
+            # 倒计时右对齐，长商人名也不会把它顶出列外
+            canvas.create_text(item.x + item.w, item.y + item.h // 2,
+                               text=item.suffix, anchor="e",
+                               fill=item.suffix_color or item.color,
+                               font=HEAD_FONT)
+
+    canvas.configure(scrollregion=(0, 0, layout.width, layout.height))
+    return layout.height
 
 
 # ---------------------------------------------------------------------- GUI
@@ -391,10 +589,12 @@ def run_gui(interval=0.1):
     controller = Controller()
     root = tk.Tk()
     root.title("小助手")
-    root.geometry("380x620")
+    root.geometry(f"{WINDOW_W}x{WINDOW_H}")
 
     tk.Label(root, text="当前建议", anchor="w", font=("Microsoft YaHei", 10, "bold")).pack(fill="x")
-    advice_box = tk.Text(root, height=8, width=46, font=("Microsoft YaHei", 9))
+    # 8 行高度保持不变，宽度跟着窗口加宽
+    advice_box = tk.Text(root, height=ADVICE_ROWS, width=ADVICE_COLS,
+                         font=("Microsoft YaHei", 9))
     advice_box.pack(fill="x", padx=4)
 
     tk.Label(root, text="商人看板（货 + 倒计时）", anchor="w",
