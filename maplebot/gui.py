@@ -299,15 +299,22 @@ class Controller:
         except Exception as exc:
             self.state.note = f"读商店失败：{exc}"
             return
+        # 滚动合并：窗口一直开着时，每次只看得见当时那几行，所以要把多次
+        # 读取累积起来；条目带读取时刻，超过该商人刷新窗口的旧价格丢掉
+        # （商人刷新后旧价格不能继续留在合并结果里）。
+        for row in visit.rows:
+            self._merged[(row.good_id, row.side)] = (row, now)
+        window = float(visit.refresh_in or 300)
+        cutoff = now - window
+        self._merged = {key: value for key, value in self._merged.items()
+                        if value[1] >= cutoff}
+        visit.rows = [row for row, _t in self._merged.values()]
+        # 先合并再记录：observations.jsonl 里每条都是当前已知的完整清单，
+        # 同一商人的最新一条就能代表全部（看板侧的多条合并只兜老数据）。
         try:
             self.ledger.record(visit, now=now)
         except Exception:
             pass
-        for row in visit.rows:
-            self._merged[(row.good_id, row.side)] = row.price
-        if self._merged:
-            visit.rows = [shop.Row(g, _name(g), side, price)
-                          for (g, side), price in self._merged.items()]
         lines = []
         try:
             items = advice_module.suggest(visit, self.ledger, self.travel, now=now)

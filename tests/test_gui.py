@@ -1,3 +1,4 @@
+import contextlib
 import unittest
 from unittest import mock
 
@@ -118,6 +119,85 @@ class ControllerTest(unittest.TestCase):
         self.assertEqual(len(state.board), 1)
         self.assertEqual(state.board[0]["merchant_id"], "dour_4")
         self.assertTrue(state.board[0]["observed"])
+
+
+class ShopScrollMergeTest(unittest.TestCase):
+    """商店窗口一直开着时的滚动合并：带时间戳、按刷新窗口清理、先合并再记录。"""
+
+    def setUp(self):
+        self.ledger = mock.Mock()
+        self.ledger.load.return_value = []
+        self.ledger.valid_until = lambda observation: 0
+        self.watcher = mock.Mock()
+        self.watcher.last_map_obs = mock.Mock(map_id="A")
+        self.controller = gui.Controller(
+            watcher=self.watcher, ledger=self.ledger,
+            travel=advice_module.MapTravel(graph={}, edge_times=[]))
+        self.frame = np.zeros((8, 8, 3), np.uint8)
+
+    @staticmethod
+    def make_visit(rows, refresh_in=300):
+        visit = shop.Visit(map="A", merchant="石铁", kind="fixed", refresh_in=refresh_in,
+                           coins=50, weight=0, capacity=135)
+        visit.rows = list(rows)
+        return visit
+
+    def run_updates(self, visits, nows, opens=None):
+        """按时间顺序跑 update()：``opens`` 控制每次商店窗口是否开着。"""
+        opens = list(opens) if opens is not None else [True] * len(nows)
+        self.assertLessEqual(len(visits), len(nows))      # 关窗时不会调用 read_visit
+        self.assertEqual(len(opens), len(nows))
+        with contextlib.ExitStack() as stack:
+            stack.enter_context(mock.patch.object(shop, "read_visit",
+                                                 side_effect=list(visits)))
+            stack.enter_context(mock.patch.object(advice_module, "suggest",
+                                                 return_value=[]))
+            stack.enter_context(mock.patch.object(advice_module, "explore_plan",
+                                                 return_value=[]))
+            stack.enter_context(mock.patch.object(gui.trade, "find_cargo_window",
+                                                 return_value=False))
+            stack.enter_context(mock.patch.object(gui.trade, "find_shop_window",
+                                                 side_effect=opens))
+            for now in nows:
+                self.controller.update(self.frame, now=now)
+
+    @staticmethod
+    def recorded(call):
+        return {(row.good_id, row.side, row.price) for row in call.args[0].rows}
+
+    def test_two_reads_record_union_of_rows(self):
+        """第二次只有另一批商品 -> 记录的是两次的并集。"""
+        self.run_updates(
+            [self.make_visit([make_row("g1", "sell", 10)]),
+             self.make_visit([make_row("g2", "buy", 20)])],
+            [100.0, 101.0])
+        calls = self.ledger.record.call_args_list
+        self.assertEqual(len(calls), 2)
+        self.assertEqual(self.recorded(calls[0]), {("g1", "sell", 10)})
+        self.assertEqual(self.recorded(calls[-1]),
+                         {("g1", "sell", 10), ("g2", "buy", 20)})
+
+    def test_rows_older_than_refresh_window_are_dropped(self):
+        """第二次读取已超过 refresh_in 窗口 -> 第一批旧价格被丢掉。"""
+        self.run_updates(
+            [self.make_visit([make_row("g1", "sell", 10)], refresh_in=10),
+             self.make_visit([make_row("g2", "buy", 20)], refresh_in=10)],
+            [100.0, 111.0])
+        calls = self.ledger.record.call_args_list
+        self.assertEqual(self.recorded(calls[-1]), {("g2", "buy", 20)})
+        self.assertEqual(self.controller._merged.keys(), {("g2", "buy")})
+
+    def test_closing_shop_clears_merged(self):
+        """关窗清空累积；再开窗只记录新商店的数据，不带上一家。"""
+        self.run_updates([self.make_visit([make_row("g1", "sell", 10)])],
+                         [100.0, 100.5], opens=[True, False])
+        self.assertEqual(self.controller._merged, {})
+        self.run_updates([self.make_visit([make_row("g2", "buy", 20)])],
+                         [101.0], opens=[True])
+        self.assertEqual(self.controller._merged.keys(), {("g2", "buy")})
+        calls = self.ledger.record.call_args_list
+        self.assertEqual(len(calls), 2)
+        self.assertEqual(self.recorded(calls[-1]), {("g2", "buy", 20)})
 
 
 class BoardFilterTest(unittest.TestCase):
