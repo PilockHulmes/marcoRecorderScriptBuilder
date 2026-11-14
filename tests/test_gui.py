@@ -207,7 +207,7 @@ class BoardLayoutTest(unittest.TestCase):
 
     def test_window_size_and_advice_rows(self):
         self.assertEqual((gui.WINDOW_W, gui.WINDOW_H), (760, 930))
-        self.assertEqual(gui.ADVICE_ROWS, 8)
+        self.assertEqual(gui.ADVICE_ROWS, 4)
 
     def test_fixed_order_is_line_then_number(self):
         layout = self.layout()

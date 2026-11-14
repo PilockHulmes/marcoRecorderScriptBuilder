@@ -49,7 +49,7 @@ PORTRAIT_DIR = ROOT / "data" / "trade" / "merchants"
 #: 多出来的高度全部给商人看板，当前建议仍是固定 8 行。
 WINDOW_W = 760
 WINDOW_H = 930
-ADVICE_ROWS = 8
+ADVICE_ROWS = 4
 ADVICE_COLS = 88
 #: 首帧 canvas 还没实际宽度时的兜底（760 窗口减去内边距和滚动条）
 DEFAULT_BOARD_W = WINDOW_W - 24
