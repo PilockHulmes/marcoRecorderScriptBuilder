@@ -192,7 +192,7 @@ def run_gui(interval=0.1):
     status = tk.Label(root, text="", anchor="w", font=("Microsoft YaHei", 8), fg="#666")
     status.pack(fill="x")
 
-    capture = _Capture(_grabber(), interval=interval)
+    worker = _Worker(_grabber(), controller, interval=interval)
     painted = {"version": -1, "at": 0.0}
 
     def paint(state):
@@ -212,14 +212,13 @@ def run_gui(interval=0.1):
 
     def tick():
         now = time.monotonic()
-        frame = capture.latest()
-        if frame is None:
+        try:
+            state = worker.latest()
+        except Exception as exc:
+            status.config(text=f"读取失败：{exc}")
             root.after(int(interval * 1000), tick)
             return
-        try:
-            state = controller.update(frame, now=now)
-        except Exception as exc:      # 抓帧失败也不能让窗口挂掉
-            status.config(text=f"抓帧失败：{exc}")
+        if state is None:
             root.after(int(interval * 1000), tick)
             return
         if state.version != painted["version"] or now - painted["at"] >= REPAINT_EVERY:
@@ -230,6 +229,41 @@ def run_gui(interval=0.1):
 
     root.after(0, tick)
     root.mainloop()
+
+
+class _Worker:
+    """后台线程：抓帧 + 全部识别/计算，UI 线程只取结果去画。"""
+
+    def __init__(self, grab, controller, interval=0.1):
+        import threading
+
+        self._grab = grab
+        self._controller = controller
+        self._interval = interval
+        self._lock = threading.Lock()
+        self._state = None
+        self._stop = threading.Event()
+        self._thread = threading.Thread(target=self._run, daemon=True)
+        self._thread.start()
+
+    def _run(self):
+        while not self._stop.is_set():
+            try:
+                frame = self._grab()
+                if frame is not None:
+                    state = self._controller.update(frame)
+                    with self._lock:
+                        self._state = state
+            except Exception:
+                pass
+            self._stop.wait(self._interval)
+
+    def latest(self):
+        with self._lock:
+            return self._state
+
+    def stop(self):
+        self._stop.set()
 
 
 class _Capture:
