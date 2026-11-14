@@ -192,7 +192,7 @@ def run_gui(interval=0.1):
     status = tk.Label(root, text="", anchor="w", font=("Microsoft YaHei", 8), fg="#666")
     status.pack(fill="x")
 
-    grab = _grabber()
+    capture = _Capture(_grabber(), interval=interval)
     painted = {"version": -1, "at": 0.0}
 
     def paint(state):
@@ -212,8 +212,12 @@ def run_gui(interval=0.1):
 
     def tick():
         now = time.monotonic()
+        frame = capture.latest()
+        if frame is None:
+            root.after(int(interval * 1000), tick)
+            return
         try:
-            state = controller.update(grab(), now=now)
+            state = controller.update(frame, now=now)
         except Exception as exc:      # 抓帧失败也不能让窗口挂掉
             status.config(text=f"抓帧失败：{exc}")
             root.after(int(interval * 1000), tick)
@@ -226,6 +230,47 @@ def run_gui(interval=0.1):
 
     root.after(0, tick)
     root.mainloop()
+
+
+class _Capture:
+    """后台线程抓帧：UI 线程只取最新一帧，拖动窗口时不会被抓帧卡住。"""
+
+    def __init__(self, grab, interval=0.1):
+        import queue
+        import threading
+
+        self._grab = grab
+        self._interval = interval
+        self._queue = queue.Queue(maxsize=1)
+        self._stop = threading.Event()
+        self._thread = threading.Thread(target=self._run, daemon=True)
+        self._thread.start()
+
+    def _run(self):
+        while not self._stop.is_set():
+            try:
+                frame = self._grab()
+            except Exception:
+                frame = None
+            if frame is not None:
+                try:
+                    self._queue.get_nowait()      # 丢掉旧帧，永远只处理最新的
+                except Exception:
+                    pass
+                try:
+                    self._queue.put_nowait(frame)
+                except Exception:
+                    pass
+            self._stop.wait(self._interval)
+
+    def latest(self):
+        try:
+            return self._queue.get_nowait()
+        except Exception:
+            return None
+
+    def stop(self):
+        self._stop.set()
 
 
 def _grabber():
