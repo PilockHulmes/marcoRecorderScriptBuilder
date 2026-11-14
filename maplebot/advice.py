@@ -167,6 +167,7 @@ def suggest(visit, ledger=None, travel=None, now=0.0, remaining=None, limit=5):
                 continue
             arrival = now + seconds
             best = None
+            best_merchant = buyer_map
             for observation in observations:
                 if observation.get("map") != buyer_map:
                     continue
@@ -193,7 +194,7 @@ def suggest(visit, ledger=None, travel=None, now=0.0, remaining=None, limit=5):
                 out.append(Suggestion(
                     good_id=row.good_id, good=row.good_name, buy_at=visit.merchant or visit.map,
                     buy_price=row.price, units=units,
-                    sell_at=observation.get("merchant", buyer_map), sell_price=best,
+                    sell_at=best_merchant, sell_price=best,
                     hops=hops, seconds=round(seconds, 1),
                     profit_per_unit=profit, profit_total=profit * units,
                     reason="文档阈值" if cheap else "记忆比价",

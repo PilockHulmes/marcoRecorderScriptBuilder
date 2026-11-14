@@ -172,6 +172,57 @@ def _observed_at(observation):
         return 0.0
 
 
+def _row_merge_key(row, index):
+    """合并观察时的行标识：``(good_id, side)``。
+
+    老记录可能没有 ``good_id``，退化为「商品名 + 方向」；连名字都没有的
+    行无法归类，用 ``index`` 让它逐条保留（和以前一样不做合并）。
+    """
+    good_id = row.get("good_id") or ""
+    side = row.get("side") or ""
+    if good_id:
+        return ("id", good_id, side)
+    name = row.get("good") or ""
+    if name:
+        return ("name", name, side)
+    return ("raw", index)
+
+
+def _merge_merchant_observations(observations, now, valid_until):
+    """把同一个商人的多条观察合并成一份 (until, rows)。
+
+    一次滚动只看得见当时那几行，所以每条观察都是**部分**数据；只取最新一条
+    会把之前的行丢掉（先看到"卖"、往下滚看到"收"，卖价就变成「—」）。
+
+    - 过期的观察整条丢掉，不贡献任何行；
+    - 未过期的观察按 ``t`` 从旧到新合并，``(good_id, side)`` 相同就取 ``t`` 更大的价格；
+    - ``until`` 取该商人所有观察里最大的 ``valid_until``：同一个商人的刷新
+      倒计时相同，所以它就是最新那条有效观察的 until；并且只要有一条没过期
+      就 ``until > now``，全都过期才 ``until <= now``（界面显示「已過期」）。
+    """
+    until = 0.0
+    merged = {}
+    ordered = sorted((item for item in observations if isinstance(item, dict)),
+                     key=_observed_at)
+    for observation in ordered:
+        try:
+            expiry = float(valid_until(observation))
+        except Exception:
+            expiry = 0.0
+        until = max(until, expiry)
+        if expiry <= now:
+            continue                       # 过期的整条丢掉
+        observed_at = _observed_at(observation)
+        for index, row in enumerate(observation.get("rows", []) or []):
+            if not isinstance(row, dict):
+                continue
+            key = _row_merge_key(row, index)
+            previous = merged.get(key)
+            if previous is None or observed_at > previous[0]:
+                merged[key] = (observed_at, dict(row))
+    return until, [row for _, row in merged.values()]
+
+
 def _fixed_merchant_entries(maps):
     """把 ``merchant_maps.json`` 的 地图 -> 商人 变成固定顺序的商人清单。"""
     entries = []
@@ -297,12 +348,16 @@ class Controller:
 
         即使某个商人没有任何观察记录也保留一条（``observed=False``），
         这样布局永远拿到同样数量的条目，位置不会因为新数据而变。
+
+        每个商人把**所有未过期**的观察合并起来（见
+        :func:`_merge_merchant_observations`）：滚动后新记录的观察只含当时
+        可见的几行，只取最新一条会丢掉之前的「卖」行。
         """
         try:
             observations = self.ledger.load()
         except Exception:
             observations = []
-        latest = {}
+        grouped = {}
         for observation in observations:
             if not isinstance(observation, dict) or not self._is_fixed_merchant(observation):
                 continue
@@ -310,28 +365,24 @@ class Controller:
                            or self._merchant_id_for(observation.get("map", "")))
             if not merchant_id:
                 continue
-            previous = latest.get(merchant_id)
-            if previous is None or _observed_at(observation) > _observed_at(previous):
-                latest[merchant_id] = observation
+            grouped.setdefault(merchant_id, []).append(observation)
 
         board = []
         for fixed in self._fixed_merchants():
-            observation = latest.get(fixed["merchant_id"])
+            records = grouped.get(fixed["merchant_id"]) or []
             entry = {
                 "merchant": fixed["merchant"],
                 "merchant_id": fixed["merchant_id"],
                 "map": fixed["map"],
                 "until": 0.0,
-                "observed": observation is not None,
+                "observed": bool(records),      # 有过记录就算看过，过期由 until 判断
                 "rows": [],
             }
-            if observation is not None:
-                try:
-                    entry["until"] = float(self.ledger.valid_until(observation))
-                except Exception:
-                    entry["until"] = 0.0
-                entry["rows"] = [dict(row) for row in observation.get("rows", []) or []
-                                 if isinstance(row, dict)]
+            if records:
+                until, rows = _merge_merchant_observations(
+                    records, now, self.ledger.valid_until)
+                entry["until"] = until
+                entry["rows"] = rows
             board.append(entry)
         self.state.board = board
         self.state.version += 1
@@ -399,6 +450,22 @@ def status_color(seconds_left):
     if seconds_left <= 60:
         return COLOR_YELLOW
     return COLOR_GREEN
+
+
+def format_duration(seconds):
+    """把剩余秒数写成游戏里那样的 ``MM:SS`` 倒计时。
+
+    - ``142`` → ``02:22``、``45`` → ``00:45``、``5`` → ``00:05``、``0`` → ``00:00``；
+    - 分钟超过 99 位时按实际位数（``7200`` → ``120:00``），不再补齐两位；
+    - 负数或读不出来的值按 0 处理。
+    """
+    try:
+        total = int(float(seconds))
+    except (TypeError, ValueError):
+        total = 0
+    total = max(0, total)
+    minutes, rest = divmod(total, 60)
+    return f"{minutes:02d}:{rest:02d}"
 
 
 def _pil_modules():
@@ -711,7 +778,7 @@ def layout_board(board, width, now=None):
             expired = (not observed) or left <= 0
             if observed:
                 color = status_color(left)
-                suffix = EXPIRED_TEXT if expired else f"剩 {int(left)}s"
+                suffix = EXPIRED_TEXT if expired else f"剩 {format_duration(left)}"
                 suffix_color = color
             else:
                 # 没有数据：标题正常显示，倒计时位置显示浅灰「未看過」

@@ -184,6 +184,121 @@ class BoardFilterTest(unittest.TestCase):
         self.assertTrue(entry["observed"])
 
 
+class BoardMergeTest(unittest.TestCase):
+    """同一商人的多条观察要合并，而不是只取最新一条（滚动后会丢掉前面的行）。"""
+
+    NOW = 100.0
+
+    def setUp(self):
+        self.ledger = mock.Mock()
+        self.ledger.load.return_value = []
+        self.ledger.valid_until = (
+            lambda observation: float(observation.get("t", 0) or 0)
+            + float(observation.get("refresh_in", 0) or 0))
+        self.watcher = mock.Mock()
+        self.watcher.last_map_obs = mock.Mock(map_id="A")
+        self.controller = gui.Controller(
+            watcher=self.watcher, ledger=self.ledger,
+            travel=advice_module.MapTravel(graph={}, edge_times=[]))
+        self.frame = np.zeros((8, 8, 3), np.uint8)
+        self.maps = {"A": {"merchant_id": "kobi_1", "merchant": "石铁",
+                           "game_name": "石鉄"}}
+
+    def _entry(self, observations, now=None):
+        self.ledger.load.return_value = observations
+        with mock.patch.object(gui.trade, "find_shop_window", return_value=False), \
+                mock.patch.object(gui.trade, "find_cargo_window", return_value=False), \
+                mock.patch.object(gui.shop, "load_merchant_maps", return_value=self.maps):
+            state = self.controller.update(self.frame,
+                                           now=self.NOW if now is None else now)
+        return next(entry for entry in state.board if entry["merchant_id"] == "kobi_1")
+
+    @staticmethod
+    def observation(t, rows=None, refresh_in=300):
+        return {"merchant": "石铁", "merchant_id": "kobi_1", "map": "A",
+                "refresh_in": refresh_in, "t": t, "rows": rows or []}
+
+    def test_scroll_observations_merge_sell_and_buy(self):
+        """第一条只有「卖」、第二条只有「收」，都未过期 -> 两个都要在。"""
+        entry = self._entry([
+            self.observation(10, rows=[price_row("natural_honey", "sell", 12)]),
+            self.observation(20, rows=[price_row("silver_ore", "buy", 30)]),
+        ])
+        pairs = {(row["good_id"], row["side"]) for row in entry["rows"]}
+        self.assertEqual(pairs, {("natural_honey", "sell"), ("silver_ore", "buy")})
+        self.assertTrue(entry["observed"])
+        self.assertGreater(entry["until"], self.NOW)
+
+    def test_merged_rows_are_drawn_as_real_prices(self):
+        """合并结果要真的进到界面：卖价不再变成「—」。"""
+        entry = self._entry([
+            self.observation(10, rows=[price_row("natural_honey", "sell", 12)]),
+            self.observation(20, rows=[price_row("silver_ore", "buy", 30)]),
+        ])
+        with mock.patch.object(gui.shop, "load_merchant_maps",
+                               return_value=self.maps):
+            layout = gui.layout_board([entry], 736, now=self.NOW)
+        prices = {item.good_id: item.price_text for item in layout.of_kind("good")
+                  if item.good_id}
+        self.assertEqual(prices["natural_honey"], "12")
+        self.assertEqual(prices["silver_ore"], "30")
+
+    def test_expired_observation_rows_are_dropped(self):
+        """一条未过期 + 一条已过期（含不同商品）-> 只出现未过期那条的商品。"""
+        entry = self._entry([
+            self.observation(10, rows=[price_row("natural_honey", "sell", 12)]),
+            # 更新但已经过期（t + refresh_in <= now）
+            self.observation(20, refresh_in=0,
+                             rows=[price_row("silver_ore", "buy", 999)]),
+        ])
+        self.assertEqual([(row["good_id"], row["side"], row["price"])
+                          for row in entry["rows"]],
+                         [("natural_honey", "sell", 12)])
+        self.assertTrue(entry["observed"])          # 有记录且仍有未过期的一条
+        self.assertGreater(entry["until"], self.NOW)
+
+    def test_same_good_and_side_uses_newer_price(self):
+        entry = self._entry([
+            self.observation(10, rows=[price_row("natural_honey", "sell", 12)]),
+            self.observation(20, rows=[price_row("natural_honey", "sell", 44)]),
+        ])
+        rows = [row for row in entry["rows"]
+                if row["good_id"] == "natural_honey" and row["side"] == "sell"]
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["price"], 44)
+
+    def test_all_expired_merchant_is_marked_expired(self):
+        """全都过期才显示「已過期」，且旧价格一条都不画。"""
+        entry = self._entry([
+            self.observation(10, refresh_in=0,
+                             rows=[price_row("natural_honey", "sell", 12)]),
+        ])
+        self.assertEqual(entry["rows"], [])
+        layout = gui.layout_board([entry], 736, now=self.NOW)
+        header = next(item for item in layout.of_kind("merchant")
+                      if item.icon_key == "kobi_1")
+        self.assertEqual(header.suffix, gui.EXPIRED_TEXT)
+
+    def test_legacy_row_without_good_id_still_kept(self):
+        """没有 good_id 的老记录保持容错：按原样保留（界面再按商品名匹配）。"""
+        legacy = {"good": "猪肉", "side": "sell", "price": 7}
+        entry = self._entry([
+            self.observation(10, rows=[legacy]),
+            self.observation(20, rows=[price_row("silver_ore", "buy", 30)]),
+        ])
+        self.assertIn(legacy, entry["rows"])
+        self.assertIn({"good_id": "silver_ore", "good": "silver_ore",
+                       "side": "buy", "price": 30}, entry["rows"])
+
+    def test_rows_without_good_id_merge_by_name(self):
+        """老记录的同名同行只留最新价格，不会越积越多。"""
+        entry = self._entry([
+            self.observation(10, rows=[{"good": "猪肉", "side": "sell", "price": 7}]),
+            self.observation(20, rows=[{"good": "猪肉", "side": "sell", "price": 9}]),
+        ])
+        self.assertEqual(entry["rows"], [{"good": "猪肉", "side": "sell", "price": 9}])
+
+
 class BoardLayoutTest(unittest.TestCase):
     WIDTH = 736
     NOW = 100.0
@@ -359,9 +474,9 @@ class BoardLayoutTest(unittest.TestCase):
         ]
         headers = {item.icon_key: item for item in self.layout(board).of_kind("merchant")}
         self.assertEqual(headers["kobi_1"].color, gui.COLOR_GREEN)
-        self.assertEqual(headers["kobi_1"].suffix, "剩 200s")
+        self.assertEqual(headers["kobi_1"].suffix, "剩 03:20")
         self.assertEqual(headers["dour_4"].color, gui.COLOR_YELLOW)
-        self.assertEqual(headers["dour_4"].suffix, "剩 30s")
+        self.assertEqual(headers["dour_4"].suffix, "剩 00:30")
         self.assertEqual(headers["ore_7"].color, gui.COLOR_GRAY)
         self.assertEqual(headers["ore_7"].suffix, gui.EXPIRED_TEXT)
 
@@ -550,6 +665,53 @@ class StatusColorTest(unittest.TestCase):
         self.assertEqual(gui.status_color(60), gui.COLOR_YELLOW)
         self.assertEqual(gui.status_color(0), gui.COLOR_GRAY)
         self.assertEqual(gui.status_color(-5), gui.COLOR_GRAY)
+
+
+class FormatDurationTest(unittest.TestCase):
+    """倒计时写成游戏里那种 ``MM:SS``。"""
+
+    def test_two_digit_minutes_and_seconds(self):
+        self.assertEqual(gui.format_duration(142), "02:22")
+        self.assertEqual(gui.format_duration(125), "02:05")
+        self.assertEqual(gui.format_duration(61), "01:01")
+        self.assertEqual(gui.format_duration(60), "01:00")
+
+    def test_short_durations_are_zero_padded(self):
+        self.assertEqual(gui.format_duration(45), "00:45")
+        self.assertEqual(gui.format_duration(5), "00:05")
+        self.assertEqual(gui.format_duration(1), "00:01")
+        self.assertEqual(gui.format_duration(0), "00:00")
+
+    def test_long_durations_keep_every_minute_digit(self):
+        self.assertEqual(gui.format_duration(3600), "60:00")
+        self.assertEqual(gui.format_duration(7245), "120:45")
+
+    def test_negative_and_bad_values_clamp_to_zero(self):
+        self.assertEqual(gui.format_duration(-5), "00:00")
+        self.assertEqual(gui.format_duration(None), "00:00")
+        self.assertEqual(gui.format_duration("oops"), "00:00")
+        self.assertEqual(gui.format_duration(59.9), "00:59")
+
+    def test_layout_suffix_uses_now_minus_until(self):
+        now = 100.0
+        board = [
+            board_entry("kobi_1", until=now + 142),
+            board_entry("dour_4", until=now + 45),
+            board_entry("ore_7", until=now - 1),
+        ]
+        maps = {
+            "M1": {"merchant_id": "kobi_1", "merchant": "石铁", "game_name": "石鉄"},
+            "M2": {"merchant_id": "dour_4", "merchant": "史莱", "game_name": "史來"},
+            "M3": {"merchant_id": "ore_7", "merchant": "哲里", "game_name": "哲利"},
+        }
+        with mock.patch.object(gui.shop, "load_merchant_maps", return_value=maps):
+            layout = gui.layout_board(board, 736, now=now)
+        headers = {item.icon_key: item for item in layout.of_kind("merchant")}
+        self.assertEqual(headers["kobi_1"].suffix, "剩 02:22")
+        self.assertEqual(headers["dour_4"].suffix, "剩 00:45")
+        self.assertEqual(headers["ore_7"].suffix, gui.EXPIRED_TEXT)
+        self.assertEqual(headers["kobi_1"].color, gui.COLOR_GREEN)
+        self.assertEqual(headers["dour_4"].color, gui.COLOR_YELLOW)
 
 
 class IconKeyTest(unittest.TestCase):
