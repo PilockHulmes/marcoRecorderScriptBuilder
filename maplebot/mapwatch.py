@@ -191,6 +191,23 @@ def name_crop(frame):
     return crop
 
 
+def name_mask(crop):
+    """名字区域二值化成墨迹蒙版：半透明背景被阈值吃掉，只留文字。"""
+    if crop is None or crop.size == 0:
+        return None
+    text = crop[:, 40:] if crop.shape[1] > 60 else crop
+    gray = cv2.cvtColor(text, cv2.COLOR_BGR2GRAY)
+    return (gray >= max(180, int(np.median(gray)) + 100)).astype(np.uint8)
+
+
+def mask_iou(a, b):
+    if a is None or b is None or a.shape != b.shape:
+        return 0.0
+    inter = int(np.logical_and(a, b).sum())
+    union = int(np.logical_or(a, b).sum())
+    return inter / union if union else 0.0
+
+
 def match_name(crop, threshold=NAME_THRESHOLD, margin=NAME_MARGIN):
     """和名字模板比对，返回 (name, best, second)。
 
@@ -202,8 +219,12 @@ def match_name(crop, threshold=NAME_THRESHOLD, margin=NAME_MARGIN):
         if tpl.shape[:2] != crop.shape[:2]:
             continue
         result = cv2.matchTemplate(crop, tpl, cv2.TM_CCOEFF_NORMED)
-        if result.size:
-            scores.append((float(result.max()), name))
+        if not result.size:
+            continue
+        # 只差一个数字的名字（-1 vs -2）NCC 仍有 0.994，必须再比墨迹蒙版
+        if mask_iou(name_mask(crop), name_mask(tpl)) < 0.95:
+            continue
+        scores.append((float(result.max()), name))
     if not scores:
         return "", 0.0, 0.0
     scores.sort(reverse=True)
@@ -224,6 +245,23 @@ def save_name_template(name, crop):
         if ok:
             buffer.tofile(str(path))
     load_name_templates()[name] = crop
+
+
+def name_mask(crop):
+    """名字区域二值化成墨迹蒙版：半透明背景被阈值吃掉，只留文字。"""
+    if crop is None or crop.size == 0:
+        return None
+    text = crop[:, 40:] if crop.shape[1] > 60 else crop
+    gray = cv2.cvtColor(text, cv2.COLOR_BGR2GRAY)
+    return (gray >= max(180, int(np.median(gray)) + 100)).astype(np.uint8)
+
+
+def mask_iou(a, b):
+    if a is None or b is None or a.shape != b.shape:
+        return 0.0
+    inter = int(np.logical_and(a, b).sum())
+    union = int(np.logical_or(a, b).sum())
+    return inter / union if union else 0.0
 
 
 def match_name(crop, threshold=NAME_THRESHOLD):
