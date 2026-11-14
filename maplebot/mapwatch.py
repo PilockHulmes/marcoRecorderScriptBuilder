@@ -179,6 +179,9 @@ def name_crop(frame):
     box = minimap.find_minimap(frame)
     if box is None:
         return None
+    # 跑商界面里小地图固定左上角；跑偏时会把窗口标题栏当成地图名
+    if box.y < 60 or box.x > 400:
+        return None
     width, height = NAME_SIZE
     x = max(0, box.x)
     y = max(0, box.y - 42)
@@ -257,6 +260,8 @@ def plausible_name(name):
         return True
     if any(word in name for word in UI_WORDS):
         return False
+    if sum(1 for ch in name if "\u4e00" <= ch <= "\u9fff") < 2:
+        return False       # "MapleStory" 这种拒掉
     cjk = sum(1 for ch in name if "\u4e00" <= ch <= "\u9fff")
     return cjk >= 4
 
