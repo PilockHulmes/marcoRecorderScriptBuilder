@@ -10,7 +10,7 @@
 """
 
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from . import ledger as ledger_module
@@ -129,6 +129,7 @@ class Suggestion:
     profit_total: int
     reason: str
     price_known: bool = True
+    route: list = field(default_factory=list)
 
 
 def _merchant_maps():
@@ -196,6 +197,7 @@ def suggest(visit, ledger=None, travel=None, now=0.0, remaining=None, limit=5):
                     hops=hops, seconds=round(seconds, 1),
                     profit_per_unit=profit, profit_total=profit * units,
                     reason="文档阈值" if cheap else "记忆比价",
+                    route=travel.path(visit.map, buyer_map) or [],
                 ))
             elif cheap:
                 # 第一类：价格已经够低，不需要先知道买家报价，直接建议去找该货的买家
@@ -206,6 +208,7 @@ def suggest(visit, ledger=None, travel=None, now=0.0, remaining=None, limit=5):
                     hops=hops, seconds=round(seconds, 1),
                     profit_per_unit=0, profit_total=0,
                     reason="价格够低（去买家处再看价）", price_known=False,
+                    route=travel.path(visit.map, buyer_map) or [],
                 ))
 
     out.sort(key=lambda s: (s.hops, -s.profit_total))
@@ -290,11 +293,12 @@ def format_suggestions(items):
         return ["（暂无值得跑的建议）"]
     lines = []
     for s in items:
+        via = ("　" + " > ".join(s.route)) if len(getattr(s, "route", []) or []) > 2 else ""
         if s.price_known:
             lines.append(f"  {s.good}：在 {s.buy_at} 买 @{s.buy_price} × {s.units} 个"
                          f" → {s.sell_at} 卖 @{s.sell_price}"
-                         f"（{s.hops} 张图 / 约 {int(s.seconds)} 秒，赚 {s.profit_total}）")
+                         f"（{s.hops} 张图 / 约 {int(s.seconds)} 秒，赚 {s.profit_total}）{via}")
         else:
             lines.append(f"  {s.good}：便宜（@{s.buy_price}），可买 {s.units} 个"
-                         f" → 去 {s.sell_at} 找买家（{s.hops} 张图 / 约 {int(s.seconds)} 秒）")
+                         f" → 去 {s.sell_at} 找买家（{s.hops} 张图 / 约 {int(s.seconds)} 秒）{via}")
     return lines
