@@ -323,7 +323,10 @@ class MapWatcher:
         self.events = []
         self.alarms = []          # 本次运行打印过的告警（已按原因去重）
         self.alarm_count = 0
-        self._alarm_last = {}     # 告警 code -> 上次打印时间
+        self._alarm_last = {}
+        self._none_since = None
+        self._startup_named = False
+        self._started_at = None     # 告警 code -> 上次打印时间
         self._blank_since = None  # 连续读不出名字的起点
         self._no_map_since = None # 连续找不到小地图的起点
         self._missed_from = False # 进黑屏前就没记住地图名 → 出发侧未知
@@ -608,7 +611,12 @@ class MapWatcher:
             self._alarm("observe", f"observe() 抛异常：{exc}", now)
             return None
         if obs is None:
+            if self._none_since is None:
+                self._none_since = now
+            elif now - self._none_since >= 2.0:
+                self._alarm("no_frame", "连续 2 秒拿不到画面（最小化/被挡/不在游戏）", now)
             return None
+        self._none_since = None
 
         # ---- 黑屏：只计时，不解析名字（黑屏上没有名字可读）
         if obs.dark:
@@ -659,6 +667,9 @@ class MapWatcher:
             elif last is not None:
                 self._pending_load_ms = None    # 黑屏了但没换图，这次时长作废
             self._missed_from = False
+            if not self._startup_named:
+                self._startup_named = True
+                print(f"[mapwatch] 起点地图：{obs.map_id}", flush=True)
             self._remember(obs)
 
         # ---- 顺带记录这张图上看到的传送门（数量 1~4 才可信，防误检）
