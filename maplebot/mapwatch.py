@@ -43,6 +43,7 @@ NAME_SIZE = (240, 44)
 NAME_TEXT_BOX = (38, 20, 162, 21)
 NAME_TEXT_DIR = ROOT / "data" / "trade" / "map_name_text"
 BASELINE_PATH = ROOT / "data" / "trade" / "map_graph.json"
+EDGE_RAW_PATH = ROOT / "data" / "trade" / "edge_times_raw.jsonl"
 _CROP_NAMES = {}   # 裁剪像素哈希 -> 名字：同一画面不重复问视觉   # 固定裁剪尺寸：锚定小地图左上角，不随面板宽度变化
 NAMES_PATH = ROOT / "data" / "trade" / "map_names.json"
 
@@ -436,6 +437,7 @@ class MapWatcher:
         self.errors = []
         self.skipped_lines = 0    # load_visits 跳过多少坏行
         self._last_map = None
+        self._arrival_ts = None
         self.names_cache = self.names()
         self.portal_points = {}    # map_id -> [{"key", "x", "y", "n"}]：稳定簇
         self.map_sizes = {}        # map_id -> (w, h)：像素半径聚类用
