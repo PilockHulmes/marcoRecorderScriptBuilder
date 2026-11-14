@@ -36,9 +36,12 @@ ROOT = Path(__file__).resolve().parents[1]
 VISITS_PATH = ROOT / "data" / "trade" / "map_visits.jsonl"
 PORTALS_PATH = ROOT / "data" / "trade" / "seen_portals.json"
 NAMES_DIR = ROOT / "data" / "trade" / "map_names"
-NAME_THRESHOLD = 0.92
-NAME_MARGIN = 0.08
+NAME_THRESHOLD = 0.99
+NAME_MARGIN = 0.02
 NAME_SIZE = (240, 44)
+# 名字裁剪里"第二行文字"的精确区域：不含地区名、不含图标，只留 仙人掌沙漠-1 这一条
+NAME_TEXT_BOX = (38, 20, 162, 21)
+NAME_TEXT_DIR = ROOT / "data" / "trade" / "map_name_text"
 _CROP_NAMES = {}   # 裁剪像素哈希 -> 名字：同一画面不重复问视觉   # 固定裁剪尺寸：锚定小地图左上角，不随面板宽度变化
 NAMES_PATH = ROOT / "data" / "trade" / "map_names.json"
 
@@ -196,7 +199,9 @@ def name_mask(crop):
     """名字区域二值化成墨迹蒙版：半透明背景被阈值吃掉，只留文字。"""
     if crop is None or crop.size == 0:
         return None
-    text = crop[:, 40:] if crop.shape[1] > 60 else crop
+    # 第一行"納希沙漠自由貿易地帶"每张图都一样，参与比较会把差异淹没；
+    # 只取第二行（小地图名），那才是唯一不同的地方。
+    text = crop[22:, 40:] if crop.shape[1] > 60 else crop[22:]
     gray = cv2.cvtColor(text, cv2.COLOR_BGR2GRAY)
     return (gray >= max(180, int(np.median(gray)) + 100)).astype(np.uint8)
 
@@ -210,22 +215,26 @@ def mask_iou(a, b):
 
 
 def match_name(crop, threshold=NAME_THRESHOLD, margin=NAME_MARGIN):
-    """和名字模板比对，返回 (name, best, second)。
+    """只比较"小地图名"那一行文字，返回 (name, best, second)。
 
-    尺寸不同直接跳过（绝不拉伸）；还要求第一名领先第二名 margin，
-    这样 "沙漠-1/2/3" 这种只差一个数字的名字不会互相误认。
+    以前比整块 240x44（含地区名和图标），相同像素占了九成，只差一个数字的
+    名字根本分不开；现在只比第二行那 162x21 的文字，-1 和 -3 的差别就占了
+    可观比例（实测正确项 1.0000，次优 0.9636）。
     """
+    if crop is None or crop.shape[:2] != (NAME_SIZE[1], NAME_SIZE[0]):
+        return "", 0.0, 0.0
+    x, y, w, h = NAME_TEXT_BOX
+    query = crop[y:y + h, x:x + w]
     scores = []
     for name, tpl in load_name_templates().items():
-        if tpl.shape[:2] != crop.shape[:2]:
+        if tpl.shape[:2] != (NAME_SIZE[1], NAME_SIZE[0]):
             continue
-        result = cv2.matchTemplate(crop, tpl, cv2.TM_CCOEFF_NORMED)
-        if not result.size:
+        candidate = tpl[y:y + h, x:x + w]
+        if candidate.shape != query.shape or query.size == 0:
             continue
-        # 只差一个数字的名字（-1 vs -2）NCC 仍有 0.994，必须再比墨迹蒙版
-        if mask_iou(name_mask(crop), name_mask(tpl)) < 0.95:
-            continue
-        scores.append((float(result.max()), name))
+        result = cv2.matchTemplate(query, candidate, cv2.TM_CCOEFF_NORMED)
+        if result.size:
+            scores.append((float(result.max()), name))
     if not scores:
         return "", 0.0, 0.0
     scores.sort(reverse=True)
