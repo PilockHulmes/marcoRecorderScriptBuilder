@@ -47,7 +47,7 @@ class MapTravel:
         self.reload(edge_times)
 
     def reload(self, edge_times=None):
-        """重新算耗时：优先用运行时原始样本（最快 10 次的均值），否则用汇总文件。"""
+        """重新算耗时：优先用运行时原始样本（最快 3 次的均值），否则用汇总文件。"""
         from collections import defaultdict
 
         self.times = {}
@@ -72,7 +72,7 @@ class MapTravel:
                     continue
             for pair, values in buckets.items():
                 if len(values) >= MIN_SAMPLES:
-                    fastest = sorted(values)[:10]
+                    fastest = sorted(values)[:3]
                     self.times[frozenset(pair)] = sum(fastest) / len(fastest)
             return
         for row in (edge_times if edge_times is not None else _read_json(EDGE_TIMES_PATH, [])):

@@ -17,7 +17,7 @@ ROOT = Path(__file__).resolve().parents[1]
 VISITS = ROOT / "data" / "trade" / "map_visits.jsonl"
 RAW = ROOT / "data" / "trade" / "edge_times_raw.jsonl"
 OUT = ROOT / "data" / "trade" / "edge_times.json"
-KEEP = 10
+KEEP = 3
 
 
 def parse(stamp):
