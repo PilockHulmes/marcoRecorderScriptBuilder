@@ -272,33 +272,46 @@ def known_names():
     return sorted(names)
 
 
+VISION_SYSTEM = "你是冒险岛地图名识别器。图片是小地图上方的文字，第一行是地区名，第二行是小地图名。只输出第二行的地图名原文，不要引号、不要标点、不要解释。"
+
+
+def _vision_read(crop):
+    """用 DeepSeek 视觉读小地图名（比 12px 繁体 OCR 可靠），返回第二行文字。"""
+    from .vision import VisionClient
+
+    text = VisionClient().ask(crop, system=VISION_SYSTEM,
+                        user="只输出第二行（小地图名）。", max_tokens=32)
+    if not text:
+        return ""
+    line = [ln.strip() for ln in str(text).splitlines() if ln.strip()]
+    if not line:
+        return ""
+    name = line[-1].strip(' \"\'。）)』」【】[]')
+    return name
+
+
 def read_map_name(frame, box, ocr=None):
-    """读小地图上方的地图名（两行：地区名 / 小地图名），返回 (地区名, 小地图名)。"""
+    """读小地图上方的地图名，返回 (地区名, 小地图名)。
+
+    `ocr` 传 None 时走 DeepSeek 视觉（默认路径）；传了 OCR 引擎则走旧 OCR 路径
+    （测试和离线场景用）。
+    """
     if box is None:
         return "", ""
-    x, y = box.x, max(0, box.y - 42)
-    crop = frame[y:box.y + 4, x:box.x + box.w + 40]
-    if crop.size == 0:
+    crop = name_crop(frame)
+    if crop is None or crop.size == 0:
         return "", ""
     if ocr is None:
-        return "", ""
+        try:
+            return "", _vision_read(crop)
+        except Exception:
+            return "", ""
     big = cv2.resize(crop, None, fx=3, fy=3, interpolation=cv2.INTER_CUBIC)
     big = cv2.copyMakeBorder(big, 14, 14, 14, 14, cv2.BORDER_REPLICATE)
     result = ocr.ocr(big)
     lines = [str(item[1][0]).strip() for item in result[0]] if result and result[0] else []
     area = lines[0] if lines else ""
     sub = lines[-1] if len(lines) > 1 else ""
-    if sub:
-        pool = known_names()
-        if sub not in pool:
-            # 只允许"补漏字"：首字相同、OCR 是候选的子序列、长度差 <= 2
-            def is_subseq(a, b):
-                it = iter(b)
-                return all(ch in it for ch in a)
-            cands = [n for n in pool
-                     if n[:1] == sub[:1] and is_subseq(sub, n) and 0 <= len(n) - len(sub) <= 2]
-            if len(cands) == 1:
-                sub = cands[0]
     return area, sub
 
 
@@ -618,7 +631,7 @@ class MapWatcher:
                     # 小地图都定位不了：这一帧算"没名字"，由 3 秒告警兜底
                     self._error(f"find_minimap: {exc}")
                 try:
-                    _area, sub = read_map_name(frame, box, self._ocr_instance())
+                    _area, sub = read_map_name(frame, box)
                 except Exception as exc:
                     self._error(f"ocr: {exc}")
                     self._alarm("name_ocr", f"地图名 OCR 抛异常：{exc}", now)
