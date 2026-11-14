@@ -293,7 +293,7 @@ def format_suggestions(items):
         return ["（暂无值得跑的建议）"]
     lines = []
     for s in items:
-        via = ("　" + " > ".join(s.route)) if len(getattr(s, "route", []) or []) > 2 else ""
+        via = ""      # 路线不再显示：玩家自己看地图更快
         if s.price_known:
             lines.append(f"  {s.good}：在 {s.buy_at} 买 @{s.buy_price} × {s.units} 个"
                          f" → {s.sell_at} 卖 @{s.sell_price}"
