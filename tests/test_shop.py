@@ -47,7 +47,8 @@ class IdentifyTest(unittest.TestCase):
 class ReadVisitTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.visit = shop.read_visit(load(SHOT), "豐饒的沙漠-1")
+        cls.visit = shop.read_visit(load(SHOT), "豐饒的沙漠-1",
+                                    learn_names=False, learn_icons=False)
 
     def test_merchant_and_cargo(self):
         self.assertEqual(self.visit.merchant, "石鉄")

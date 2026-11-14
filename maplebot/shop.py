@@ -4,6 +4,8 @@
 
 - 用当前地图判定商人（固定商人一对一；其它地图可能是随机商人）
 - 读每一行：商品图标 -> good_id、买价、卖价
+- 图标认不出时用视觉读商品名：名字认识就补存图标模板，名字不认识就落
+  ``icons_unknown/`` 等人归类（见 :mod:`maplebot.icon_learn`）
 - 读倒计时、金币、当前载重
 - 输出一条"观察记录"，不做任何建议
 
@@ -11,23 +13,33 @@
 """
 
 import json
+import logging
+import zlib
 from dataclasses import dataclass, field
 from pathlib import Path
 
 import cv2
 import numpy as np
 
-from . import trade
+from . import icon_learn, trade
 
 ROOT = Path(__file__).resolve().parents[1]
 GOODS_PATH = ROOT / "data" / "trade" / "goods.json"
 MERCHANT_MAPS_PATH = ROOT / "data" / "trade" / "merchant_maps.json"
 ICON_INDEX_PATH = ROOT / "data" / "trade" / "merchant_index.json"
 ICON_DIR = ROOT / "data" / "trade" / "icons"
+UNKNOWN_ICON_DIR = ROOT / "data" / "trade" / "icons_unknown"
+GOOD_NAMES_PATH = ROOT / "data" / "trade" / "good_names.json"
+
+#: 学习开关（默认开启；测试/离线解析可显式关掉）
+LEARN_NAMES = True
+LEARN_ICONS = True
 
 #: 图标匹配：缩到 24x24 后比较，0.80 足够区分不同商品
 ICON_MATCH_SIZE = (24, 24)
 ICON_THRESHOLD = 0.80
+
+logger = logging.getLogger(__name__)
 
 
 def _read_json(path, default):
@@ -55,21 +67,52 @@ def load_merchant_maps():
     return out
 
 
-def load_icon_templates():
-    """good_id -> 图标图（24x24）。"""
-    index = _read_json(ICON_INDEX_PATH, {})
+def _load_image(path):
+    try:
+        image = cv2.imdecode(np.fromfile(str(path), dtype=np.uint8), cv2.IMREAD_COLOR)
+    except Exception:
+        return None
+    return image if image is not None and image.size else None
+
+
+def load_icon_templates(icon_dir=None, index_path=None):
+    """good_id -> 图标图。
+
+    先按 ``merchant_index.json`` 登记的顺序读，再扫一遍 ``icon_dir`` 里
+    ``<good_id>.png``：运行期学到的图标只要落了盘，下一次重新加载就能用。
+    """
+    icon_dir = Path(icon_dir) if icon_dir is not None else ICON_DIR
+    index_path = Path(index_path) if index_path is not None else ICON_INDEX_PATH
+    index = _read_json(index_path, {})
+    goods = load_goods()
     templates = {}
-    for item in index.get("icons", []):
+    entries = index.get("icons", []) if isinstance(index, dict) else []
+    if not isinstance(entries, list):
+        entries = []
+    for item in entries:
+        if not isinstance(item, dict):
+            continue
         good_id = item.get("good_id")
         rel = item.get("file", "")
         path = ROOT / "data" / "trade" / rel
         if not good_id or not path.exists():
             continue
-        image = cv2.imdecode(np.fromfile(str(path), dtype=np.uint8), cv2.IMREAD_COLOR)
-        if image is None:
-            continue
-        templates[good_id] = image      # 保存原始尺寸，按用途各自缩放
+        image = _load_image(path)
+        if image is not None:
+            templates[good_id] = image      # 保存原始尺寸，按用途各自缩放
+    try:
+        paths = sorted(icon_dir.glob("*.png"))
+    except Exception:
+        paths = []
+    for path in paths:
+        good_id = path.stem
+        if good_id in templates or good_id not in goods:
+            continue                            # cargo_header / portal 等非商品跳过
+        image = _load_image(path)
+        if image is not None:
+            templates[good_id] = image
     return templates
+
 
 
 def match_icon(patch, templates):
@@ -195,12 +238,64 @@ def identify(map_name):
     return "", "", "random" if map_name else "unknown"
 
 
-def read_visit(frame, map_name="", templates=None):
-    """解析一帧画面 -> Visit（不滚动，只读当前可见的行）。"""
+def _load_templates(icon_dir=None, index_path=None):
+    """调用 :func:`load_icon_templates`；默认路径时不传参，方便测试打桩。"""
+    kwargs = {}
+    if icon_dir is not None:
+        kwargs["icon_dir"] = icon_dir
+    if index_path is not None:
+        kwargs["index_path"] = index_path
+    return load_icon_templates(**kwargs)
+
+
+def _row_side_and_price(row):
+    """这一行是「他卖给我」还是「他收我的」，以及对应价格。"""
+    buy = int(getattr(row, "buy_price", 0) or 0)      # 他卖给我
+    sell = int(getattr(row, "sell_price", 0) or 0)    # 他收我的
+    if buy > 0:
+        return "sell", buy
+    if sell > 0:
+        return "buy", sell
+    return "", 0
+
+
+def _append_row(visit, good_id, row, score, goods):
+    side, price = _row_side_and_price(row)
+    if not side:
+        return False
+    visit.rows.append(Row(good_id, goods.get(good_id, {}).get("name", good_id),
+                          side, price, score))
+    return True
+
+
+def _icon_key(patch):
+    return "icon:%08x" % (zlib.crc32(patch.tobytes()) & 0xFFFFFFFF)
+
+
+def read_visit(frame, map_name="", templates=None, *, learn_names=None,
+               learn_icons=None, vision=None, names_path=None,
+               icon_dir=None, unknown_dir=None, index_path=None):
+    """解析一帧画面 -> Visit（不滚动，只读当前可见的行）。
+
+    学习开关默认取模块常量 :data:`LEARN_NAMES` / :data:`LEARN_ICONS`；
+    ``vision`` 可注入 ``ndarray -> str``（测试用假视觉，运行期走 DeepSeek）。
+    所有学习失败都安静跳过，不影响这一帧的其它行。
+    """
+    learn_names = LEARN_NAMES if learn_names is None else bool(learn_names)
+    learn_icons = LEARN_ICONS if learn_icons is None else bool(learn_icons)
+    names_path = Path(names_path) if names_path is not None else GOOD_NAMES_PATH
+    icon_dir_arg = icon_dir
+    index_path_arg = index_path
+    icon_dir = Path(icon_dir) if icon_dir is not None else ICON_DIR
+    unknown_dir = Path(unknown_dir) if unknown_dir is not None else UNKNOWN_ICON_DIR
+
     visit = Visit(map=map_name)
     visit.merchant_id, visit.merchant, visit.kind = identify(map_name)
-    templates = templates if templates is not None else load_icon_templates()
+    templates = (templates if templates is not None
+                 else _load_templates(icon_dir_arg, index_path_arg))
     goods = load_goods()
+    names = (icon_learn.load_good_names(names_path)
+             if (learn_names or learn_icons) else {})
 
     try:
         visit.refresh_in = countdown_seconds(trade.read_row_countdown(frame))
@@ -231,14 +326,47 @@ def read_visit(frame, map_name="", templates=None):
         except Exception:
             pass
         good_id, score = match_icon(patch, templates)
-        buy = int(getattr(row, "buy_price", 0) or 0)      # 他卖给我
-        sell = int(getattr(row, "sell_price", 0) or 0)    # 他收我的
-        if good_id and buy > 0:
-            visit.rows.append(Row(good_id, goods.get(good_id, {}).get("name", good_id),
-                                  "sell", buy, score))
-        elif good_id and sell > 0:
-            visit.rows.append(Row(good_id, goods.get(good_id, {}).get("name", good_id),
-                                  "buy", sell, score))
+
+        if good_id:
+            _append_row(visit, good_id, row, score, goods)
+            # 图标认出来了：顺手把这一行的商品名记进名字表（每个 good_id 一次）
+            if (learn_names and patch is not None
+                    and not icon_learn.has_name_for(good_id, names)):
+                key = "name:" + good_id
+                if icon_learn.should_attempt(key):
+                    name = icon_learn.read_row_name(frame, row.icon_box, vision=vision)
+                    if name:
+                        if icon_learn.record_good_name(name, good_id,
+                                                       path=names_path, mapping=names):
+                            logger.info("[学习] 商品名 %s -> %s", name, good_id)
+                    else:
+                        icon_learn.note_failure(key)
+            continue
+
+        # 图标认不出来：先读名字，能从名字表反查到 good_id 就把图标补上
+        if not learn_icons or patch is None or getattr(patch, "size", 0) == 0:
+            continue
+        icon_key = _icon_key(patch)
+        if not icon_learn.should_attempt(icon_key):
+            continue
+        name = icon_learn.read_row_name(frame, row.icon_box, vision=vision)
+        if not name:
+            icon_learn.note_failure(icon_key)
+            continue
+        known_id = names.get(name, "")
+        if known_id and known_id in goods:
+            created = icon_learn.save_icon(known_id, patch, icon_dir=icon_dir)
+            if created is not None or known_id not in templates:
+                templates = _load_templates(icon_dir_arg, index_path_arg)
+            _append_row(visit, known_id, row, 0.0, goods)
+            if created is not None:
+                logger.info("[学习] 缺少图标 %s（%s），已存到 %s",
+                            known_id, name, created)
+        elif icon_learn.should_attempt("unknown:" + name):
+            path = icon_learn.save_unknown_icon(patch, unknown_dir=unknown_dir)
+            icon_learn.note_failure("unknown:" + name)
+            icon_learn.note_failure(icon_key)
+            logger.warning("[学习] 认不出的商品名 %r，图标存到 %s", name, path)
     return visit
 
 
