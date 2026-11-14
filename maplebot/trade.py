@@ -384,6 +384,24 @@ def scroll_handle(frame) -> float | None:
 
 
 # ---------------------------------------------------------------- 倒计时 / 行
+CARGO_HEADER_PATH = Path(__file__).resolve().parents[1] / "data" / "trade" / "icons" / "cargo_header.png"
+
+
+def find_cargo_window(frame) -> bool:
+    """画面里是不是开着货舱窗口（用窗口标题做模板，位置固定）。"""
+    if _empty(frame):
+        return False
+    try:
+        raw = np.fromfile(str(CARGO_HEADER_PATH), dtype=np.uint8)
+        template = cv2.imdecode(raw, cv2.IMREAD_COLOR)
+    except Exception:
+        return False
+    if template is None or template.shape[0] >= frame.shape[0]:
+        return False
+    result = cv2.matchTemplate(frame, template, cv2.TM_CCOEFF_NORMED)
+    return bool(result.size and float(result.max()) >= 0.80)
+
+
 def read_row_countdown(frame) -> str:
     """读「商品/價格變動中止」下面的倒计时，返回 ``"01:18"``；读不到返回空串。"""
     if _empty(frame):

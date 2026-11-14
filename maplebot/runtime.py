@@ -20,6 +20,13 @@ from . import shop
 from . import trade
 
 
+def cargo_open(frame):
+    try:
+        return bool(trade.find_cargo_window(frame))
+    except Exception:
+        return False
+
+
 def shop_open(frame):
     """购物界面是否打开（SHOP 窗口在）。"""
     try:
@@ -70,6 +77,8 @@ class Runtime:
         opened = shop_open(frame)
         if not opened:
             self._open = False
+            if cargo_open(frame):
+                out.extend(self._cargo_advice(frame, current_map, now))
             return out
 
         first = not self._open
@@ -115,6 +124,29 @@ class Runtime:
         return out
 
     # ------------------------------------------------------------------
+    def _cargo_advice(self, frame, current_map, now):
+        """只开货舱：告诉玩家身上的货该去哪卖。"""
+        if not current_map or now - self._last_advice < self.advice_every:
+            return []
+        self._last_advice = now
+        try:
+            held = shop.read_cargo_items(frame)
+        except Exception as exc:
+            return [f"[runtime] 读货舱失败：{exc}"]
+        if not held:
+            return []
+        plan = advice_module.sell_plan(held, self.ledger, self.travel,
+                                       now=now, current_map=current_map)
+        lines = [f"[货舱] 身上 {len(held)} 种货"]
+        if not plan:
+            lines.append("  （没有可信的收购价，先去附近的商人看看）")
+        for item in plan:
+            hops = item.get("hops")
+            distance = f"{hops} 张图" if hops is not None else "? 张图"
+            lines.append(f"  {item['good']} → {item['merchant']}({item['map']}) "
+                         f"收 @{item['price']}（{distance}）")
+        return lines
+
     def _current_map(self):
         previous = getattr(self.watcher, "last_map_obs", None)
         return getattr(previous, "map_id", "") or ""
