@@ -161,7 +161,8 @@ def name_crop(frame):
     if box is None:
         return None
     y = max(0, box.y - 42)
-    crop = frame[y:box.y + 4, box.x:box.x + box.w + 40]
+    right = min(frame.shape[1], box.x + box.w + 4)
+    crop = frame[y:box.y + 4, box.x:right]
     return crop if crop.size else None
 
 
@@ -186,6 +187,21 @@ def save_name_template(name, crop):
         if ok:
             buffer.tofile(str(path))
     load_name_templates()[name] = crop
+
+
+UI_WORDS = ("指南", "道具", "技能", "任務", "裝備", "選單", "地圖", "說明", "活動")
+
+
+def plausible_name(name):
+    """名字必须是白名单里的，或 3~10 个汉字且不含 UI 词。"""
+    if not name or len(name) > 12:
+        return False
+    if name in KNOWN_EXTRA:
+        return True
+    if any(word in name for word in UI_WORDS):
+        return False
+    cjk = sum(1 for ch in name if "\u4e00" <= ch <= "\u9fff")
+    return cjk >= 4
 
 
 def known_names():
@@ -329,6 +345,7 @@ class MapWatcher:
             fpos = self.cluster(fmap, fpos)
             tpos = self.cluster(tmap, tpos)
             self.explored.add((fmap, fpos))
+            self.explored.add((tmap, tpos))   # 到达过也算已知
             self.seen_portals.setdefault(fmap, set()).add(fpos)
             self.seen_portals.setdefault(tmap, set()).add(tpos)
         for map_id, positions in self._load_portals().items():
@@ -513,6 +530,9 @@ class MapWatcher:
             name = ""
         obs.name = name
         obs.map_id = name
+        if name and not plausible_name(name):
+            self._error(f"地图名不合理，丢弃：{name!r}")
+            return ""
         return name
 
     def step(self, frame, now=None):
@@ -550,20 +570,21 @@ class MapWatcher:
                 return None
             if before.map_id == obs.map_id:
                 return None           # 黑屏但没换图（过场/切场景），忽略
-            if before.player is None or obs.player is None:
-                # 位置未知时宁可不记，也不把 (0,0) 当真实传送门写进图
-                print(f"[mapwatch] 玩家位置未知，跳过 {before.map_id} -> {obs.map_id}", flush=True)
-                return None
-            from_pos = self.cluster(before.map_id, before.player, before.size)
-            to_pos = self.cluster(obs.map_id, obs.player, obs.size)
-            self._note_inferred_portal(before.map_id, from_pos)
-            self.explored.add((before.map_id, from_pos))
-            self.seen_portals.setdefault(before.map_id, set()).add(from_pos)
-            self.seen_portals.setdefault(obs.map_id, set()).add(to_pos)
+            from_pos = to_pos = None
+            if before.player is not None and obs.player is not None:
+                from_pos = self.cluster(before.map_id, before.player, before.size)
+                to_pos = self.cluster(obs.map_id, obs.player, obs.size)
+                self._note_inferred_portal(before.map_id, from_pos)
+                self.explored.add((before.map_id, from_pos))
+                self.seen_portals.setdefault(before.map_id, set()).add(from_pos)
+                self.seen_portals.setdefault(obs.map_id, set()).add(to_pos)
+                self.explored.add((obs.map_id, to_pos))
+            else:
+                print(f"[mapwatch] 位置未知，但仍记录 {before.map_id} -> {obs.map_id}", flush=True)
             event = {
                 "t": time.strftime("%Y-%m-%dT%H:%M:%S"),
-                "from_map": before.map_id, "from_pos": list(from_pos),
-                "to_map": obs.map_id, "to_pos": list(to_pos),
+                "from_map": before.map_id, "from_pos": list(from_pos) if from_pos else None,
+                "to_map": obs.map_id, "to_pos": list(to_pos) if to_pos else None,
                 "load_ms": round(load_ms, 0),
                 "from_name": self.name_of(before.map_id), "to_name": self.name_of(obs.map_id),
             }
@@ -586,31 +607,38 @@ class MapWatcher:
         previous = self.prev
         if (previous is not None and usable_id(previous.map_id) and usable_id(obs.map_id)
                 and previous.map_id != obs.map_id):
-            if previous.player is None or obs.player is None:
-                print(f"[mapwatch] 玩家位置未知，跳过 {previous.map_id} -> {obs.map_id}",
+            from_pos = to_pos = None
+            if previous.player is not None and obs.player is not None:
+                from_pos = self.cluster(previous.map_id, previous.player, previous.size)
+                to_pos = self.cluster(obs.map_id, obs.player, obs.size)
+                self._note_inferred_portal(previous.map_id, from_pos)
+                self.explored.add((previous.map_id, from_pos))
+                self.seen_portals.setdefault(previous.map_id, set()).add(from_pos)
+                self.seen_portals.setdefault(obs.map_id, set()).add(to_pos)
+            else:
+                print(f"[mapwatch] 位置未知，但仍记录 {previous.map_id} -> {obs.map_id}",
                       flush=True)
-                self.prev = obs
-                return None
-            from_pos = self.cluster(previous.map_id, previous.player, previous.size)
-            to_pos = self.cluster(obs.map_id, obs.player, obs.size)
-            self._note_inferred_portal(previous.map_id, from_pos)
-            self.explored.add((previous.map_id, from_pos))
-            self.seen_portals.setdefault(previous.map_id, set()).add(from_pos)
-            self.seen_portals.setdefault(obs.map_id, set()).add(to_pos)
             event = {"t": time.strftime("%Y-%m-%dT%H:%M:%S"),
-                     "from_map": previous.map_id, "from_pos": list(from_pos),
-                     "to_map": obs.map_id, "to_pos": list(to_pos),
+                     "from_map": previous.map_id,
+                     "from_pos": list(from_pos) if from_pos else None,
+                     "to_map": obs.map_id,
+                     "to_pos": list(to_pos) if to_pos else None,
                      "load_ms": None, "no_black": True,
                      "from_name": self.name_of(previous.map_id),
                      "to_name": self.name_of(obs.map_id)}
             self._append(event)
             self._flush_portals()
             self.events.append(event)
-            self.prev = obs
+            self._remember(obs)
             return event
 
-        self.prev = obs
+        self._remember(obs)
         return None
+
+    def _remember(self, obs):
+        """只记住"有名字"的帧：过图瞬间名字可能读不出来，不能让它把上一张好图冲掉。"""
+        if usable_id(obs.map_id):
+            self.prev = obs
 
     def _append(self, event):
         """追加一条 jsonl；写完立刻 flush，进程崩了也不丢已记的过图。"""
