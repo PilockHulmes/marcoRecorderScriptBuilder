@@ -212,6 +212,42 @@ def suggest(visit, ledger=None, travel=None, now=0.0, remaining=None, limit=5):
     return out[:limit]
 
 
+def sell_plan(held_goods, ledger=None, travel=None, now=0.0, current_map="", limit=5):
+    """身上带着的货该去哪卖：按已知收购价和距离给建议。"""
+    ledger = ledger if ledger is not None else ledger_module.Ledger()
+    travel = travel if travel is not None else MapTravel()
+    where = _merchant_maps()
+    goods = _goods()
+    out = []
+    for good_id in held_goods:
+        good = goods.get(good_id, {})
+        for buyer_id in good.get("buyers", []):
+            buyer_map = where.get(buyer_id, "")
+            if not buyer_map or buyer_map == current_map:
+                continue
+            seconds = travel.seconds(current_map, buyer_map) if current_map else None
+            arrival = now + (seconds or 0)
+            best = None
+            for observation in ledger.load():
+                if observation.get("map") != buyer_map:
+                    continue
+                if ledger.valid_until(observation) <= arrival:
+                    continue
+                for row in observation.get("rows", []):
+                    if row.get("good_id") != good_id or row.get("side") != "buy":
+                        continue
+                    price = int(row.get("price", 0))
+                    if price > 0 and (best is None or price > best):
+                        best = price
+            if best:
+                out.append({"good": good.get("name", good_id), "map": buyer_map,
+                            "merchant": buyer_id, "price": best,
+                            "seconds": seconds, "hops": travel.hops(current_map, buyer_map)
+                            if current_map else None})
+    out.sort(key=lambda r: (r["hops"] if r["hops"] is not None else 99, -r["price"]))
+    return out[:limit]
+
+
 def format_suggestions(items):
     if not items:
         return ["（暂无值得跑的建议）"]

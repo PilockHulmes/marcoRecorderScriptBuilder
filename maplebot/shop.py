@@ -134,6 +134,30 @@ def countdown_seconds(text):
     return 0
 
 
+#: CARGO 里物品行的扫描参数（1368x800 整窗坐标，由 trade.crop_box 换算）
+CARGO_LIST_X = 700
+CARGO_LIST_Y = 258
+CARGO_ROW_H = 50
+CARGO_ROWS = 6
+CARGO_ICON = 44
+
+
+def read_cargo_items(frame, templates=None):
+    """读身上带着哪些货（只认商品，数量暂不读）。"""
+    templates = templates if templates is not None else load_icon_templates()
+    found = []
+    for index in range(CARGO_ROWS):
+        y = CARGO_LIST_Y + index * CARGO_ROW_H
+        try:
+            patch = trade.crop_box(frame, CARGO_LIST_X, y, CARGO_ICON, CARGO_ICON)
+        except Exception:
+            continue
+        good_id, score = match_icon(patch, templates)
+        if good_id and score >= 0.80:
+            found.append(good_id)
+    return found
+
+
 def identify(map_name):
     """地图 -> (merchant_id, merchant, kind)。"""
     entry = load_merchant_maps().get(map_name)
