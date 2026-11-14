@@ -81,6 +81,8 @@ class MapWatchTestBase(unittest.TestCase):
             mock.patch.object(mapwatch.MapWatcher, "_ocr_instance", return_value=object()),
             # 模板落盘会写项目 data/，测试里直接吞掉
             mock.patch.object(mapwatch, "save_name_template"),
+            # 合成用例里的地图名不在基准图里，别让"未知边"告警干扰断言
+            mock.patch.object(mapwatch, "load_baseline", return_value=set()),
         ]
         for patcher in patches:
             patcher.start()

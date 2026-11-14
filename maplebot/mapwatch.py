@@ -42,6 +42,7 @@ NAME_SIZE = (240, 44)
 # 名字裁剪里"第二行文字"的精确区域：不含地区名、不含图标，只留 仙人掌沙漠-1 这一条
 NAME_TEXT_BOX = (38, 20, 162, 21)
 NAME_TEXT_DIR = ROOT / "data" / "trade" / "map_name_text"
+BASELINE_PATH = ROOT / "data" / "trade" / "map_graph.json"
 _CROP_NAMES = {}   # 裁剪像素哈希 -> 名字：同一画面不重复问视觉   # 固定裁剪尺寸：锚定小地图左上角，不随面板宽度变化
 NAMES_PATH = ROOT / "data" / "trade" / "map_names.json"
 
@@ -273,6 +274,20 @@ def _dump_name_crop(crop, name):
             buf.tofile(str(folder / f"{_t.strftime('%H%M%S')}_{tag}.png"))
     except Exception:
         pass
+
+
+def load_baseline():
+    """基准地图图（用户口述整理）：邻接表，用来校验记录。"""
+    try:
+        import json as _json
+        data = _json.loads(BASELINE_PATH.read_text(encoding="utf-8"))
+    except Exception:
+        return set()
+    edges = set()
+    for a, neighbours in data.items():
+        for b in neighbours:
+            edges.add(frozenset((a, b)))
+    return edges
 
 
 def plausible_name(name):
@@ -758,6 +773,13 @@ class MapWatcher:
         if named:
             if last is not None and last.map_id != obs.map_id:
                 event = self._record_transition(last, obs, self._pending_load_ms, now)
+                baseline = load_baseline()
+                if baseline and event is not None:
+                    key = frozenset((event["from_map"], event["to_map"]))
+                    if key not in baseline:
+                        self._alarm("unknown_edge",
+                                    f"过图 {event['from_map']} -> {event['to_map']} 不在基准图里（可能认错名字）",
+                                    now)
                 self._pending_load_ms = None
             elif last is None and self._missed_from:
                 # 黑屏前没记住地图名：知道换了图，但接不上出发侧，等于丢一条边
