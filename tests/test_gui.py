@@ -7,9 +7,29 @@ from maplebot import advice as advice_module
 from maplebot import gui
 from maplebot import shop
 
+FIXED_ORDER = [
+    "kobi_1", "kobi_2", "kobi_3", "kobi_4", "kobi_5", "kobi_6", "kobi_7",
+    "dour_4", "dour_5", "dour_6", "dour_7",
+    "ore_4", "ore_5", "ore_6", "ore_7",
+]
+
 
 def make_row(good_id, side, price):
     return shop.Row(good_id, good_id, side, price)
+
+
+def board_entry(merchant_id, until=None, rows=None, observed=True):
+    """布局测试用的观察数据；标题/地图由固定清单补。"""
+    return {
+        "merchant_id": merchant_id,
+        "until": 0.0 if until is None else until,
+        "observed": observed,
+        "rows": rows or [],
+    }
+
+
+def price_row(good_id, side, price):
+    return {"good_id": good_id, "good": good_id, "side": side, "price": price}
 
 
 class ControllerTest(unittest.TestCase):
@@ -67,7 +87,7 @@ class ControllerTest(unittest.TestCase):
         self.assertTrue(state.cargo)
 
     def test_board_carries_merchant_and_good_ids(self):
-        """看板要带 merchant_id / good_id 才能画头像和商品图标。"""
+        """看板要带 merchant_id / good_id，且没观察的固定商人也保留。"""
         self.ledger.load.return_value = [{
             "merchant": "石铁", "merchant_id": "dour_4", "map": "A",
             "refresh_in": 120, "t": 1.0,
@@ -77,10 +97,11 @@ class ControllerTest(unittest.TestCase):
         with mock.patch.object(gui.trade, "find_shop_window", return_value=False), \
                 mock.patch.object(gui.trade, "find_cargo_window", return_value=False):
             state = self.controller.update(self.frame, now=3.0)
-        self.assertEqual(len(state.board), 1)
-        entry = state.board[0]
-        self.assertEqual(entry["merchant_id"], "dour_4")
+        # 固定 15 个商人全部在册，顺序固定
+        self.assertEqual([entry["merchant_id"] for entry in state.board], FIXED_ORDER)
+        entry = next(item for item in state.board if item["merchant_id"] == "dour_4")
         self.assertEqual(entry["until"], 121.0)
+        self.assertTrue(entry["observed"])
         self.assertEqual(entry["rows"][0]["good_id"], "pork")
 
     def test_board_merchant_id_falls_back_to_map(self):
@@ -94,11 +115,13 @@ class ControllerTest(unittest.TestCase):
                 mock.patch.object(gui.shop, "load_merchant_maps",
                                   return_value={"A": {"merchant_id": "dour_4"}}):
             state = self.controller.update(self.frame, now=3.0)
+        self.assertEqual(len(state.board), 1)
         self.assertEqual(state.board[0]["merchant_id"], "dour_4")
+        self.assertTrue(state.board[0]["observed"])
 
 
 class BoardFilterTest(unittest.TestCase):
-    """看板只保留固定商人，随机商人不能进看板。"""
+    """看板固定显示 merchant_maps.json 里的商人，随机商人不进看板。"""
 
     def setUp(self):
         self.ledger = mock.Mock()
@@ -110,7 +133,10 @@ class BoardFilterTest(unittest.TestCase):
             watcher=self.watcher, ledger=self.ledger,
             travel=advice_module.MapTravel(graph={}, edge_times=[]))
         self.frame = np.zeros((8, 8, 3), np.uint8)
-        self.maps = {"A": {"merchant_id": "dour_4"}, "B": {"merchant_id": "kobi_3"}}
+        self.maps = {
+            "A": {"merchant_id": "dour_4", "merchant": "史莱", "game_name": "史來"},
+            "B": {"merchant_id": "kobi_3", "merchant": "兰明", "game_name": "藍明"},
+        }
 
     def _update(self, observations):
         self.ledger.load.return_value = observations
@@ -134,27 +160,28 @@ class BoardFilterTest(unittest.TestCase):
             # merchant_id 不在 merchant_maps.json 里
             self.fixed("无名", "ghost_1", "Z", t=4.0),
         ])
-        self.assertEqual([entry["merchant"] for entry in state.board], ["石铁"])
+        self.assertEqual([entry["merchant_id"] for entry in state.board],
+                         ["kobi_3", "dour_4"])
+        by_id = {entry["merchant_id"]: entry for entry in state.board}
+        self.assertTrue(by_id["dour_4"]["observed"])
+        self.assertFalse(by_id["kobi_3"]["observed"])
+        self.assertNotIn("ghost_1", by_id)
 
-    def test_all_random_gives_empty_board(self):
+    def test_all_random_still_renders_fixed_merchants(self):
         state = self._update([
             {"map": "X", "merchant": "", "merchant_id": "", "t": 1.0, "rows": []},
             {"map": "Y", "merchant": "", "merchant_id": "", "t": 2.0, "rows": []},
         ])
-        self.assertEqual(state.board, [])
+        # 没有观察记录也固定返回两个商人（位置不能少）
+        self.assertEqual([entry["merchant_id"] for entry in state.board],
+                         ["kobi_3", "dour_4"])
+        self.assertTrue(all(not entry["observed"] for entry in state.board))
 
     def test_old_record_id_falls_back_to_map(self):
         state = self._update([{"merchant": "史莱", "map": "B", "t": 1.0, "rows": []}])
-        self.assertEqual(len(state.board), 1)
-        self.assertEqual(state.board[0]["merchant_id"], "kobi_3")
-
-
-def board_entry(merchant, merchant_id, map_name, until, count, start=0):
-    rows = [{"good_id": f"g{start + index}", "good": f"商品{start + index}",
-             "side": "sell" if index % 2 == 0 else "buy", "price": 10 + index}
-            for index in range(count)]
-    return {"merchant": merchant, "merchant_id": merchant_id, "map": map_name,
-            "until": until, "rows": rows}
+        self.assertEqual(len(state.board), 2)
+        entry = next(item for item in state.board if item["merchant_id"] == "kobi_3")
+        self.assertTrue(entry["observed"])
 
 
 class BoardLayoutTest(unittest.TestCase):
@@ -162,96 +189,193 @@ class BoardLayoutTest(unittest.TestCase):
     NOW = 100.0
 
     def setUp(self):
-        self.board = [
-            board_entry("石铁", "dour_4", "豐饒的沙漠-1", self.NOW + 200, 3),
-            board_entry("藍明", "kobi_3", "豐饒的沙漠-3", self.NOW + 30, 4, start=10),
-            board_entry("史莱", "dour_5", "孤獨的沙漠-1", self.NOW - 5, 6, start=20),
-            # 随机商人：即使被传进来也必须过滤掉
-            board_entry("", "", "某随机地图", self.NOW + 400, 5, start=30),
-        ]
+        self.maps = {
+            "M1": {"merchant_id": "kobi_1", "merchant": "石铁", "game_name": "石鉄"},
+            "M2": {"merchant_id": "dour_4", "merchant": "史莱", "game_name": "史來"},
+            "M3": {"merchant_id": "ore_7", "merchant": "哲里", "game_name": "哲利"},
+        }
 
-    def layout(self, width=None):
-        return gui.layout_board(self.board, width or self.WIDTH, now=self.NOW)
+    def layout(self, board=None, width=None, now=None, goods=None, maps=None):
+        with mock.patch.object(gui.shop, "load_merchant_maps",
+                               return_value=maps if maps is not None else self.maps):
+            if goods is not None:
+                with mock.patch.object(gui.shop, "load_goods", return_value=goods):
+                    return gui.layout_board(board or [], width or self.WIDTH,
+                                            now=self.NOW if now is None else now)
+            return gui.layout_board(board or [], width or self.WIDTH,
+                                    now=self.NOW if now is None else now)
 
     def test_window_size_and_advice_rows(self):
         self.assertEqual((gui.WINDOW_W, gui.WINDOW_H), (760, 930))
         self.assertEqual(gui.ADVICE_ROWS, 8)
 
-    def test_goods_grid(self):
-        self.assertEqual(gui._goods_grid(0), (1, 0))
-        self.assertEqual(gui._goods_grid(3), (1, 3))
-        self.assertEqual(gui._goods_grid(4), (2, 2))
-        self.assertEqual(gui._goods_grid(5), (2, 3))
-        self.assertEqual(gui._goods_grid(6), (2, 3))
-
-    def test_merchants_use_two_columns(self):
+    def test_fixed_order_is_line_then_number(self):
         layout = self.layout()
-        self.assertEqual(layout.columns, 2)
-        self.assertEqual(layout.column_width, (self.WIDTH - 2 * gui.BOARD_PAD
-                                               - gui.COLUMN_GAP) // 2)
+        self.assertEqual([item.icon_key for item in layout.of_kind("merchant")],
+                         ["kobi_1", "dour_4", "ore_7"])
+        self.assertEqual(layout.split, 2)          # 3 个 -> 左 2 右 1
+
+    def test_all_fixed_merchants_render_without_any_data(self):
+        layout = self.layout()
         headers = layout.of_kind("merchant")
-        self.assertEqual(len(headers), 3)
-        left_x = gui.BOARD_PAD
-        right_x = gui.BOARD_PAD + layout.column_width + gui.COLUMN_GAP
-        self.assertEqual([item.x for item in headers].count(left_x), 2)
-        self.assertEqual([item.x for item in headers].count(right_x), 1)
-        # 列优先：左列先放前两个商人，第三个换右列
-        self.assertEqual([item.owner for item in headers[:2]], ["石铁", "藍明"])
-        self.assertEqual(headers[2].owner, "史莱")
-        self.assertEqual(layout.split, 2)
-
-    def test_random_merchant_is_not_drawn(self):
-        layout = self.layout()
-        owners = {item.owner for item in layout.items}
-        self.assertNotIn("", owners)
-        self.assertEqual([item for item in layout.items if item.kind == "good"
-                          and item.text.startswith("商品3")], [])
-
-    def test_every_good_has_a_box_and_none_is_truncated(self):
-        layout = self.layout()
         goods = layout.of_kind("good")
-        self.assertEqual(len(goods), 3 + 4 + 6)        # 随机商人的 5 件不出现
-        for owner, expected in (("石铁", 3), ("藍明", 4), ("史莱", 6)):
-            self.assertEqual(len([item for item in goods if item.owner == owner]),
-                             expected)
+        self.assertEqual(len(headers), 3)
+        self.assertEqual(len(goods), 3 * gui.GOODS_SLOTS)
+        for header in headers:
+            self.assertEqual(header.suffix, gui.UNSEEN_TEXT)
+            self.assertEqual(header.suffix_color, gui.COLOR_UNSEEN)
+            self.assertEqual(header.color, gui.COLOR_ROW)   # 标题正常显示
+        self.assertTrue(all(item.price_text == gui.PRICE_EMPTY for item in goods))
+        self.assertTrue(all(item.text == gui.PRICE_EMPTY
+                            for item in goods if not item.good_id))
 
-        for item in layout.items:
-            self.assertGreaterEqual(item.x, 0)
-            self.assertGreaterEqual(item.y, 0)
-            self.assertGreater(item.w, 0)
-            self.assertGreater(item.h, 0)
-            self.assertLessEqual(item.x + item.w, self.WIDTH)
-            self.assertLessEqual(item.y + item.h, layout.height)
-
-    def test_goods_wrap_into_columns(self):
+    def test_every_merchant_has_fixed_two_by_four_slots(self):
         layout = self.layout()
-        for owner, columns, rows in (("石铁", 1, 3), ("藍明", 2, 2), ("史莱", 2, 3)):
+        for owner in ("石鉄", "史來", "哲利"):
             goods = [item for item in layout.of_kind("good") if item.owner == owner]
-            self.assertEqual(len({item.x for item in goods}), columns, owner)
-            self.assertEqual(len({item.y for item in goods}), rows, owner)
+            self.assertEqual(len(goods), gui.GOODS_SLOTS)
+            self.assertEqual({item.slot for item in goods}, set(range(gui.GOODS_SLOTS)))
+            self.assertEqual(len({item.x for item in goods}), 2)
+            self.assertEqual(len({item.y for item in goods}), 4)
+            self.assertEqual(len({item.w for item in goods}), 1)
 
-    def test_goods_of_six_item_merchant_fit_in_right_column(self):
-        layout = self.layout()
-        goods = [item for item in layout.of_kind("good") if item.owner == "史莱"]
-        self.assertEqual(len(goods), 6)
-        goods_width = (layout.column_width - gui.ROW_INDENT) // 2
-        self.assertTrue(all(item.w == goods_width for item in goods))
-        self.assertLessEqual(max(item.x + item.w for item in goods), self.WIDTH)
+    def test_goods_slots_are_sells_then_buys_in_file_order(self):
+        goods = {
+            "s1": {"id": "s1", "name": "卖一", "seller": "kobi_1", "buyers": []},
+            "s2": {"id": "s2", "name": "卖二", "seller": "kobi_1", "buyers": []},
+            "s3": {"id": "s3", "name": "波动", "tier": "volatile",
+                   "seller": "kobi_1", "buyers": []},
+            "b1": {"id": "b1", "name": "收一", "buyers": ["kobi_1"]},
+            "b2": {"id": "b2", "name": "收二", "buyers": ["kobi_1"]},
+            "b3": {"id": "b3", "name": "收三", "buyers": ["kobi_1"]},
+            "b4": {"id": "b4", "name": "收四", "buyers": ["kobi_1"]},
+            "b5": {"id": "b5", "name": "收五", "buyers": ["kobi_1"]},
+        }
+        layout = self.layout(goods=goods)
+        slots = sorted((item for item in layout.of_kind("good")
+                        if item.owner == "石鉄"), key=lambda item: item.slot)
+        self.assertEqual([item.good_id for item in slots],
+                         ["s1", "s2", "s3", "b1", "b2", "b3", "b4", ""])
+        self.assertEqual([item.side for item in slots],
+                         ["sell", "sell", "sell", "buy", "buy", "buy", "buy", ""])
+
+    def test_empty_slots_are_padded_to_eight(self):
+        maps = dict(self.maps)
+        maps["M9"] = {"merchant_id": "kobi_99", "merchant": "空商人",
+                      "game_name": "空商人"}
+        layout = self.layout(maps=maps)
+        empty = [item for item in layout.of_kind("good") if item.owner == "空商人"]
+        self.assertEqual(len(empty), gui.GOODS_SLOTS)
+        self.assertTrue(all(item.good_id == "" for item in empty))
+        self.assertTrue(all(item.text == gui.PRICE_EMPTY for item in empty))
+
+    def test_prices_fill_fixed_slots(self):
+        board = [board_entry("kobi_1", until=self.NOW + 100, rows=[
+            price_row("natural_honey", "sell", 12),
+            price_row("silver_ore", "buy", 30),
+        ])]
+        layout = self.layout(board)
+        by_good = {item.good_id: item for item in layout.of_kind("good")
+                   if item.owner == "石鉄"}
+        self.assertEqual(by_good["natural_honey"].price_text, "12")
+        self.assertEqual(by_good["silver_ore"].price_text, "30")
+        self.assertEqual(by_good["natural_honey"].label_color, gui.COLOR_SELL)
+        self.assertEqual(by_good["silver_ore"].label_color, gui.COLOR_BUY)
+        # 这次没上架/没记录的商品：价格「—」且标签用浅灰
+        self.assertEqual(by_good["balloon_flower"].price_text, gui.PRICE_EMPTY)
+        self.assertEqual(by_good["balloon_flower"].label_color, gui.COLOR_GRAY)
+
+    def test_expired_observation_hides_old_prices(self):
+        board = [board_entry("kobi_1", until=self.NOW - 5, rows=[
+            price_row("natural_honey", "sell", 999),
+            price_row("silver_ore", "buy", 888),
+        ])]
+        layout = self.layout(board)
+        header = next(item for item in layout.of_kind("merchant")
+                      if item.icon_key == "kobi_1")
+        self.assertEqual(header.suffix, gui.EXPIRED_TEXT)
+        self.assertEqual(header.color, gui.COLOR_GRAY)
+        goods = [item for item in layout.of_kind("good") if item.owner == "石鉄"]
+        self.assertTrue(all(item.price_text == gui.PRICE_EMPTY for item in goods))
+        self.assertTrue(all(item.label_color == gui.COLOR_GRAY for item in goods))
+        self.assertNotIn("999", [item.price_text for item in goods])
+        self.assertNotIn("888", [item.price_text for item in goods])
+
+    def test_sell_and_buy_use_different_colors(self):
+        board = [board_entry("kobi_1", until=self.NOW + 100, rows=[
+            price_row("natural_honey", "sell", 12),
+            price_row("silver_ore", "buy", 30),
+        ])]
+        layout = self.layout(board)
+        by_good = {item.good_id: item for item in layout.of_kind("good")
+                   if item.owner == "石鉄"}
+        sell, buy = by_good["natural_honey"], by_good["silver_ore"]
+        self.assertEqual(sell.label, "卖")
+        self.assertEqual(buy.label, "收")
+        self.assertEqual(sell.label_color, gui.COLOR_SELL)
+        self.assertEqual(buy.label_color, gui.COLOR_BUY)
+        self.assertNotEqual(sell.label_color, buy.label_color)
+        # 商品名保持深灰
+        self.assertEqual(sell.color, gui.COLOR_ROW)
+        self.assertEqual(buy.color, gui.COLOR_ROW)
+
+    def test_name_label_and_price_have_three_fixed_x_positions(self):
+        board = [board_entry("kobi_1", until=self.NOW + 100, rows=[
+            price_row("natural_honey", "sell", 12),
+        ])]
+        layout = self.layout(board)
+        item = next(good for good in layout.of_kind("good")
+                    if good.good_id == "natural_honey")
+        self.assertLess(item.name_x, item.label_x)
+        self.assertLess(item.label_x, item.price_x)
+        self.assertEqual(item.name_x, item.x + gui.ICON_SIZE + gui.ICON_GAP)
+        self.assertEqual(item.price_x, item.x + item.w - gui.PRICE_RIGHT_OFFSET)
+        self.assertEqual(item.label_x, item.x + item.w - gui.LABEL_RIGHT_OFFSET)
+
+    def test_positions_do_not_change_when_prices_arrive(self):
+        empty = self.layout()
+        priced = self.layout([
+            board_entry("kobi_1", until=self.NOW + 100, rows=[
+                price_row("natural_honey", "sell", 12),
+                price_row("silver_ore", "buy", 30),
+            ]),
+            board_entry("dour_4", until=self.NOW + 30, rows=[]),
+            board_entry("ore_7", until=self.NOW - 5, rows=[]),
+        ])
+        headers = lambda layout: [(item.icon_key, item.x, item.y, item.w, item.h)
+                                  for item in layout.of_kind("merchant")]
+        goods = lambda layout: [(item.owner, item.slot, item.good_id,
+                                 item.x, item.y, item.w, item.h)
+                                for item in layout.of_kind("good")]
+        self.assertEqual(headers(empty), headers(priced))
+        self.assertEqual(goods(empty), goods(priced))
+        self.assertEqual(len(goods(priced)), 3 * gui.GOODS_SLOTS)
 
     def test_countdown_colors_and_text_are_computed_at_layout_time(self):
-        headers = {item.owner: item for item in self.layout().of_kind("merchant")}
-        self.assertEqual(headers["石铁"].color, gui.COLOR_GREEN)
-        self.assertEqual(headers["石铁"].suffix, "剩 200s")
-        self.assertEqual(headers["藍明"].color, gui.COLOR_YELLOW)
-        self.assertEqual(headers["藍明"].suffix, "剩 30s")
-        self.assertEqual(headers["史莱"].color, gui.COLOR_GRAY)
-        self.assertEqual(headers["史莱"].suffix, "已过期")
+        board = [
+            board_entry("kobi_1", until=self.NOW + 200),
+            board_entry("dour_4", until=self.NOW + 30),
+            board_entry("ore_7", until=self.NOW - 5),
+        ]
+        headers = {item.icon_key: item for item in self.layout(board).of_kind("merchant")}
+        self.assertEqual(headers["kobi_1"].color, gui.COLOR_GREEN)
+        self.assertEqual(headers["kobi_1"].suffix, "剩 200s")
+        self.assertEqual(headers["dour_4"].color, gui.COLOR_YELLOW)
+        self.assertEqual(headers["dour_4"].suffix, "剩 30s")
+        self.assertEqual(headers["ore_7"].color, gui.COLOR_GRAY)
+        self.assertEqual(headers["ore_7"].suffix, gui.EXPIRED_TEXT)
 
-        # 同一份数据，now 变了倒计时跟着变（没有缓存剩余秒数）
-        later = gui.layout_board(self.board, self.WIDTH, now=self.NOW + 250)
-        later_headers = {item.owner: item for item in later.of_kind("merchant")}
-        self.assertEqual(later_headers["石铁"].suffix, "已过期")
-        self.assertEqual(later_headers["石铁"].color, gui.COLOR_GRAY)
+        later = self.layout(board, now=self.NOW + 250)
+        later_headers = {item.icon_key: item for item in later.of_kind("merchant")}
+        self.assertEqual(later_headers["kobi_1"].suffix, gui.EXPIRED_TEXT)
+        self.assertEqual(later_headers["kobi_1"].color, gui.COLOR_GRAY)
+
+    def test_random_merchant_is_not_drawn(self):
+        layout = self.layout([board_entry("ghost_1", until=self.NOW + 400),
+                              board_entry("", observed=False)])
+        self.assertEqual([item.icon_key for item in layout.of_kind("merchant")],
+                         ["kobi_1", "dour_4", "ore_7"])
+        self.assertNotIn("", {item.owner for item in layout.items})
 
     def test_narrow_window_falls_back_to_one_column(self):
         layout = self.layout(width=400)
@@ -261,14 +385,44 @@ class BoardLayoutTest(unittest.TestCase):
         for item in layout.items:
             self.assertLessEqual(item.x + item.w, 400)
 
-    def test_empty_board_placeholder(self):
-        for board in ([], [board_entry("", "", "X", self.NOW + 10, 3)]):
-            layout = gui.layout_board(board, self.WIDTH, now=self.NOW)
-            self.assertEqual(layout.columns, 0)
-            self.assertEqual(layout.height, 40)
-            self.assertEqual(len(layout.items), 1)
-            self.assertEqual(layout.items[0].kind, "placeholder")
-            self.assertEqual(layout.items[0].text, "（打开商人界面后显示）")
+    def test_nothing_overflows_right_or_bottom(self):
+        for width in (self.WIDTH, 400):
+            layout = self.layout(width=width)
+            for item in layout.items:
+                self.assertGreaterEqual(item.x, 0)
+                self.assertGreaterEqual(item.y, 0)
+                self.assertGreater(item.w, 0)
+                self.assertGreater(item.h, 0)
+                self.assertLessEqual(item.x + item.w, width)
+                self.assertLessEqual(item.y + item.h, layout.height)
+
+    def test_empty_board_placeholder_when_merchant_maps_missing(self):
+        layout = self.layout(maps={})
+        self.assertEqual(layout.columns, 0)
+        self.assertEqual(len(layout.items), 1)
+        self.assertEqual(layout.items[0].kind, "placeholder")
+
+
+class RealFixedMerchantDataTest(unittest.TestCase):
+    """用仓库里的真实 merchant_maps.json / goods.json 验证固定 15 个。"""
+
+    def test_fifteen_merchants_in_fixed_order_with_eight_slots_each(self):
+        layout = gui.layout_board([], 736, now=100.0)
+        headers = layout.of_kind("merchant")
+        self.assertEqual([item.icon_key for item in headers], FIXED_ORDER)
+        self.assertEqual(layout.split, 8)          # 左 8 右 7
+        goods = layout.of_kind("good")
+        self.assertEqual(len(goods), 15 * gui.GOODS_SLOTS)
+        for header in headers:
+            slots = [item for item in goods if item.owner == header.owner]
+            self.assertEqual(len(slots), gui.GOODS_SLOTS, header.icon_key)
+
+    def test_empty_data_all_prices_dash_and_all_unseen(self):
+        layout = gui.layout_board([], 736, now=100.0)
+        self.assertTrue(all(item.suffix == gui.UNSEEN_TEXT
+                            for item in layout.of_kind("merchant")))
+        self.assertTrue(all(item.price_text == gui.PRICE_EMPTY
+                            for item in layout.of_kind("good")))
 
 
 class FakeCanvas:
@@ -301,31 +455,93 @@ class DrawBoardTest(unittest.TestCase):
     NOW = 100.0
 
     def setUp(self):
+        self.maps = {
+            "M1": {"merchant_id": "kobi_1", "merchant": "石铁", "game_name": "石鉄"},
+            "M2": {"merchant_id": "dour_4", "merchant": "史莱", "game_name": "史來"},
+            "M3": {"merchant_id": "ore_7", "merchant": "哲里", "game_name": "哲利"},
+        }
         self.board = [
-            board_entry("石铁", "dour_4", "豐饒的沙漠-1", self.NOW + 200, 3),
-            board_entry("藍明", "kobi_3", "豐饒的沙漠-3", self.NOW + 30, 4, start=10),
-            board_entry("史莱", "dour_5", "孤獨的沙漠-1", self.NOW - 5, 6, start=20),
+            board_entry("kobi_1", until=self.NOW + 200, rows=[
+                price_row("natural_honey", "sell", 12),
+                price_row("silver_ore", "buy", 30),
+            ]),
+            board_entry("dour_4", until=self.NOW + 30),
+            board_entry("ore_7", until=self.NOW - 5),
         ]
 
+    def draw(self, board=None, icons=None, width=736):
+        canvas = FakeCanvas(width)
+        with mock.patch.object(gui.shop, "load_merchant_maps", return_value=self.maps):
+            height = gui.draw_board(canvas, self.board if board is None else board,
+                                    now=self.NOW, icons=icons, width=width)
+        return canvas, height
+
+    @staticmethod
+    def expected_text_count():
+        # 每个商人：标题 + 倒计时 + 7 个有货槽位×3 段文字 + 1 个空槽位
+        return 3 * (2 + 7 * 3 + 1)
+
     def test_draws_all_text_and_sets_scrollregion(self):
-        canvas = FakeCanvas()
-        height = gui.draw_board(canvas, self.board, now=self.NOW, icons=None, width=736)
-        # 每个商人 2 条文字（标题 + 右对齐倒计时），每件商品 1 条
-        self.assertEqual(len(canvas.texts), 3 * 2 + 13)
+        canvas, height = self.draw()
+        self.assertEqual(len(canvas.texts), self.expected_text_count())
         self.assertEqual(canvas.images, [])
+        with mock.patch.object(gui.shop, "load_merchant_maps", return_value=self.maps):
+            layout = gui.layout_board(self.board, 736, now=self.NOW)
         self.assertEqual(canvas.scrollregion, (0, 0, 736, height))
-        self.assertEqual(gui.layout_board(self.board, 736, now=self.NOW).height, height)
-        # 没有商品 -> 空看板占位
-        self.assertEqual(gui.draw_board(canvas, [], now=self.NOW, width=736), 40)
-        self.assertEqual(len(canvas.texts), 1)
+        self.assertEqual(layout.height, height)
+        self.assertIn("—", [kwargs.get("text") for _, _, kwargs in canvas.texts])
 
     def test_icons_are_drawn_for_merchants_and_goods(self):
         icons = mock.Mock()
         icons.get.return_value = "photo"
-        canvas = FakeCanvas()
-        gui.draw_board(canvas, self.board, now=self.NOW, icons=icons, width=736)
-        self.assertEqual(len(canvas.images), 3 + 13)
-        self.assertEqual(len(canvas.texts), 3 * 2 + 13)
+        canvas, _ = self.draw(icons=icons)
+        self.assertEqual(len(canvas.images), 3 + 3 * 7)
+        self.assertEqual(len(canvas.texts), self.expected_text_count())
+
+    def test_price_text_is_right_aligned(self):
+        canvas, _ = self.draw()
+        with mock.patch.object(gui.shop, "load_merchant_maps", return_value=self.maps):
+            layout = gui.layout_board(self.board, 736, now=self.NOW)
+        item = next(good for good in layout.of_kind("good")
+                    if good.good_id == "natural_honey")
+        prices = [(x, y, kwargs) for x, y, kwargs in canvas.texts
+                  if kwargs.get("text") == "12"]
+        self.assertEqual(len(prices), 1)
+        x, _, kwargs = prices[0]
+        self.assertEqual(kwargs["anchor"], "e")
+        self.assertEqual(x, item.price_x)
+        self.assertGreater(x, item.label_x)
+
+    def test_sell_and_buy_labels_are_colored_differently(self):
+        canvas, _ = self.draw()
+        fills = {}
+        for _, _, kwargs in canvas.texts:
+            if kwargs.get("text") in ("卖", "收"):
+                fills.setdefault(kwargs["text"], set()).add(kwargs["fill"])
+        self.assertIn(gui.COLOR_SELL, fills["卖"])
+        self.assertIn(gui.COLOR_BUY, fills["收"])
+        self.assertNotEqual(gui.COLOR_SELL, gui.COLOR_BUY)
+        # 这次没有有效价格的槽位用浅灰
+        self.assertIn(gui.COLOR_GRAY, fills["卖"])
+        self.assertIn(gui.COLOR_GRAY, fills["收"])
+
+    def test_expired_prices_are_drawn_as_dash_not_old_numbers(self):
+        board = [board_entry("kobi_1", until=self.NOW - 5, rows=[
+            price_row("natural_honey", "sell", 999),
+            price_row("silver_ore", "buy", 888),
+        ])]
+        canvas, _ = self.draw(board=board)
+        texts = [kwargs.get("text") for _, _, kwargs in canvas.texts]
+        self.assertNotIn("999", texts)
+        self.assertNotIn("888", texts)
+        self.assertIn(gui.EXPIRED_TEXT, texts)
+
+    def test_empty_board_draws_every_fixed_merchant(self):
+        canvas, height = self.draw(board=[])
+        self.assertEqual(len(canvas.texts), self.expected_text_count())
+        labels = [kwargs.get("text") for _, _, kwargs in canvas.texts]
+        self.assertEqual(labels.count(gui.UNSEEN_TEXT), 3)
+        self.assertEqual(labels.count(gui.PRICE_EMPTY), 3 * gui.GOODS_SLOTS)
 
 
 class StatusColorTest(unittest.TestCase):
