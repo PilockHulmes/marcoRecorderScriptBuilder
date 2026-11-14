@@ -344,11 +344,10 @@ def observe(frame):
     """读一帧画面 → Observation（全部坐标按小地图内容区归一化到 0~1）。"""
     if frame is None or getattr(frame, "size", 0) == 0:
         return None
-    # 加载是全屏纯黑；暗色地图（古代遗迹内部）平均亮度也有 35 左右。
-    # 只按"平均 < 40"会把暗地图误判成 loading，这里要求几乎整屏都黑。
-    gray = frame.mean(axis=2)
-    dark = bool(gray.mean() < 12.0 and float((gray < 20).mean()) > 0.95)
+    # 读图期间整屏是黑的、小地图不在；正常地图一定有白框小地图。
+    # 用"小地图在不在"当 loading 判据，不需要任何亮度阈值。
     box = minimap.find_minimap(frame)
+    dark = box is None
     if box is None:
         return Observation(player=None, dark=dark)
     inner = box.inner()
