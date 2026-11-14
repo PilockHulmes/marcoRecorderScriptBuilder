@@ -36,7 +36,9 @@ ROOT = Path(__file__).resolve().parents[1]
 VISITS_PATH = ROOT / "data" / "trade" / "map_visits.jsonl"
 PORTALS_PATH = ROOT / "data" / "trade" / "seen_portals.json"
 NAMES_DIR = ROOT / "data" / "trade" / "map_names"
-NAME_THRESHOLD = 0.85
+NAME_THRESHOLD = 0.92
+NAME_MARGIN = 0.08
+NAME_SIZE = (240, 44)   # 固定裁剪尺寸：锚定小地图左上角，不随面板宽度变化
 NAMES_PATH = ROOT / "data" / "trade" / "map_names.json"
 
 #: 小地图图标颜色（实测：NPC 蓝点 H 85~110，传送门绿圈 H 40~80）
@@ -169,14 +171,56 @@ def load_name_templates():
 
 
 def name_crop(frame):
-    """小地图上方两行字（地区名 + 小地图名）的固定区域。"""
+    """小地图上方的名字区域：**固定尺寸**，锚定面板左上角。
+
+    不能用 box.w 决定宽度——小地图面板宽度每张图都不一样（165/192/223 都见过），
+    裁剪尺寸一变，模板就得拉伸，字被拉变形后就会认成隔壁地图。
+    """
     box = minimap.find_minimap(frame)
     if box is None:
         return None
+    width, height = NAME_SIZE
+    x = max(0, box.x)
     y = max(0, box.y - 42)
-    right = min(frame.shape[1], box.x + box.w + 4)
-    crop = frame[y:box.y + 4, box.x:right]
-    return crop if crop.size else None
+    crop = frame[y:y + height, x:x + width]
+    if crop.shape[0] != height or crop.shape[1] != width:
+        return None          # 贴边/越界：宁可不认，也不能拿残缺图去比
+    return crop
+
+
+def match_name(crop, threshold=NAME_THRESHOLD, margin=NAME_MARGIN):
+    """和名字模板比对，返回 (name, best, second)。
+
+    尺寸不同直接跳过（绝不拉伸）；还要求第一名领先第二名 margin，
+    这样 "沙漠-1/2/3" 这种只差一个数字的名字不会互相误认。
+    """
+    scores = []
+    for name, tpl in load_name_templates().items():
+        if tpl.shape[:2] != crop.shape[:2]:
+            continue
+        result = cv2.matchTemplate(crop, tpl, cv2.TM_CCOEFF_NORMED)
+        if result.size:
+            scores.append((float(result.max()), name))
+    if not scores:
+        return "", 0.0, 0.0
+    scores.sort(reverse=True)
+    best, best_name = scores[0]
+    second = scores[1][0] if len(scores) > 1 else 0.0
+    if best >= threshold and best - second >= margin:
+        return best_name, best, second
+    return "", best, second
+
+
+def save_name_template(name, crop):
+    if crop is None or crop.shape[:2] != (NAME_SIZE[1], NAME_SIZE[0]):
+        return
+    NAMES_DIR.mkdir(parents=True, exist_ok=True)
+    path = NAMES_DIR / f"{name}.png"
+    if not path.exists():
+        ok, buffer = cv2.imencode(".png", crop)
+        if ok:
+            buffer.tofile(str(path))
+    load_name_templates()[name] = crop
 
 
 def match_name(crop, threshold=NAME_THRESHOLD):
