@@ -3,10 +3,13 @@
 设计：
 - **地图身份**用地图名：先和已存名字截图做模板匹配，再 OCR + 补字/换字纠错；
   形状指纹只放在 ``Observation.raw`` 里备用，**绝不**当 ``map_id``；
-- **过图**判定 = 屏幕变黑 → 恢复后地图名变了；
-- **出发传送门** = 黑屏前最后一帧的玩家位置（过图必须在传送门上）；
-- **到达传送门** = 加载完成后玩家的位置（角色正站在传送门上，图标被挡住也能定位）；
-- 坐标全部按小地图内容区归一化到 0~1。
+- **过图**判定只有一条：前后两次"有名字"的观测地图名不一样，就是一次过图；
+  黑屏只用来量 ``load_ms``（以及卡加载告警），**不参与**"是否过图"的判断；
+- **出发传送门** = 换图前最后一次有名字的观测里的玩家位置（过图必须在传送门上）；
+- **到达传送门** = 换图后第一帧有名字的观测里的玩家位置（角色正站在传送门上，图标被挡住也能定位）；
+- 坐标全部按小地图内容区归一化到 0~1；
+- **影响地图记录的异常立刻报警**：以 ``！！！！！`` 开头打印，同一原因首次 +
+  每 60 秒一次，提醒玩家停下来别继续白跑。
 
 用法::
 
@@ -42,6 +45,16 @@ PORTAL_TEMPLATE = ROOT / "data" / "trade" / "icons" / "portal.png"
 PORTAL_THRESHOLD = 0.80
 #: 全屏变黑判定：平均亮度低于这个值算 loading
 DARK_MEAN = 40
+#: 影响地图记录的异常一律以此为前缀，方便一眼发现 / grep
+ALARM_PREFIX = "！！！！！"
+#: 连续读不出地图名多久后报警（小地图还在，但名字是空的）
+BLANK_ALARM_SEC = 3.0
+#: 连续找不到小地图多久后报警（被窗口遮挡 / 不在跑商地图）
+NO_MINIMAP_ALARM_SEC = 3.0
+#: 黑屏持续多久算"可能卡在加载"
+DARK_ALARM_SEC = 30.0
+#: 同一条报警最短重复间隔；首次一定打印
+ALARM_REPEAT_SEC = 60.0
 #: 小地图指纹尺寸
 FINGERPRINT = (32, 16)
 
@@ -301,10 +314,19 @@ class MapWatcher:
         self.seen_path = Path(portals_path or PORTALS_PATH)
         self.names_path = Path(names_path or NAMES_PATH)
         self.dark_mean = dark_mean
-        self.prev = None          # 黑屏前最后一帧
+        #: 上一次"有名字"的观测——判过图只认它，空名字帧顶不掉它
+        self.last_map_obs = None
         self.in_dark = False
         self.dark_started = 0.0
+        #: 最近一次黑屏的时长（ms），留给下一次换图结算；黑屏没换图就作废
+        self._pending_load_ms = None
         self.events = []
+        self.alarms = []          # 本次运行打印过的告警（已按原因去重）
+        self.alarm_count = 0
+        self._alarm_last = {}     # 告警 code -> 上次打印时间
+        self._blank_since = None  # 连续读不出名字的起点
+        self._no_map_since = None # 连续找不到小地图的起点
+        self._missed_from = False # 进黑屏前就没记住地图名 → 出发侧未知
         self._ocr = None
         self.errors = []
         self.skipped_lines = 0    # load_visits 跳过多少坏行
@@ -314,7 +336,7 @@ class MapWatcher:
         self.map_sizes = {}        # map_id -> (w, h)：像素半径聚类用
         self.portal_icons = {}
         self.seen_portals = {}     # map_id -> {pos_key}：见过的传送门
-        self.explored = set()      # (map_id, pos_key)：从这里出发过的传送门
+        self.explored = set()      # (map_id, pos_key)：确认过的传送门（出发或到达）
         self._replay()             # 从落盘记录恢复进度
 
     def _error(self, message):
@@ -322,6 +344,27 @@ class MapWatcher:
         self.errors.append(message)
         if len(self.errors) > 200:
             del self.errors[:-200]
+
+    def _alarm(self, code, reason, now=None):
+        """打印一条"地图记录异常"告警。
+
+        同一 ``code`` 只在首次和之后每 ``ALARM_REPEAT_SEC`` 秒各打一次，
+        避免每帧刷屏；不同原因各自独立计时。"立刻"指当帧就打印并 flush。
+        返回这次是否真的打印了。
+        """
+        now = time.monotonic() if now is None else now
+        last = self._alarm_last.get(code)
+        if last is not None and 0 <= (now - last) < ALARM_REPEAT_SEC:
+            return False
+        self._alarm_last[code] = now
+        self.alarm_count += 1
+        self.alarms.append({"t": time.strftime("%Y-%m-%dT%H:%M:%S"),
+                            "code": code, "reason": reason})
+        if len(self.alarms) > 200:
+            del self.alarms[:-200]
+        print(f"{ALARM_PREFIX} 地图记录异常：{reason}，请暂停跑图并通知开发者",
+              flush=True)
+        return True
 
     def _replay(self):
         """从已落盘的记录重建"见过的传送门/走过的传送门"，这样中断后能接着跑。"""
@@ -380,7 +423,7 @@ class MapWatcher:
                 self._error(f"portals backup: {backup_exc}")
             return {}
 
-    def _flush_portals(self):
+    def _flush_portals(self, now=None):
         """临时文件 + os.replace 原子写，避免崩溃时留下半个 json。"""
         try:
             self.seen_path.parent.mkdir(parents=True, exist_ok=True)
@@ -392,8 +435,13 @@ class MapWatcher:
                 handle.flush()
                 os.fsync(handle.fileno())
             os.replace(temp, self.seen_path)
+            return True
         except Exception as exc:
             self._error(f"flush: {exc}")
+            self._alarm("write_portals",
+                        f"写 {self.seen_path.name} 失败：{exc}（传送门记录没有落盘）",
+                        now)
+            return False
 
     def _radii(self, map_id):
         """这张图的聚类容差（归一化坐标）。知道小地图尺寸就按 5px 换算。"""
@@ -493,11 +541,12 @@ class MapWatcher:
         close = difflib.get_close_matches(sub, pool, n=1, cutoff=0.70)
         return close[0] if close else sub
 
-    def _resolve_name(self, frame, obs):
+    def _resolve_name(self, frame, obs, now=None):
         """给 obs 定名字：模板匹配优先，其次 OCR + 纠错；失败留空。
 
         这是唯一的命名入口——``map_id`` 在这里只会变成真实名字或空串，
-        不存在"指纹当 id"或"未知地图当 id"的路径。
+        不存在"指纹当 id"或"未知地图当 id"的路径。解析链路抛异常会立刻
+        报警（需求 7），同时这一帧按"没名字"处理。
         """
         name = ""
         crop = None
@@ -505,19 +554,27 @@ class MapWatcher:
             crop = name_crop(frame)
         except Exception as exc:
             self._error(f"crop: {exc}")
+            self._alarm("name_crop", f"截取地图名区域抛异常：{exc}", now)
         if crop is not None:
             try:
                 name, _score = match_name(crop)
             except Exception as exc:
                 self._error(f"match_name: {exc}")
+                self._alarm("name_match", f"地图名模板匹配抛异常：{exc}", now)
                 name = ""
             if not name:
                 sub = ""
+                box = None
                 try:
                     box = minimap.find_minimap(frame)
+                except Exception as exc:
+                    # 小地图都定位不了：这一帧算"没名字"，由 3 秒告警兜底
+                    self._error(f"find_minimap: {exc}")
+                try:
                     _area, sub = read_map_name(frame, box, self._ocr_instance())
                 except Exception as exc:
                     self._error(f"ocr: {exc}")
+                    self._alarm("name_ocr", f"地图名 OCR 抛异常：{exc}", now)
                 if sub:
                     name = self._correct_name(sub)
                     try:
@@ -532,120 +589,175 @@ class MapWatcher:
         obs.map_id = name
         if name and not plausible_name(name):
             self._error(f"地图名不合理，丢弃：{name!r}")
+            obs.name = ""
+            obs.map_id = ""
             return ""
         return name
 
     def step(self, frame, now=None):
-        """处理一帧；发生过图就返回一条事件，否则 None。"""
+        """处理一帧；地图名发生变化就返回一条过图事件，否则 None。
+
+        判定只有一条：**前后两次"有名字"的观测地图名不一样 = 一次过图**。
+        黑屏只用来量 ``load_ms`` / 报"卡加载"，不再决定有没有过图。
+        """
         now = time.monotonic() if now is None else now
         try:
             obs = observe(frame)
         except Exception as exc:
             self._error(f"observe: {exc}")
+            self._alarm("observe", f"observe() 抛异常：{exc}", now)
             return None
         if obs is None:
             return None
 
+        # ---- 黑屏：只计时，不解析名字（黑屏上没有名字可读）
         if obs.dark:
-            obs.map_id = ""
             if not self.in_dark:
                 self.in_dark = True
                 self.dark_started = now
+                self._pending_load_ms = None
+                self._blank_since = None        # 黑屏时间不算"读不出名字"
+                self._no_map_since = None
+                if self.last_map_obs is None:
+                    # 进黑屏前就不知道在哪张图：这次过图的出发侧注定丢了
+                    self._missed_from = True
+            dark_sec = now - self.dark_started
+            if dark_sec >= DARK_ALARM_SEC:
+                self._alarm("dark", f"黑屏已持续 {dark_sec:.1f} 秒（可能卡在加载）", now)
             return None
 
-        # 统一命名：模板 -> OCR + 纠错；失败就是空串，绝不用指纹/占位符顶替
+        # ---- 黑屏结束：先记下这次 loading 时长，等下一次"真的换图"结算
+        if self.in_dark:
+            self.in_dark = False
+            self._pending_load_ms = max(0.0, (now - self.dark_started) * 1000.0)
+            self.dark_started = 0.0
+
+        # ---- 统一命名：模板 -> OCR + 纠错；失败就是空串，绝不用指纹/占位符顶替
         try:
-            self._resolve_name(frame, obs)
+            self._resolve_name(frame, obs, now)
         except Exception as exc:
             self._error(f"name: {exc}")
             obs.name = ""
             obs.map_id = ""
+            self._alarm("name", f"名字解析抛异常：{exc}", now)
 
-        if self.in_dark:
-            self.in_dark = False
-            load_ms = (now - self.dark_started) * 1000.0
-            before, self.prev = self.prev, obs
-            # 两边都必须是真实地图名；否则不写事件（prev 已更新，不会卡住）
-            if before is None or not usable_id(before.map_id) or not usable_id(obs.map_id):
-                return None
-            if before.map_id == obs.map_id:
-                return None           # 黑屏但没换图（过场/切场景），忽略
-            from_pos = to_pos = None
-            if before.player is not None and obs.player is not None:
-                from_pos = self.cluster(before.map_id, before.player, before.size)
-                to_pos = self.cluster(obs.map_id, obs.player, obs.size)
-                self._note_inferred_portal(before.map_id, from_pos)
-                self.explored.add((before.map_id, from_pos))
-                self.seen_portals.setdefault(before.map_id, set()).add(from_pos)
-                self.seen_portals.setdefault(obs.map_id, set()).add(to_pos)
-                self.explored.add((obs.map_id, to_pos))
-            else:
-                print(f"[mapwatch] 位置未知，但仍记录 {before.map_id} -> {obs.map_id}", flush=True)
-            event = {
-                "t": time.strftime("%Y-%m-%dT%H:%M:%S"),
-                "from_map": before.map_id, "from_pos": list(from_pos) if from_pos else None,
-                "to_map": obs.map_id, "to_pos": list(to_pos) if to_pos else None,
-                "load_ms": round(load_ms, 0),
-                "from_name": self.name_of(before.map_id), "to_name": self.name_of(obs.map_id),
-            }
-            self._append(event)
-            self._flush_portals()
-            self.events.append(event)
-            return event
+        named = usable_id(obs.map_id)
+        self._track_visibility(obs, named, now)
 
-        # 顺带记录这张图上看到的传送门（数量 1~4 才可信，防误检）
-        if obs.map_id and 1 <= len(obs.portals) <= 4:
+        # ---- 唯一的过图判定：两次"有名字"的观测之间地图名变了
+        event = None
+        last = self.last_map_obs
+        if named:
+            if last is not None and last.map_id != obs.map_id:
+                event = self._record_transition(last, obs, self._pending_load_ms, now)
+                self._pending_load_ms = None
+            elif last is None and self._missed_from:
+                # 黑屏前没记住地图名：知道换了图，但接不上出发侧，等于丢一条边
+                self._alarm("lost_from",
+                            "过图时出发侧地图名不可用，已丢失一条地图连接", now)
+                self._pending_load_ms = None
+            elif last is not None:
+                self._pending_load_ms = None    # 黑屏了但没换图，这次时长作废
+            self._missed_from = False
+            self._remember(obs)
+
+        # ---- 顺带记录这张图上看到的传送门（数量 1~4 才可信，防误检）
+        if named and 1 <= len(obs.portals) <= 4:
             # 只记录、不计入"未跑传送门"：图标匹配会有误检，计数以过图为准
             self.portal_icons[obs.map_id] = [self.cluster(obs.map_id, pos, obs.size)
                                              for pos, _area in obs.portals]
-        # 第一次看到某张图 / 开图时，明确告诉用户"我现在在哪"
-        if obs.map_id and obs.map_id != self._last_map:
+
+        # ---- 第一次看到某张图 / 开图时，明确告诉用户"我现在在哪"
+        if named and obs.map_id != self._last_map:
             self._last_map = obs.map_id
             print(f"[mapwatch] 当前地图：{obs.map_id}", flush=True)
+        return event
 
-        # 没有黑屏但地图变了（少数过图不黑屏），也记一条
-        previous = self.prev
-        if (previous is not None and usable_id(previous.map_id) and usable_id(obs.map_id)
-                and previous.map_id != obs.map_id):
-            from_pos = to_pos = None
-            if previous.player is not None and obs.player is not None:
-                from_pos = self.cluster(previous.map_id, previous.player, previous.size)
-                to_pos = self.cluster(obs.map_id, obs.player, obs.size)
-                self._note_inferred_portal(previous.map_id, from_pos)
-                self.explored.add((previous.map_id, from_pos))
-                self.seen_portals.setdefault(previous.map_id, set()).add(from_pos)
-                self.seen_portals.setdefault(obs.map_id, set()).add(to_pos)
-            else:
-                print(f"[mapwatch] 位置未知，但仍记录 {previous.map_id} -> {obs.map_id}",
-                      flush=True)
-            event = {"t": time.strftime("%Y-%m-%dT%H:%M:%S"),
-                     "from_map": previous.map_id,
-                     "from_pos": list(from_pos) if from_pos else None,
-                     "to_map": obs.map_id,
-                     "to_pos": list(to_pos) if to_pos else None,
-                     "load_ms": None, "no_black": True,
-                     "from_name": self.name_of(previous.map_id),
-                     "to_name": self.name_of(obs.map_id)}
-            self._append(event)
-            self._flush_portals()
-            self.events.append(event)
-            self._remember(obs)
-            return event
+    def _track_visibility(self, obs, named, now):
+        """连续读不出名字 / 连续找不到小地图 → 立刻报警（需 3 秒，已去重）。"""
+        has_minimap = bool(obs.size and obs.size[0] > 0 and obs.size[1] > 0)
+        if not has_minimap:
+            self._blank_since = None
+            if self._no_map_since is None:
+                self._no_map_since = now
+            elif now - self._no_map_since >= NO_MINIMAP_ALARM_SEC:
+                self._alarm("no_minimap",
+                            f"已连续 {now - self._no_map_since:.1f} 秒找不到小地图"
+                            "（被窗口遮挡或不在跑商地图）", now)
+            return
+        self._no_map_since = None
+        if named:
+            self._blank_since = None
+            return
+        if self._blank_since is None:
+            self._blank_since = now
+        elif now - self._blank_since >= BLANK_ALARM_SEC:
+            self._alarm("blank_name",
+                        f"已连续 {now - self._blank_since:.1f} 秒解析不出地图名", now)
 
-        self._remember(obs)
-        return None
+    def _record_transition(self, before, obs, load_ms, now):
+        """把一次真实的换图写成事件；出发/到达位置各自"能测就测"。"""
+        if not usable_id(before.map_id):
+            # last_map_obs 只会存有名字的帧；这里兜底，绝不写半条边
+            self._alarm("lost_from",
+                        "过图时出发侧地图名不可用，已丢失一条地图连接", now)
+            return None
+        from_pos = to_pos = None
+        if before.player is not None:
+            from_pos = self.cluster(before.map_id, before.player, before.size)
+            self._note_inferred_portal(before.map_id, from_pos)
+            self.explored.add((before.map_id, from_pos))
+            self.seen_portals.setdefault(before.map_id, set()).add(from_pos)
+        if obs.player is not None:
+            to_pos = self.cluster(obs.map_id, obs.player, obs.size)
+            self.seen_portals.setdefault(obs.map_id, set()).add(to_pos)
+            self.explored.add((obs.map_id, to_pos))
+        if from_pos is None or to_pos is None:
+            lost = [label for label, value in (("出发位置", from_pos), ("到达位置", to_pos))
+                    if value is None]
+            # 告警先打，普通日志在后：异常行永远比正常进度显眼
+            self._alarm("no_pos",
+                        f"换图 {before.map_id} -> {obs.map_id} 时"
+                        f"{'/'.join(lost)}不可用，传送门位置丢失（降级记录）", now)
+            print(f"[mapwatch] 位置未知（{'/'.join(lost)}），但仍记录 "
+                  f"{before.map_id} -> {obs.map_id}", flush=True)
+        event = {
+            "t": time.strftime("%Y-%m-%dT%H:%M:%S"),
+            "from_map": before.map_id,
+            "from_pos": list(from_pos) if from_pos is not None else None,
+            "to_map": obs.map_id,
+            "to_pos": list(to_pos) if to_pos is not None else None,
+            "load_ms": round(load_ms, 0) if load_ms is not None else None,
+            "from_name": self.name_of(before.map_id),
+            "to_name": self.name_of(obs.map_id),
+        }
+        self._append(event, now)
+        self._flush_portals(now)
+        self.events.append(event)
+        return event
 
     def _remember(self, obs):
         """只记住"有名字"的帧：过图瞬间名字可能读不出来，不能让它把上一张好图冲掉。"""
         if usable_id(obs.map_id):
-            self.prev = obs
+            self.last_map_obs = obs
 
-    def _append(self, event):
-        """追加一条 jsonl；写完立刻 flush，进程崩了也不丢已记的过图。"""
-        self.visits_path.parent.mkdir(parents=True, exist_ok=True)
-        with self.visits_path.open("a", encoding="utf-8") as handle:
-            handle.write(json.dumps(event, ensure_ascii=False) + "\n")
-            handle.flush()
+    def _append(self, event, now=None):
+        """追加一条 jsonl；写完立刻 flush，进程崩了也不丢已记的过图。
+
+        写失败（磁盘满/权限）只报警、不往上抛：一帧写不进去不能让采集循环崩掉。
+        """
+        try:
+            self.visits_path.parent.mkdir(parents=True, exist_ok=True)
+            with self.visits_path.open("a", encoding="utf-8") as handle:
+                handle.write(json.dumps(event, ensure_ascii=False) + "\n")
+                handle.flush()
+            return True
+        except Exception as exc:
+            self._error(f"append: {exc}")
+            self._alarm("write_visits",
+                        f"写 {self.visits_path.name} 失败：{exc}（这次过图没有落盘）",
+                        now)
+            return False
 
     # ------------------------------------------------------------ 报告
     def load_visits(self):
@@ -856,6 +968,8 @@ def _main(argv=None):
                 time.sleep(max(0.0, delay))
         except KeyboardInterrupt:
             print("停止")
+        print(f"本次运行：过图 {len(watcher.events)} 次，告警 {watcher.alarm_count} 次",
+              flush=True)
     if args.report or not args.run:
         data = watcher.report()
         print(json.dumps({"visits": data["visits"],
