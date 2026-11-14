@@ -172,9 +172,8 @@ def run_gui(interval=0.1):
 
     controller = Controller()
     root = tk.Tk()
-    root.title("跑商助手")
+    root.title("小助手")
     root.geometry("380x620")
-    root.attributes("-topmost", True)
 
     tk.Label(root, text="当前建议", anchor="w", font=("Microsoft YaHei", 10, "bold")).pack(fill="x")
     advice_box = tk.Text(root, height=8, width=46, font=("Microsoft YaHei", 9))
