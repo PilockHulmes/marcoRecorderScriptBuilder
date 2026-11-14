@@ -23,6 +23,8 @@ EDGE_TIMES_PATH = ROOT / "data" / "trade" / "edge_times.json"
 
 #: 还没有实测数据时，每一跳按这个秒数估（刻意保守：玩家不熟练）
 DEFAULT_SECONDS_PER_HOP = 60.0
+TIER1_MAX = 13      # 一类货：买价 ≤ 13 值得买
+TIER2_MAX = 40      # 二类货：买价 ≤ 40 值得买
 #: 一条边至少要这么多样本才敢用实测值
 MIN_SAMPLES = 3
 
@@ -88,12 +90,13 @@ class Suggestion:
     buy_price: int
     units: int
     sell_at: str
-    sell_price: int
+    sell_price: int | None
     hops: int
     seconds: float
     profit_per_unit: int
     profit_total: int
     reason: str
+    price_known: bool = True
 
 
 def _merchant_maps():
@@ -142,24 +145,36 @@ def suggest(visit, ledger=None, travel=None, now=0.0, remaining=None, limit=5):
                     price = int(other.get("price", 0))
                     if price > 0 and (best is None or price > best):
                         best = price
-            if not best:
-                continue
-            profit = best - row.price
-            if profit <= 0:
-                continue
             units = ledger_module.max_units(row.price, visit.coins, visit.weight,
                                             visit.capacity or 135)
             if units <= 0:
                 continue
             hops = travel.hops(visit.map, buyer_map) or 0
-            out.append(Suggestion(
-                good_id=row.good_id, good=row.good_name, buy_at=visit.merchant or visit.map,
-                buy_price=row.price, units=units,
-                sell_at=observation.get("merchant", buyer_map), sell_price=best,
-                hops=hops, seconds=round(seconds, 1),
-                profit_per_unit=profit, profit_total=profit * units,
-                reason="文档阈值" if profit > 0 and row.price <= 40 else "记忆比价",
-            ))
+            threshold = TIER1_MAX if good.get("tier") == "tier1" else TIER2_MAX
+            cheap = row.price <= threshold
+
+            if best:
+                profit = best - row.price
+                if profit <= 0:
+                    continue
+                out.append(Suggestion(
+                    good_id=row.good_id, good=row.good_name, buy_at=visit.merchant or visit.map,
+                    buy_price=row.price, units=units,
+                    sell_at=observation.get("merchant", buyer_map), sell_price=best,
+                    hops=hops, seconds=round(seconds, 1),
+                    profit_per_unit=profit, profit_total=profit * units,
+                    reason="文档阈值" if cheap else "记忆比价",
+                ))
+            elif cheap:
+                # 第一类：价格已经够低，不需要先知道买家报价，直接建议去找该货的买家
+                out.append(Suggestion(
+                    good_id=row.good_id, good=row.good_name, buy_at=visit.merchant or visit.map,
+                    buy_price=row.price, units=units,
+                    sell_at=buyer_map, sell_price=None,
+                    hops=hops, seconds=round(seconds, 1),
+                    profit_per_unit=0, profit_total=0,
+                    reason="价格够低（去买家处再看价）", price_known=False,
+                ))
 
     out.sort(key=lambda s: (s.hops, -s.profit_total))
     return out[:limit]
@@ -170,8 +185,11 @@ def format_suggestions(items):
         return ["（暂无值得跑的建议）"]
     lines = []
     for s in items:
-        lines.append(f"  {s.good}：在 {s.buy_at} 买 @{s.buy_price} × {s.units} 个"
-                     f" → {s.sell_at} 卖 @{s.sell_price}"
-                     f"（{s.hops} 张图 / 约 {int(s.seconds)} 秒，"
-                     f"赚 {s.profit_total}）")
+        if s.price_known:
+            lines.append(f"  {s.good}：在 {s.buy_at} 买 @{s.buy_price} × {s.units} 个"
+                         f" → {s.sell_at} 卖 @{s.sell_price}"
+                         f"（{s.hops} 张图 / 约 {int(s.seconds)} 秒，赚 {s.profit_total}）")
+        else:
+            lines.append(f"  {s.good}：便宜（@{s.buy_price}），可买 {s.units} 个"
+                         f" → 去 {s.sell_at} 找买家（{s.hops} 张图 / 约 {int(s.seconds)} 秒）")
     return lines

@@ -47,7 +47,7 @@ class SuggestTest(unittest.TestCase):
         module._merchant_maps = lambda: {"kobi_1": "石铁", "buyer": "甲"}
         module._goods = lambda: {"g": {"name": "货", "buyers": ["buyer"]}}
         self.ledger.record(visit("甲", "收家", [("g", "buy", 99)], refresh=30), now=0)
-        current = visit("石铁", "石铁", [("g", "sell", 10)])
+        current = visit("石铁", "石铁", [("g", "sell", 100)])
         items = module.suggest(_as_visit(current), self.ledger, self.travel, now=0)
         self.assertEqual(items, [])
 
