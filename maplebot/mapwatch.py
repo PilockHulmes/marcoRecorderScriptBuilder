@@ -627,7 +627,7 @@ class MapWatcher:
             _score = 1.0 if name else 0.0
             try:
                 if not name:
-                    name, _score = match_name(crop)
+                    name, _score, _second = match_name(crop)
             except Exception as exc:
                 self._error(f"match_name: {exc}")
                 self._alarm("name_match", f"地图名模板匹配抛异常：{exc}", now)

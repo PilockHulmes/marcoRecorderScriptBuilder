@@ -68,8 +68,8 @@ class MapWatchTestBase(unittest.TestCase):
         def fake_match(crop, threshold=mapwatch.NAME_THRESHOLD):
             # 只按脚本发名字；脚本用尽就当作"模板没命中"
             if self._names:
-                return self._names.pop(0), 0.99
-            return "", 0.0
+                return self._names.pop(0), 0.99, 0.5
+            return "", 0.0, 0.0
 
         patches = [
             # 名字截图区域：给一块合成图，避免依赖真实小地图
