@@ -54,3 +54,17 @@ class VisionClient:
             return response.choices[0].message.content or ""
         except Exception as exc:
             raise rune_api.RuneAPIError(f"响应结构异常：{exc}") from exc
+
+
+
+def silence_ocr_logs():
+    """关闭 ppocr / paddle 的日志（否则每帧刷 "angle classifier" WARNING）。"""
+    import logging
+
+    for name in ("ppocr", "paddleocr", "paddle", "paddle.fluid"):
+        logger = logging.getLogger(name)
+        logger.setLevel(logging.ERROR)
+        logger.disabled = True
+        logger.propagate = False
+        for handler in list(logger.handlers):
+            handler.setLevel(logging.ERROR)

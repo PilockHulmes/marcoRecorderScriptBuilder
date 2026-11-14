@@ -528,3 +528,11 @@ def _main(argv=None):
 
 if __name__ == "__main__":
     raise SystemExit(_main())
+
+
+try:
+    from .vision import silence_ocr_logs
+
+    silence_ocr_logs()
+except Exception:
+    pass

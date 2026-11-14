@@ -188,6 +188,8 @@ def read_lines(frame, ocr=None, upscale=3.0, pad=16, store=None, fast=False):
 
         logging.getLogger("ppocr").setLevel(logging.ERROR)
         ocr = PaddleOCR(lang="ch", show_log=False)
+    from .vision import silence_ocr_logs
+    silence_ocr_logs()
 
     lines = []
     for badge, text in row_boxes(frame):
