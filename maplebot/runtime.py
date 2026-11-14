@@ -28,6 +28,13 @@ def shop_open(frame):
         return False
 
 
+def _good_name(good_id):
+    try:
+        return shop.load_goods().get(good_id, {}).get("name", good_id)
+    except Exception:
+        return good_id
+
+
 @dataclass
 class Runtime:
     watcher: object = None
@@ -38,6 +45,7 @@ class Runtime:
 
     _open: bool = False
     _last_advice: float = 0.0
+    _merged: dict = field(default_factory=dict)     # (good_id, side) -> price，跨滚动累积
     _messages: list = field(default_factory=list)
 
     def __post_init__(self):
@@ -77,10 +85,22 @@ class Runtime:
             return out
 
         if first:
+            self._merged = {}
+
+        # 滚动拼接：每次只看到 3 行，把多帧的 (商品, 方向) 合并起来
+        before = len(self._merged)
+        for row in visit.rows:
+            self._merged[(row.good_id, row.side)] = row.price
+        merged_rows = [shop.Row(good_id, _good_name(good_id), side, price)
+                       for (good_id, side), price in self._merged.items()]
+        if len(self._merged) > before or first:
+            visit.rows = merged_rows
             try:
                 self.ledger.record(visit, now=now)
             except Exception as exc:
                 out.append(f"[runtime] 记录失败：{exc}")
+        else:
+            visit.rows = merged_rows
 
         out.append(f"[商店] {visit.merchant or '(随机商人)'} @ {current_map}"
                    f"　金币 {visit.coins}　载重 {visit.weight}/{visit.capacity}")
