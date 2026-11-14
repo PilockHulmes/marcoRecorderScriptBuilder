@@ -20,6 +20,7 @@ GOODS_PATH = ROOT / "data" / "trade" / "goods.json"
 MERCHANT_MAPS_PATH = ROOT / "data" / "trade" / "merchant_maps.json"
 GRAPH_PATH = ROOT / "data" / "trade" / "map_graph.json"
 EDGE_TIMES_PATH = ROOT / "data" / "trade" / "edge_times.json"
+EDGE_RAW_PATH = ROOT / "data" / "trade" / "edge_times_raw.jsonl"
 
 #: 还没有实测数据时，每一跳按这个秒数估（刻意保守：玩家不熟练）
 DEFAULT_SECONDS_PER_HOP = 60.0
@@ -43,6 +44,37 @@ class MapTravel:
         self.graph = graph if graph is not None else _read_json(GRAPH_PATH, {})
         self.per_hop = float(per_hop)
         self.times = {}
+        self.reload(edge_times)
+
+    def reload(self, edge_times=None):
+        """重新算耗时：优先用运行时原始样本（最快 10 次的均值），否则用汇总文件。"""
+        from collections import defaultdict
+
+        self.times = {}
+        if edge_times is not None:        # 显式传入就用它（测试/离线用）
+            for row in edge_times:
+                if row.get("n", 0) >= MIN_SAMPLES:
+                    self.times[frozenset((row["from"], row["to"]))] = float(row["median_fastest"])
+            return
+        raw = []
+        try:
+            if EDGE_RAW_PATH.exists():
+                raw = [json.loads(line) for line in
+                       EDGE_RAW_PATH.read_text(encoding="utf-8").splitlines() if line.strip()]
+        except Exception:
+            raw = []
+        if raw:
+            buckets = defaultdict(list)
+            for item in raw:
+                try:
+                    buckets[(item["from"], item["to"])].append(float(item["seconds"]))
+                except Exception:
+                    continue
+            for pair, values in buckets.items():
+                if len(values) >= MIN_SAMPLES:
+                    fastest = sorted(values)[:10]
+                    self.times[frozenset(pair)] = sum(fastest) / len(fastest)
+            return
         for row in (edge_times if edge_times is not None else _read_json(EDGE_TIMES_PATH, [])):
             if row.get("n", 0) >= MIN_SAMPLES:
                 self.times[frozenset((row["from"], row["to"]))] = float(row["median_fastest"])

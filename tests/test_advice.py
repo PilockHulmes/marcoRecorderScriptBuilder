@@ -15,7 +15,7 @@ def visit(map_name, merchant, rows, coins=50, weight=0, refresh=300):
 
 class TravelTest(unittest.TestCase):
     def test_one_hop_default(self):
-        travel = advice.MapTravel(per_hop=60)
+        travel = advice.MapTravel(edge_times=[], per_hop=60)
         self.assertEqual(travel.hops("貿易地帶岔道", "豐饒的沙漠-1"), 1)
         self.assertAlmostEqual(travel.seconds("貿易地帶岔道", "豐饒的沙漠-1"), 60.0)
 
