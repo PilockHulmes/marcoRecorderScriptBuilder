@@ -252,6 +252,20 @@ def save_name_template(name, crop):
     return created
 
 
+def _dump_name_crop(crop, name):
+    """把每次识别到的名字裁剪存盘，用于事后离线核对认错的情况。"""
+    try:
+        import time as _t
+        folder = Path(__file__).resolve().parents[1] / "detections" / "name_crops"
+        folder.mkdir(parents=True, exist_ok=True)
+        tag = "".join(ch for ch in (name or "unknown") if ch not in "\\/:*?\"<>|")[:20]
+        ok, buf = cv2.imencode(".png", crop)
+        if ok:
+            buf.tofile(str(folder / f"{_t.strftime('%H%M%S')}_{tag}.png"))
+    except Exception:
+        pass
+
+
 def plausible_name(name):
     """名字必须是白名单里的，或 3~10 个汉字且不含 UI 词。"""
     if not name or len(name) > 12:
