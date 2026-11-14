@@ -248,6 +248,43 @@ def sell_plan(held_goods, ledger=None, travel=None, now=0.0, current_map="", lim
     return out[:limit]
 
 
+def explore_plan(ledger=None, travel=None, now=0.0, current_map="",
+                 remaining=None, limit=3):
+    """没有生意时：就近找价格未知/已过期的商人去看看。"""
+    ledger = ledger if ledger is not None else ledger_module.Ledger()
+    travel = travel if travel is not None else MapTravel()
+    where = _merchant_maps()
+    names = {}
+    for item in _read_json("merchant_index.json", {}).get("merchants", []):
+        names[item.get("id")] = item.get("name", "")
+    last_seen = {}
+    for observation in ledger.load():
+        merchant_id = observation.get("merchant_id")
+        if not merchant_id:
+            continue
+        last_seen[merchant_id] = max(last_seen.get(merchant_id, 0),
+                                     ledger.valid_until(observation))
+    out = []
+    for merchant_id, map_name in where.items():
+        if not map_name or map_name == current_map:
+            continue
+        if last_seen.get(merchant_id, 0) > now:
+            continue                       # 还有效，不用去看
+        seconds = travel.seconds(current_map, map_name) if current_map else None
+        if seconds is None:
+            continue
+        if remaining is not None and seconds > remaining:
+            continue
+        out.append({"merchant_id": merchant_id,
+                    "merchant": names.get(merchant_id, merchant_id),
+                    "map": map_name,
+                    "hops": travel.hops(current_map, map_name),
+                    "seconds": seconds,
+                    "fresh": last_seen.get(merchant_id, 0) > 0})
+    out.sort(key=lambda r: (r["hops"] if r["hops"] is not None else 99, r["seconds"]))
+    return out[:limit]
+
+
 def format_suggestions(items):
     if not items:
         return ["（暂无值得跑的建议）"]
