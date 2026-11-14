@@ -64,6 +64,59 @@ class ControllerTest(unittest.TestCase):
             state = self.controller.update(self.frame, now=1.0)
         self.assertTrue(state.advice)          # 没有生意时至少有一行提示
 
+    def _shop_visit(self):
+        visit = shop.Visit(map="A", merchant="石铁", kind="fixed", refresh_in=120,
+                           coins=50, weight=0, capacity=135)
+        visit.rows = [make_row("g", "sell", 10)]
+        return visit
+
+    def test_advice_priority_suggest_wins(self):
+        """第 1 级有结果：不查 2、3 级。"""
+        suggestion = advice_module.Suggestion(
+            good_id="g", good="桔梗", buy_at="A", buy_price=10, units=1,
+            sell_at="B", sell_price=20, hops=1, seconds=60,
+            profit_per_unit=10, profit_total=10, reason="test")
+        with mock.patch.object(gui.trade, "find_shop_window", return_value=True), \
+                mock.patch.object(shop, "read_visit",
+                                  return_value=self._shop_visit()), \
+                mock.patch.object(advice_module, "suggest",
+                                  return_value=[suggestion]), \
+                mock.patch.object(advice_module, "buy_trip_plan") as trips, \
+                mock.patch.object(advice_module, "explore_plan") as explore:
+            state = self.controller.update(self.frame, now=1.0)
+        self.assertIn("桔梗", state.advice[0])
+        trips.assert_not_called()
+        explore.assert_not_called()
+
+    def test_advice_priority_buy_trip_before_explore(self):
+        """第 2 级有结果：显示去买，不查第 3 级。"""
+        trip = {"merchant": "石鉄", "good": "桔梗", "price": 13,
+                "hops": 2, "left": 150.0}
+        with mock.patch.object(gui.trade, "find_shop_window", return_value=True), \
+                mock.patch.object(shop, "read_visit",
+                                  return_value=self._shop_visit()), \
+                mock.patch.object(advice_module, "suggest", return_value=[]), \
+                mock.patch.object(advice_module, "buy_trip_plan",
+                                  return_value=[trip]), \
+                mock.patch.object(advice_module, "explore_plan") as explore:
+            state = self.controller.update(self.frame, now=1.0)
+        self.assertEqual(state.advice,
+                         ["去 石鉄 买 桔梗 @13，2 张图，到了还剩 2:30"])
+        explore.assert_not_called()
+
+    def test_advice_falls_back_to_explore(self):
+        """1、2 级都没有结果才显示“去看看”。"""
+        with mock.patch.object(gui.trade, "find_shop_window", return_value=True), \
+                mock.patch.object(shop, "read_visit",
+                                  return_value=self._shop_visit()), \
+                mock.patch.object(advice_module, "suggest", return_value=[]), \
+                mock.patch.object(advice_module, "buy_trip_plan", return_value=[]), \
+                mock.patch.object(advice_module, "explore_plan",
+                                  return_value=[{"merchant": "瑪帕", "map": "B",
+                                                 "hops": 2}]):
+            state = self.controller.update(self.frame, now=1.0)
+        self.assertEqual(state.advice, ["去看看 瑪帕(B) 2 张图"])
+
     def test_shop_throttled(self):
         visit = shop.Visit(map="A", merchant="石铁", kind="fixed", refresh_in=120,
                            coins=50, weight=0, capacity=135)

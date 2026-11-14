@@ -1,5 +1,11 @@
 """单跳商机建议：站在商人 A 的界面里，告诉玩家"买这个，去那里卖"。
 
+三条建议通道：
+
+- :func:`suggest`：**当前打开商店**里买 → 谁收；
+- :func:`buy_trip_plan`：别处有便宜货、现在跑过去还来得及 → 专程去买；
+- :func:`explore_plan`：没有生意时，去找价格未知或已过期的商人看看。
+
 规则（TRADE_DESIGN.md 13.7）：
 
 - 只看 A **卖给我** 的行
@@ -26,6 +32,7 @@ EDGE_RAW_PATH = ROOT / "data" / "trade" / "edge_times_raw.jsonl"
 DEFAULT_SECONDS_PER_HOP = 60.0
 TIER1_MAX = 13      # 一类货：买价 ≤ 13 值得买
 TIER2_MAX = 40      # 二类货：买价 ≤ 40 值得买
+VOLATILE_MAX = 300  # 波动货：价格区间本来就大，只挡明显离谱的报价
 #: 一条边至少要这么多样本才敢用实测值
 MIN_SAMPLES = 3
 
@@ -138,9 +145,31 @@ def _merchant_maps():
             if item.get("merchant_id")}
 
 
+def _merchant_names():
+    """merchant_id -> 游戏内繁体名（没有 game_name 才退回文档名）。"""
+    data = _read_json(MERCHANT_MAPS_PATH, {})
+    names = {}
+    for item in data.values():
+        merchant_id = item.get("merchant_id")
+        if merchant_id:
+            names[merchant_id] = (item.get("game_name") or item.get("merchant")
+                                  or merchant_id)
+    return names
+
+
 def _goods():
     data = _read_json(GOODS_PATH, {})
     return {g["id"]: g for g in data.get("goods", [])}
+
+
+def _price_limit(good):
+    """这类货的“便宜”上限：一类 13、二类 40、波动货 300。"""
+    tier = (good or {}).get("tier")
+    if tier == "tier1":
+        return TIER1_MAX
+    if tier == "tier2":
+        return TIER2_MAX
+    return VOLATILE_MAX
 
 
 def suggest(visit, ledger=None, travel=None, now=0.0, remaining=None, limit=5):
@@ -252,17 +281,88 @@ def sell_plan(held_goods, ledger=None, travel=None, now=0.0, current_map="", lim
     return out[:limit]
 
 
+def buy_trip_plan(ledger=None, travel=None, now=0.0, current_map="",
+                  remaining=None, limit=5):
+    """别处有便宜货、现在跑过去还来得及：建议专程去买。
+
+    数据来源是记录簿里所有**还没过期**的 ``side == "sell"`` 行（他卖给我）。
+    过滤条件：
+
+    - 报价不在当前地图（人已经在这儿了，直接买就行，不用“跑一趟”）；
+    - 价格不超过该商品档位阈值（一类 13 / 二类 40 / 波动货 300）；
+    - 现在还没过期，并且 ``now + 路程`` 到达时也还没过期；
+    - 有本局剩余时间 ``remaining`` 时，路程不能超过它。
+
+    排序：**距离优先**，同距离按价格从低到高。``left`` 是到达时仍剩余的秒数。
+    """
+    ledger = ledger if ledger is not None else ledger_module.Ledger()
+    travel = travel if travel is not None else MapTravel()
+    goods = _goods()
+    names = _merchant_names()
+
+    best = {}
+    for observation in ledger.load():
+        map_name = observation.get("map", "")
+        if not map_name or map_name == current_map:
+            continue
+        valid_until = ledger.valid_until(observation)
+        if valid_until <= now:
+            continue
+        seconds = travel.seconds(current_map, map_name)
+        if seconds is None:
+            continue
+        if remaining is not None and seconds > remaining:
+            continue
+        arrival = now + seconds
+        left = valid_until - arrival
+        if left < 0.1:
+            continue                       # 跑到了也已经刷新（或只剩 0.1 秒），白跑
+        hops = travel.hops(current_map, map_name) or 0
+        merchant_id = observation.get("merchant_id", "")
+        merchant = (names.get(merchant_id) or observation.get("merchant")
+                    or merchant_id or map_name)
+        for row in observation.get("rows", []):
+            if row.get("side") != "sell":
+                continue
+            good_id = row.get("good_id", "")
+            price = int(row.get("price", 0))
+            if price <= 0 or not good_id:
+                continue
+            good = goods.get(good_id, {})
+            if price > _price_limit(good):
+                continue
+            item = {
+                "good": good.get("name") or row.get("good") or good_id,
+                "good_id": good_id,
+                "price": price,
+                "merchant": merchant,
+                "merchant_id": merchant_id,
+                "map": map_name,
+                "hops": hops,
+                "seconds": round(seconds, 1),
+                "left": round(left, 1),
+            }
+            # 同一商人同一件货可能有多条仍然有效的观察：留最便宜的；
+            # 同价留到得最晚的（窗口更宽）。
+            key = (merchant_id or map_name, good_id)
+            previous = best.get(key)
+            if (previous is None or price < previous["price"]
+                    or (price == previous["price"]
+                        and item["left"] > previous["left"])):
+                best[key] = item
+
+    out = list(best.values())
+    out.sort(key=lambda r: (r["hops"], r["price"], -r["left"], r["seconds"]))
+    return out[:limit]
+
+
 def explore_plan(ledger=None, travel=None, now=0.0, current_map="",
                  remaining=None, limit=3):
     """没有生意时：就近找价格未知/已过期的商人去看看。"""
     ledger = ledger if ledger is not None else ledger_module.Ledger()
     travel = travel if travel is not None else MapTravel()
     where = _merchant_maps()
-    names = {}
-    for item in _read_json("merchant_maps.json", {}).values():
-        merchant_id = item.get("merchant_id")
-        if merchant_id:
-            names[merchant_id] = item.get("game_name") or item.get("merchant", "")
+    names = _merchant_names()
     last_seen = {}
     for observation in ledger.load():
         merchant_id = observation.get("merchant_id")
@@ -305,3 +405,16 @@ def format_suggestions(items):
             lines.append(f"  {s.good}：便宜（@{s.buy_price}），可买 {s.units} 个"
                          f" → 去 {s.sell_at} 找买家（{s.hops} 张图 / 约 {int(s.seconds)} 秒）{via}")
     return lines
+
+
+def _clock(seconds):
+    """秒数 -> MM:SS（建议里显示「到了还剩」）。"""
+    total = max(0, int(seconds))
+    return f"{total // 60}:{total % 60:02d}"
+
+
+def format_buy_trips(items):
+    """把 buy_trip_plan 的结果排成界面文字。"""
+    return [f"去 {item['merchant']} 买 {item['good']} @{item['price']}，"
+            f"{item['hops']} 张图，到了还剩 {_clock(item['left'])}"
+            for item in items]

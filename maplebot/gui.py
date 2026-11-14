@@ -317,14 +317,24 @@ class Controller:
             pass
         lines = []
         try:
+            # 三级建议：当前商店有生意 -> 去别处买便宜货 -> 去未知/过期的商人看看
             items = advice_module.suggest(visit, self.ledger, self.travel, now=now)
-            lines = advice_module.format_suggestions(items)
-            if not items:
-                explore = advice_module.explore_plan(self.ledger, self.travel,
-                                                     now=now, current_map=self.state.map)
-                for item in explore:
-                    lines.append(f"去看看 {item['merchant']}({item['map']}) "
-                                 f"{item['hops']} 张图")
+            if items:
+                lines = advice_module.format_suggestions(items)
+            else:
+                trips = advice_module.buy_trip_plan(self.ledger, self.travel,
+                                                    now=now, current_map=self.state.map)
+                if trips:
+                    lines = advice_module.format_buy_trips(trips)
+                else:
+                    explore = advice_module.explore_plan(
+                        self.ledger, self.travel, now=now,
+                        current_map=self.state.map)
+                    for item in explore:
+                        lines.append(f"去看看 {item['merchant']}({item['map']}) "
+                                     f"{item['hops']} 张图")
+                    if not lines:
+                        lines = advice_module.format_suggestions([])
         except Exception as exc:
             lines = [f"建议计算失败：{exc}"]
         self.state.advice = lines
