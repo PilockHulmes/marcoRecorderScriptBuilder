@@ -1,0 +1,812 @@
+[
+  {
+    "good": "丝绸布料",
+    "tier": "volatile",
+    "from_merchant": "玛帕",
+    "from_map": "孤獨的沙漠-3",
+    "to_merchant": "伍德万",
+    "to_map": "古代遺跡地內部-2",
+    "hops": 4
+  },
+  {
+    "good": "仙桃",
+    "tier": "tier2",
+    "from_merchant": "豆尔",
+    "from_map": "通往納希貿易區的路",
+    "to_merchant": "萨哥特",
+    "to_map": "納希貿易區-4",
+    "hops": 4
+  },
+  {
+    "good": "合成石油",
+    "tier": "tier2",
+    "from_merchant": "柯比",
+    "from_map": "通往古代遺跡的路",
+    "to_merchant": "扎比埃尔",
+    "to_map": "古代遺跡地內部-4",
+    "hops": 4
+  },
+  {
+    "good": "天然蜂蜜",
+    "tier": "tier2",
+    "from_merchant": "石铁",
+    "from_map": "豐饒的沙漠-1",
+    "to_merchant": "豆尔",
+    "to_map": "通往納希貿易區的路",
+    "hops": 4
+  },
+  {
+    "good": "怪物肉",
+    "tier": "volatile",
+    "from_merchant": "史莱",
+    "from_map": "孤獨的沙漠-1",
+    "to_merchant": "雅思敏",
+    "to_map": "納希貿易區-2",
+    "hops": 4
+  },
+  {
+    "good": "棉花",
+    "tier": "tier1",
+    "from_merchant": "兰明",
+    "from_map": "豐饒的沙漠-3",
+    "to_merchant": "柯比",
+    "to_map": "通往古代遺跡的路",
+    "hops": 4
+  },
+  {
+    "good": "水獭皮",
+    "tier": "tier2",
+    "from_merchant": "玛帕",
+    "from_map": "孤獨的沙漠-3",
+    "to_merchant": "伍德万",
+    "to_map": "古代遺跡地內部-2",
+    "hops": 4
+  },
+  {
+    "good": "沙漠石榴",
+    "tier": "tier1",
+    "from_merchant": "史莱",
+    "from_map": "孤獨的沙漠-1",
+    "to_merchant": "雅思敏",
+    "to_map": "納希貿易區-2",
+    "hops": 4
+  },
+  {
+    "good": "祖母绿碎片",
+    "tier": "tier1",
+    "from_merchant": "卡勒卡萨",
+    "from_map": "通往瑪迦提亞貿易區的路",
+    "to_merchant": "哲里",
+    "to_map": "瑪迦提亞貿易區-4",
+    "hops": 4
+  },
+  {
+    "good": "精炼黑水晶",
+    "tier": "volatile",
+    "from_merchant": "工作人员0",
+    "from_map": "孤獨的沙漠-2",
+    "to_merchant": "罗森",
+    "to_map": "瑪迦提亞貿易區-2",
+    "hops": 4
+  },
+  {
+    "good": "蓝宝石碎片",
+    "tier": "tier2",
+    "from_merchant": "奇里文",
+    "from_map": "豐饒的沙漠-2",
+    "to_merchant": "卡勒卡萨",
+    "to_map": "通往瑪迦提亞貿易區的路",
+    "hops": 4
+  },
+  {
+    "good": "黄晶碎片",
+    "tier": "tier1",
+    "from_merchant": "工作人员0",
+    "from_map": "孤獨的沙漠-2",
+    "to_merchant": "罗森",
+    "to_map": "瑪迦提亞貿易區-2",
+    "hops": 4
+  },
+  {
+    "good": "丝绸布料",
+    "tier": "volatile",
+    "from_merchant": "玛帕",
+    "from_map": "孤獨的沙漠-3",
+    "to_merchant": "罗森",
+    "to_map": "瑪迦提亞貿易區-2",
+    "hops": 6
+  },
+  {
+    "good": "仙人掌刺液",
+    "tier": "tier1",
+    "from_merchant": "豆尔",
+    "from_map": "通往納希貿易區的路",
+    "to_merchant": "扎比埃尔",
+    "to_map": "古代遺跡地內部-4",
+    "hops": 6
+  },
+  {
+    "good": "仙人掌刺液",
+    "tier": "tier1",
+    "from_merchant": "豆尔",
+    "from_map": "通往納希貿易區的路",
+    "to_merchant": "哲里",
+    "to_map": "瑪迦提亞貿易區-4",
+    "hops": 6
+  },
+  {
+    "good": "仙桃",
+    "tier": "tier2",
+    "from_merchant": "豆尔",
+    "from_map": "通往納希貿易區的路",
+    "to_merchant": "哲里",
+    "to_map": "瑪迦提亞貿易區-4",
+    "hops": 6
+  },
+  {
+    "good": "传说中的补药",
+    "tier": "volatile",
+    "from_merchant": "石铁",
+    "from_map": "豐饒的沙漠-1",
+    "to_merchant": "卡勒卡萨",
+    "to_map": "通往瑪迦提亞貿易區的路",
+    "hops": 6
+  },
+  {
+    "good": "传说中的补药",
+    "tier": "volatile",
+    "from_merchant": "石铁",
+    "from_map": "豐饒的沙漠-1",
+    "to_merchant": "柯比",
+    "to_map": "通往古代遺跡的路",
+    "hops": 6
+  },
+  {
+    "good": "光辉钻石",
+    "tier": "volatile",
+    "from_merchant": "哲里",
+    "from_map": "瑪迦提亞貿易區-4",
+    "to_merchant": "工作人员0",
+    "to_map": "孤獨的沙漠-2",
+    "hops": 6
+  },
+  {
+    "good": "华丽的布料碎片",
+    "tier": "tier2",
+    "from_merchant": "扎比埃尔",
+    "from_map": "古代遺跡地內部-4",
+    "to_merchant": "玛帕",
+    "to_map": "孤獨的沙漠-3",
+    "hops": 6
+  },
+  {
+    "good": "合成石油",
+    "tier": "tier2",
+    "from_merchant": "柯比",
+    "from_map": "通往古代遺跡的路",
+    "to_merchant": "萨哥特",
+    "to_map": "納希貿易區-4",
+    "hops": 6
+  },
+  {
+    "good": "天然蜂蜜",
+    "tier": "tier2",
+    "from_merchant": "石铁",
+    "from_map": "豐饒的沙漠-1",
+    "to_merchant": "卡勒卡萨",
+    "to_map": "通往瑪迦提亞貿易區的路",
+    "hops": 6
+  },
+  {
+    "good": "山参",
+    "tier": "volatile",
+    "from_merchant": "萨哥特",
+    "from_map": "納希貿易區-4",
+    "to_merchant": "史莱",
+    "to_map": "孤獨的沙漠-1",
+    "hops": 6
+  },
+  {
+    "good": "布片",
+    "tier": "tier2",
+    "from_merchant": "兰明",
+    "from_map": "豐饒的沙漠-3",
+    "to_merchant": "卡勒卡萨",
+    "to_map": "通往瑪迦提亞貿易區的路",
+    "hops": 6
+  },
+  {
+    "good": "布片",
+    "tier": "tier2",
+    "from_merchant": "兰明",
+    "from_map": "豐饒的沙漠-3",
+    "to_merchant": "豆尔",
+    "to_map": "通往納希貿易區的路",
+    "hops": 6
+  },
+  {
+    "good": "怪物肉",
+    "tier": "volatile",
+    "from_merchant": "史莱",
+    "from_map": "孤獨的沙漠-1",
+    "to_merchant": "伍德万",
+    "to_map": "古代遺跡地內部-2",
+    "hops": 6
+  },
+  {
+    "good": "桔梗",
+    "tier": "tier1",
+    "from_merchant": "石铁",
+    "from_map": "豐饒的沙漠-1",
+    "to_merchant": "柯比",
+    "to_map": "通往古代遺跡的路",
+    "hops": 6
+  },
+  {
+    "good": "桔梗",
+    "tier": "tier1",
+    "from_merchant": "石铁",
+    "from_map": "豐饒的沙漠-1",
+    "to_merchant": "卡勒卡萨",
+    "to_map": "通往瑪迦提亞貿易區的路",
+    "hops": 6
+  },
+  {
+    "good": "棉花",
+    "tier": "tier1",
+    "from_merchant": "兰明",
+    "from_map": "豐饒的沙漠-3",
+    "to_merchant": "豆尔",
+    "to_map": "通往納希貿易區的路",
+    "hops": 6
+  },
+  {
+    "good": "棉花团",
+    "tier": "tier1",
+    "from_merchant": "玛帕",
+    "from_map": "孤獨的沙漠-3",
+    "to_merchant": "雅思敏",
+    "to_map": "納希貿易區-2",
+    "hops": 6
+  },
+  {
+    "good": "棉花团",
+    "tier": "tier1",
+    "from_merchant": "玛帕",
+    "from_map": "孤獨的沙漠-3",
+    "to_merchant": "罗森",
+    "to_map": "瑪迦提亞貿易區-2",
+    "hops": 6
+  },
+  {
+    "good": "毛毡布料",
+    "tier": "tier2",
+    "from_merchant": "伍德万",
+    "from_map": "古代遺跡地內部-2",
+    "to_merchant": "兰明",
+    "to_map": "豐饒的沙漠-3",
+    "hops": 6
+  },
+  {
+    "good": "水獭皮",
+    "tier": "tier2",
+    "from_merchant": "玛帕",
+    "from_map": "孤獨的沙漠-3",
+    "to_merchant": "雅思敏",
+    "to_map": "納希貿易區-2",
+    "hops": 6
+  },
+  {
+    "good": "沙漠番茄",
+    "tier": "tier1",
+    "from_merchant": "萨哥特",
+    "from_map": "納希貿易區-4",
+    "to_merchant": "史莱",
+    "to_map": "孤獨的沙漠-1",
+    "hops": 6
+  },
+  {
+    "good": "沙漠石榴",
+    "tier": "tier1",
+    "from_merchant": "史莱",
+    "from_map": "孤獨的沙漠-1",
+    "to_merchant": "罗森",
+    "to_map": "瑪迦提亞貿易區-2",
+    "hops": 6
+  },
+  {
+    "good": "狐狸尾巴",
+    "tier": "tier1",
+    "from_merchant": "柯比",
+    "from_map": "通往古代遺跡的路",
+    "to_merchant": "哲里",
+    "to_map": "瑪迦提亞貿易區-4",
+    "hops": 6
+  },
+  {
+    "good": "狐狸尾巴",
+    "tier": "tier1",
+    "from_merchant": "柯比",
+    "from_map": "通往古代遺跡的路",
+    "to_merchant": "萨哥特",
+    "to_map": "納希貿易區-4",
+    "hops": 6
+  },
+  {
+    "good": "白糖",
+    "tier": "tier2",
+    "from_merchant": "雅思敏",
+    "from_map": "納希貿易區-2",
+    "to_merchant": "石铁",
+    "to_map": "豐饒的沙漠-1",
+    "hops": 6
+  },
+  {
+    "good": "皇帝的绸缎",
+    "tier": "volatile",
+    "from_merchant": "扎比埃尔",
+    "from_map": "古代遺跡地內部-4",
+    "to_merchant": "玛帕",
+    "to_map": "孤獨的沙漠-3",
+    "hops": 6
+  },
+  {
+    "good": "矿泉水",
+    "tier": "tier2",
+    "from_merchant": "史莱",
+    "from_map": "孤獨的沙漠-1",
+    "to_merchant": "罗森",
+    "to_map": "瑪迦提亞貿易區-2",
+    "hops": 6
+  },
+  {
+    "good": "矿泉水",
+    "tier": "tier2",
+    "from_merchant": "史莱",
+    "from_map": "孤獨的沙漠-1",
+    "to_merchant": "伍德万",
+    "to_map": "古代遺跡地內部-2",
+    "hops": 6
+  },
+  {
+    "good": "矿石碎片",
+    "tier": "tier1",
+    "from_merchant": "奇里文",
+    "from_map": "豐饒的沙漠-2",
+    "to_merchant": "豆尔",
+    "to_map": "通往納希貿易區的路",
+    "hops": 6
+  },
+  {
+    "good": "矿石碎片",
+    "tier": "tier1",
+    "from_merchant": "奇里文",
+    "from_map": "豐饒的沙漠-2",
+    "to_merchant": "柯比",
+    "to_map": "通往古代遺跡的路",
+    "hops": 6
+  },
+  {
+    "good": "祖母绿碎片",
+    "tier": "tier1",
+    "from_merchant": "卡勒卡萨",
+    "from_map": "通往瑪迦提亞貿易區的路",
+    "to_merchant": "扎比埃尔",
+    "to_map": "古代遺跡地內部-4",
+    "hops": 6
+  },
+  {
+    "good": "精炼黑水晶",
+    "tier": "volatile",
+    "from_merchant": "工作人员0",
+    "from_map": "孤獨的沙漠-2",
+    "to_merchant": "雅思敏",
+    "to_map": "納希貿易區-2",
+    "hops": 6
+  },
+  {
+    "good": "精致丝绸",
+    "tier": "volatile",
+    "from_merchant": "兰明",
+    "from_map": "豐饒的沙漠-3",
+    "to_merchant": "豆尔",
+    "to_map": "通往納希貿易區的路",
+    "hops": 6
+  },
+  {
+    "good": "精致丝绸",
+    "tier": "volatile",
+    "from_merchant": "兰明",
+    "from_map": "豐饒的沙漠-3",
+    "to_merchant": "卡勒卡萨",
+    "to_map": "通往瑪迦提亞貿易區的路",
+    "hops": 6
+  },
+  {
+    "good": "蓝宝石碎片",
+    "tier": "tier2",
+    "from_merchant": "奇里文",
+    "from_map": "豐饒的沙漠-2",
+    "to_merchant": "柯比",
+    "to_map": "通往古代遺跡的路",
+    "hops": 6
+  },
+  {
+    "good": "虎皮",
+    "tier": "volatile",
+    "from_merchant": "柯比",
+    "from_map": "通往古代遺跡的路",
+    "to_merchant": "萨哥特",
+    "to_map": "納希貿易區-4",
+    "hops": 6
+  },
+  {
+    "good": "虎皮",
+    "tier": "volatile",
+    "from_merchant": "柯比",
+    "from_map": "通往古代遺跡的路",
+    "to_merchant": "哲里",
+    "to_map": "瑪迦提亞貿易區-4",
+    "hops": 6
+  },
+  {
+    "good": "金块",
+    "tier": "volatile",
+    "from_merchant": "卡勒卡萨",
+    "from_map": "通往瑪迦提亞貿易區的路",
+    "to_merchant": "扎比埃尔",
+    "to_map": "古代遺跡地內部-4",
+    "hops": 6
+  },
+  {
+    "good": "金块",
+    "tier": "volatile",
+    "from_merchant": "卡勒卡萨",
+    "from_map": "通往瑪迦提亞貿易區的路",
+    "to_merchant": "萨哥特",
+    "to_map": "納希貿易區-4",
+    "hops": 6
+  },
+  {
+    "good": "钢铁碎片",
+    "tier": "tier2",
+    "from_merchant": "工作人员0",
+    "from_map": "孤獨的沙漠-2",
+    "to_merchant": "伍德万",
+    "to_map": "古代遺跡地內部-2",
+    "hops": 6
+  },
+  {
+    "good": "钢铁碎片",
+    "tier": "tier2",
+    "from_merchant": "工作人员0",
+    "from_map": "孤獨的沙漠-2",
+    "to_merchant": "雅思敏",
+    "to_map": "納希貿易區-2",
+    "hops": 6
+  },
+  {
+    "good": "钻石碎片",
+    "tier": "tier1",
+    "from_merchant": "哲里",
+    "from_map": "瑪迦提亞貿易區-4",
+    "to_merchant": "工作人员0",
+    "to_map": "孤獨的沙漠-2",
+    "hops": 6
+  },
+  {
+    "good": "闪耀的钢铁碎片",
+    "tier": "tier2",
+    "from_merchant": "卡勒卡萨",
+    "from_map": "通往瑪迦提亞貿易區的路",
+    "to_merchant": "萨哥特",
+    "to_map": "納希貿易區-4",
+    "hops": 6
+  },
+  {
+    "good": "闪耀的钢铁碎片",
+    "tier": "tier2",
+    "from_merchant": "卡勒卡萨",
+    "from_map": "通往瑪迦提亞貿易區的路",
+    "to_merchant": "扎比埃尔",
+    "to_map": "古代遺跡地內部-4",
+    "hops": 6
+  },
+  {
+    "good": "顶级紫水晶",
+    "tier": "volatile",
+    "from_merchant": "奇里文",
+    "from_map": "豐饒的沙漠-2",
+    "to_merchant": "柯比",
+    "to_map": "通往古代遺跡的路",
+    "hops": 6
+  },
+  {
+    "good": "顶级紫水晶",
+    "tier": "volatile",
+    "from_merchant": "奇里文",
+    "from_map": "豐饒的沙漠-2",
+    "to_merchant": "豆尔",
+    "to_map": "通往納希貿易區的路",
+    "hops": 6
+  },
+  {
+    "good": "顶级维他命",
+    "tier": "volatile",
+    "from_merchant": "豆尔",
+    "from_map": "通往納希貿易區的路",
+    "to_merchant": "哲里",
+    "to_map": "瑪迦提亞貿易區-4",
+    "hops": 6
+  },
+  {
+    "good": "顶级维他命",
+    "tier": "volatile",
+    "from_merchant": "豆尔",
+    "from_map": "通往納希貿易區的路",
+    "to_merchant": "扎比埃尔",
+    "to_map": "古代遺跡地內部-4",
+    "hops": 6
+  },
+  {
+    "good": "黄晶碎片",
+    "tier": "tier1",
+    "from_merchant": "工作人员0",
+    "from_map": "孤獨的沙漠-2",
+    "to_merchant": "伍德万",
+    "to_map": "古代遺跡地內部-2",
+    "hops": 6
+  },
+  {
+    "good": "黑水晶碎片",
+    "tier": "tier2",
+    "from_merchant": "罗森",
+    "from_map": "瑪迦提亞貿易區-2",
+    "to_merchant": "奇里文",
+    "to_map": "豐饒的沙漠-2",
+    "hops": 6
+  },
+  {
+    "good": "光辉钻石",
+    "tier": "volatile",
+    "from_merchant": "哲里",
+    "from_map": "瑪迦提亞貿易區-4",
+    "to_merchant": "史莱",
+    "to_map": "孤獨的沙漠-1",
+    "hops": 8
+  },
+  {
+    "good": "动物性油脂",
+    "tier": "tier2",
+    "from_merchant": "萨哥特",
+    "from_map": "納希貿易區-4",
+    "to_merchant": "工作人员0",
+    "to_map": "孤獨的沙漠-2",
+    "hops": 8
+  },
+  {
+    "good": "动物性油脂",
+    "tier": "tier2",
+    "from_merchant": "萨哥特",
+    "from_map": "納希貿易區-4",
+    "to_merchant": "玛帕",
+    "to_map": "孤獨的沙漠-3",
+    "hops": 8
+  },
+  {
+    "good": "华丽的布料碎片",
+    "tier": "tier2",
+    "from_merchant": "扎比埃尔",
+    "from_map": "古代遺跡地內部-4",
+    "to_merchant": "史莱",
+    "to_map": "孤獨的沙漠-1",
+    "hops": 8
+  },
+  {
+    "good": "山参",
+    "tier": "volatile",
+    "from_merchant": "萨哥特",
+    "from_map": "納希貿易區-4",
+    "to_merchant": "玛帕",
+    "to_map": "孤獨的沙漠-3",
+    "hops": 8
+  },
+  {
+    "good": "提炼的锂",
+    "tier": "volatile",
+    "from_merchant": "罗森",
+    "from_map": "瑪迦提亞貿易區-2",
+    "to_merchant": "兰明",
+    "to_map": "豐饒的沙漠-3",
+    "hops": 8
+  },
+  {
+    "good": "提炼的锂",
+    "tier": "volatile",
+    "from_merchant": "罗森",
+    "from_map": "瑪迦提亞貿易區-2",
+    "to_merchant": "石铁",
+    "to_map": "豐饒的沙漠-1",
+    "hops": 8
+  },
+  {
+    "good": "柔顺的丝绸",
+    "tier": "tier1",
+    "from_merchant": "伍德万",
+    "from_map": "古代遺跡地內部-2",
+    "to_merchant": "奇里文",
+    "to_map": "豐饒的沙漠-2",
+    "hops": 8
+  },
+  {
+    "good": "柔顺的丝绸",
+    "tier": "tier1",
+    "from_merchant": "伍德万",
+    "from_map": "古代遺跡地內部-2",
+    "to_merchant": "石铁",
+    "to_map": "豐饒的沙漠-1",
+    "hops": 8
+  },
+  {
+    "good": "毛毡布料",
+    "tier": "tier2",
+    "from_merchant": "伍德万",
+    "from_map": "古代遺跡地內部-2",
+    "to_merchant": "石铁",
+    "to_map": "豐饒的沙漠-1",
+    "hops": 8
+  },
+  {
+    "good": "沙漠番茄",
+    "tier": "tier1",
+    "from_merchant": "萨哥特",
+    "from_map": "納希貿易區-4",
+    "to_merchant": "工作人员0",
+    "to_map": "孤獨的沙漠-2",
+    "hops": 8
+  },
+  {
+    "good": "沙漠的围巾",
+    "tier": "tier1",
+    "from_merchant": "扎比埃尔",
+    "from_map": "古代遺跡地內部-4",
+    "to_merchant": "史莱",
+    "to_map": "孤獨的沙漠-1",
+    "hops": 8
+  },
+  {
+    "good": "沙漠的围巾",
+    "tier": "tier1",
+    "from_merchant": "扎比埃尔",
+    "from_map": "古代遺跡地內部-4",
+    "to_merchant": "工作人员0",
+    "to_map": "孤獨的沙漠-2",
+    "hops": 8
+  },
+  {
+    "good": "猪肉",
+    "tier": "tier1",
+    "from_merchant": "雅思敏",
+    "from_map": "納希貿易區-2",
+    "to_merchant": "兰明",
+    "to_map": "豐饒的沙漠-3",
+    "hops": 8
+  },
+  {
+    "good": "猪肉",
+    "tier": "tier1",
+    "from_merchant": "雅思敏",
+    "from_map": "納希貿易區-2",
+    "to_merchant": "奇里文",
+    "to_map": "豐饒的沙漠-2",
+    "hops": 8
+  },
+  {
+    "good": "白糖",
+    "tier": "tier2",
+    "from_merchant": "雅思敏",
+    "from_map": "納希貿易區-2",
+    "to_merchant": "奇里文",
+    "to_map": "豐饒的沙漠-2",
+    "hops": 8
+  },
+  {
+    "good": "皇帝的绸缎",
+    "tier": "volatile",
+    "from_merchant": "扎比埃尔",
+    "from_map": "古代遺跡地內部-4",
+    "to_merchant": "工作人员0",
+    "to_map": "孤獨的沙漠-2",
+    "hops": 8
+  },
+  {
+    "good": "贵族的绸缎",
+    "tier": "volatile",
+    "from_merchant": "伍德万",
+    "from_map": "古代遺跡地內部-2",
+    "to_merchant": "石铁",
+    "to_map": "豐饒的沙漠-1",
+    "hops": 8
+  },
+  {
+    "good": "贵族的绸缎",
+    "tier": "volatile",
+    "from_merchant": "伍德万",
+    "from_map": "古代遺跡地內部-2",
+    "to_merchant": "奇里文",
+    "to_map": "豐饒的沙漠-2",
+    "hops": 8
+  },
+  {
+    "good": "金原石",
+    "tier": "tier2",
+    "from_merchant": "哲里",
+    "from_map": "瑪迦提亞貿易區-4",
+    "to_merchant": "玛帕",
+    "to_map": "孤獨的沙漠-3",
+    "hops": 8
+  },
+  {
+    "good": "金原石",
+    "tier": "tier2",
+    "from_merchant": "哲里",
+    "from_map": "瑪迦提亞貿易區-4",
+    "to_merchant": "史莱",
+    "to_map": "孤獨的沙漠-1",
+    "hops": 8
+  },
+  {
+    "good": "钻石碎片",
+    "tier": "tier1",
+    "from_merchant": "哲里",
+    "from_map": "瑪迦提亞貿易區-4",
+    "to_merchant": "玛帕",
+    "to_map": "孤獨的沙漠-3",
+    "hops": 8
+  },
+  {
+    "good": "银原石",
+    "tier": "tier1",
+    "from_merchant": "罗森",
+    "from_map": "瑪迦提亞貿易區-2",
+    "to_merchant": "石铁",
+    "to_map": "豐饒的沙漠-1",
+    "hops": 8
+  },
+  {
+    "good": "银原石",
+    "tier": "tier1",
+    "from_merchant": "罗森",
+    "from_map": "瑪迦提亞貿易區-2",
+    "to_merchant": "兰明",
+    "to_map": "豐饒的沙漠-3",
+    "hops": 8
+  },
+  {
+    "good": "黄金桃子",
+    "tier": "volatile",
+    "from_merchant": "雅思敏",
+    "from_map": "納希貿易區-2",
+    "to_merchant": "奇里文",
+    "to_map": "豐饒的沙漠-2",
+    "hops": 8
+  },
+  {
+    "good": "黄金桃子",
+    "tier": "volatile",
+    "from_merchant": "雅思敏",
+    "from_map": "納希貿易區-2",
+    "to_merchant": "兰明",
+    "to_map": "豐饒的沙漠-3",
+    "hops": 8
+  },
+  {
+    "good": "黑水晶碎片",
+    "tier": "tier2",
+    "from_merchant": "罗森",
+    "from_map": "瑪迦提亞貿易區-2",
+    "to_merchant": "兰明",
+    "to_map": "豐饒的沙漠-3",
+    "hops": 8
+  }
+]
