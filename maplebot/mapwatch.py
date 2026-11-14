@@ -726,12 +726,10 @@ class MapWatcher:
         if from_pos is None or to_pos is None:
             lost = [label for label, value in (("出发位置", from_pos), ("到达位置", to_pos))
                     if value is None]
-            # 告警先打，普通日志在后：异常行永远比正常进度显眼
-            self._alarm("no_pos",
-                        f"换图 {before.map_id} -> {obs.map_id} 时"
-                        f"{'/'.join(lost)}不可用，传送门位置丢失（降级记录）", now)
-            print(f"[mapwatch] 位置未知（{'/'.join(lost)}），但仍记录 "
-                  f"{before.map_id} -> {obs.map_id}", flush=True)
+            # 角色刚过图时正站在传送门上，黄点被挡是常态，不是故障。
+            # 只降级提示：边照记，坐标等绿圈露出来再补。不占用 ！！！！！ 告警。
+            print(f"[mapwatch] ⚠️ 换图 {before.map_id} -> {obs.map_id} 时"
+                  f"{'/'.join(lost)}暂时不可用，已降级记录（角色挡住传送门属正常）", flush=True)
         event = {
             "t": time.strftime("%Y-%m-%dT%H:%M:%S"),
             "from_map": before.map_id,

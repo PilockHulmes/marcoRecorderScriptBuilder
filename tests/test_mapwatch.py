@@ -468,8 +468,9 @@ class AlarmTest(MapWatchTestBase):
         self.assertEqual(len(events), 2)
         self.assertIsNone(events[0]["to_pos"])
         self.assertIsNone(events[1]["from_pos"])
-        self.assertEqual(len(lines), 2)
-        self.assertTrue(all("位置" in line and "降级" in line for line in lines))
+        # 位置缺失是常态（角色站在传送门上），只降级提示，不能报 ！！！！！ 告警
+        self.assertEqual(lines, [])          # run_steps 收集的是告警行，这里必须为空
+        self.assertEqual(watcher.alarm_count, 0)
 
     def test_q_observe_exception_alarms(self):
         """observe() 抛异常 → 告警且不会把采集循环打死。"""
