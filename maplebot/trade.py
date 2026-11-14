@@ -96,7 +96,7 @@ CARGO_BOX = (672, 223, 279, 345)
 
 #: 金币数量 / 当前重量的数字条。
 COINS_BOX = (788, 234, 52, 20)
-WEIGHT_BOX = (775, 254, 65, 22)
+WEIGHT_BOX = (775, 254, 92, 22)
 
 #: 滚动条：轨道 ROI、滑块颜色、滑块顶端在 0%/100% 时的 y。
 SCROLL_ROI = (628, 280, 22, 292)
@@ -163,9 +163,13 @@ def _scale(frame):
 
 def _box(frame, box):
     """把基准像素 box 缩放并裁到画面内，返回 ``(x, y, w, h)``。"""
-    sx, sy = _scale(frame)
-    x, y, w, h = box
     height, width = frame.shape[:2]
+    x, y, w, h = box
+    # 实时帧是同一窗口的客户区（少 2x32 的边框和标题栏），界面没缩放，用平移。
+    if (width + 2, height + 32) == WINDOW_FRAME_SIZE:
+        return (max(0, int(x - CLIENT_OFFSET[0])), max(0, int(y - CLIENT_OFFSET[1])),
+                int(w), int(h))
+    sx, sy = _scale(frame)
     x0 = max(0, min(width, int(round(x * sx))))
     y0 = max(0, min(height, int(round(y * sy))))
     x1 = max(0, min(width, int(round((x + w) * sx))))
@@ -177,7 +181,7 @@ def _crop(frame, box):
     x, y, w, h = _box(frame, box)
     if w <= 0 or h <= 0:
         return None
-    return crop_box(frame, x, y, w, h)
+    return frame[y:y + h, x:x + w]
 
 
 def _split(frame, box):
@@ -186,7 +190,7 @@ def _split(frame, box):
     x, y, w, h = rect
     if w <= 0 or h <= 0:
         return None, rect
-    return crop_box(frame, x, y, w, h), rect
+    return frame[y:y + h, x:x + w], rect
 
 
 def _color_masks(crop):
@@ -406,7 +410,7 @@ def _row_present(frame, icon_box, clip_bottom=None):
         h = max(0, min(y + h, clip_bottom) - y)
     if w <= 0 or h <= 0:
         return False
-    crop = crop_box(frame, x, y, w, h)
+    crop = frame[y:y + h, x:x + w]
     if crop.size == 0:
         return False
     _yellow, _white, light = _color_masks(crop)

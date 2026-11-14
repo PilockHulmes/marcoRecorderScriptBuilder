@@ -158,6 +158,8 @@ def read_visit(frame, map_name="", templates=None):
         visit.coins = int(getattr(cargo, "coins", 0) or 0)
         visit.weight = int(getattr(cargo, "weight", 0) or 0)
         visit.capacity = int(getattr(cargo, "capacity", 0) or 0)
+        if visit.capacity < 50:      # 读残了（'0/135' 可能只认出 '13'），用已知固定值
+            visit.capacity = 135
     except Exception:
         pass
 
