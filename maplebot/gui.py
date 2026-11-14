@@ -180,12 +180,9 @@ def run_gui(interval=0.1):
     advice_box = tk.Text(root, height=8, width=46, font=("Microsoft YaHei", 9))
     advice_box.pack(fill="x", padx=4)
 
-    tk.Label(root, text="身上货物", anchor="w", font=("Microsoft YaHei", 10, "bold")).pack(fill="x")
-    cargo_box = tk.Text(root, height=5, width=46, font=("Microsoft YaHei", 9))
-    cargo_box.pack(fill="x", padx=4)
-
-    tk.Label(root, text="商人看板", anchor="w", font=("Microsoft YaHei", 10, "bold")).pack(fill="x")
-    board_box = tk.Text(root, height=12, width=46, font=("Microsoft YaHei", 9))
+    tk.Label(root, text="商人看板（货 + 倒计时）", anchor="w",
+             font=("Microsoft YaHei", 10, "bold")).pack(fill="x")
+    board_box = tk.Text(root, height=20, width=46, font=("Microsoft YaHei", 9))
     board_box.pack(fill="both", expand=True, padx=4)
 
     status = tk.Label(root, text="", anchor="w", font=("Microsoft YaHei", 8), fg="#666")
@@ -197,18 +194,19 @@ def run_gui(interval=0.1):
     def paint(state):
         advice_box.delete("1.0", "end")
         advice_box.insert("end", "\n".join(state.advice) or "（打开商人界面后显示）")
-        cargo_box.delete("1.0", "end")
-        cargo_box.insert("end", "\n".join(state.cargo) or "（打开货舱后显示）")
         board_box.delete("1.0", "end")
         now = time.monotonic()
         for item in state.board:
             left = item["until"] - now
             if left > 0:
                 mark = "●" if left > 60 else "◐"
-                line = f"{mark} {item['merchant']}@{item['map']} 剩 {int(left)}s"
+                head = f"{mark} {item['merchant']}@{item['map']}　剩 {int(left)}s"
             else:
-                line = f"○ {item['merchant']}@{item['map']} 已过期"
-            board_box.insert("end", line + "\n")
+                head = f"○ {item['merchant']}@{item['map']}　已过期"
+            board_box.insert("end", head + "\n")
+            for row in item.get("rows", []):
+                tag = "卖" if row.get("side") == "sell" else "收"
+                board_box.insert("end", f"    {row.get('good','')} {tag} {row.get('price',0)}\n")
         status.config(text=f"{state.map or '(未知地图)'}　{state.note}")
 
     def tick():
