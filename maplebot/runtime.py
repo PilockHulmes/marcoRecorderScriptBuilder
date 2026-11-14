@@ -113,7 +113,9 @@ class Runtime:
 
         out.append(f"[商店] {visit.merchant or '(随机商人)'} @ {current_map}"
                    f"　金币 {visit.coins}　载重 {visit.weight}/{visit.capacity}")
+        items = []
         if visit.rows:
+            remaining = None
             try:
                 remaining = self._remaining_seconds(frame)
                 items = advice_module.suggest(visit, self.ledger, self.travel,
@@ -121,6 +123,19 @@ class Runtime:
                 out.extend(advice_module.format_suggestions(items))
             except Exception as exc:
                 out.append(f"[runtime] 建议计算失败：{exc}")
+                items = []
+        if not items and visit.rows:
+            try:
+                explore = advice_module.explore_plan(self.ledger, self.travel, now=now,
+                                                    current_map=current_map,
+                                                    remaining=remaining)
+            except Exception:
+                explore = []
+            if explore:
+                out.append("  （暂时没有生意，就近去看看价也许有收获：）")
+                for item in explore:
+                    out.append(f"    {item['merchant']}({item['map']})　"
+                               f"{item['hops']} 张图　约 {int(item['seconds'])} 秒")
         return out
 
     # ------------------------------------------------------------------
