@@ -266,17 +266,34 @@ class TradeSession:
                     blocks = advice_module.format_suggestions(items)
                     total = len(items)
                 else:
-                    trips = advice_module.buy_trip_plan(self.ledger, self.travel,
-                                                        now=now, current_map=self.state.map)
-                    if trips:
-                        blocks = advice_module.format_buy_trips(trips)
-                        total = len(trips)
+                    # 买不起 / 没有可买的：改看"我身上的货该卖给谁"。
+                    # 商店开着时货舱面板在右边，用 shop 位置读。
+                    held = []
+                    try:
+                        held = shop.read_cargo_items(frame, profile="shop")
+                    except Exception:
+                        held = []
+                    sell = (advice_module.sell_plan(held, self.ledger, self.travel,
+                                                    now=now, current_map=self.state.map)
+                            if held else [])
+                    if sell:
+                        blocks = [[f"{item['good']} → {item['merchant']} "
+                                   f"距离 {item.get('hops', 0)} 张图"]
+                                  for item in sell[:advice_module.COLUMNS]]
+                        total = len(sell)
                     else:
-                        explore = advice_module.explore_plan(
+                        trips = advice_module.buy_trip_plan(
                             self.ledger, self.travel, now=now,
                             current_map=self.state.map)
-                        blocks = advice_module.format_explore(explore)
-                        total = len(explore)
+                        if trips:
+                            blocks = advice_module.format_buy_trips(trips)
+                            total = len(trips)
+                        else:
+                            explore = advice_module.explore_plan(
+                                self.ledger, self.travel, now=now,
+                                current_map=self.state.map)
+                            blocks = advice_module.format_explore(explore)
+                            total = len(explore)
         except Exception as exc:
             blocks, total = [[f"建议计算失败：{exc}"]], 1
         self._apply_blocks(blocks, total)

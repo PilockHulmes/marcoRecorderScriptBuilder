@@ -187,15 +187,31 @@ CARGO_ROWS = 8
 CARGO_ICON = 35
 
 
-def read_cargo_items(frame, templates=None):
-    """读身上带着哪些货；只认商品，不读价格（最近購買金額不能当成本）。"""
+#: 商店开着时，货舱面板挪到右边，位置和「只开货舱」时不同
+CARGO_SHOP_ICON_X = 685
+CARGO_SHOP_ICON_Y = 285
+CARGO_SHOP_ROW_H = 33
+CARGO_SHOP_ROWS = 6
+CARGO_SHOP_ICON = 31
+
+
+def read_cargo_items(frame, templates=None, profile="only"):
+    """读身上带着哪些货；只认商品，不读价格（最近購買金額不能当成本）。
+
+    ``profile``：``only`` = 只开货舱（居中）；``shop`` = 商店开着时右侧的货舱面板。
+    """
     templates = templates if templates is not None else load_icon_templates()
+    if profile == "shop":
+        start_x, start_y = CARGO_SHOP_ICON_X, CARGO_SHOP_ICON_Y
+        row_h, rows, icon = CARGO_SHOP_ROW_H, CARGO_SHOP_ROWS, CARGO_SHOP_ICON
+    else:
+        start_x, start_y = CARGO_ICON_X, CARGO_ICON_Y
+        row_h, rows, icon = CARGO_ROW_H, CARGO_ROWS, CARGO_ICON
     found = []
-    for index in range(CARGO_ROWS):
-        y = CARGO_ICON_Y + index * CARGO_ROW_H
+    for index in range(rows):
+        y = start_y + index * row_h
         try:
-            patch = trade.crop_box(frame, CARGO_ICON_X - 4, y - 4,
-                                   CARGO_ICON + 10, CARGO_ICON + 10)
+            patch = trade.crop_box(frame, start_x - 4, y - 4, icon + 10, icon + 10)
         except Exception:
             continue
         good_id, score = match_icon_half(patch, templates)
@@ -308,10 +324,7 @@ def read_visit(frame, map_name="", templates=None, *, learn_names=None,
         visit.capacity = int(getattr(cargo, "capacity", 0) or 0)
         if visit.capacity < 50:      # 读残了（'0/135' 可能只认出 '13'），用已知固定值
             visit.capacity = 135
-        # 货舱读不到时金币会是 0。此时若按 0 算，就会得出"你买不起任何东西"，
-        # 于是一条建议都不给。宁可当作"未知"，让建议照常给出来。
-        if visit.capacity == 135 and visit.coins <= 0:
-            visit.coins = 9999
+
     except Exception:
         pass
 
@@ -319,8 +332,6 @@ def read_visit(frame, map_name="", templates=None, *, learn_names=None,
     # 按 0 算会得出"你买不起"，于是一条建议都不给；宁可当作"未知"。
     if visit.capacity <= 0:
         visit.capacity = 135
-    if visit.coins <= 0:
-        visit.coins = 9999
 
     try:
         rows = trade.read_rows(frame)
