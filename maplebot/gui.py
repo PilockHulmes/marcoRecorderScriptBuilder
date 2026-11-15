@@ -685,21 +685,19 @@ def _goods_text(goods, limit=3):
 
 
 def header_text(state):
-    """右上角信息行：第一行地图/金币/负重，第二行身上的货。
-
-    分两行是因为右列只有 420px，一行塞不下。
-    """
+    """看板标题右边的信息行：地图 / 金币 / 负重 / 身上的货。"""
     stats = state.stats or {}
     coins = stats.get("coins")
     weight = stats.get("weight")
     capacity = stats.get("capacity")
-    first = [state.map or "(未知地图)"]
-    first.append(f"金 {coins}" if coins is not None else "金 ?")
+    parts = [state.map or "(未知地图)"]
+    parts.append(f"金 {coins}" if coins is not None else "金 ?")
     if weight is not None and capacity:
-        first.append(f"負重 {weight}/{capacity}")
+        parts.append(f"負重 {weight}/{capacity}")
     else:
-        first.append("負重 ?")
-    return "　".join(first) + "\n" + _goods_text(state.goods or [])
+        parts.append("負重 ?")
+    parts.append(_goods_text(state.goods or []))
+    return "　".join(parts)
 
 
 def apply_icon(root):
@@ -742,16 +740,16 @@ class View:
         advice_column.pack(side="right", fill="y")
         advice_column.pack_propagate(False)
 
-        tk.Label(board_column, text="商人看板（货 + 倒计时）", anchor="w",
-                 font=("Microsoft YaHei", 10, "bold")).pack(fill="x")
+        # 看板标题行：左边标题，右边放地图/金币/负重/货物（这一行本来就有大片空白）
+        title_row = tk.Frame(board_column)
+        title_row.pack(fill="x")
+        tk.Label(title_row, text="商人看板（货 + 倒计时）", anchor="w",
+                 font=("Microsoft YaHei", 10, "bold")).pack(side="left")
+        self.header = tk.Label(title_row, text="当前建议", anchor="e",
+                               font=("Microsoft YaHei", 9))
+        self.header.pack(side="right", padx=6)
         board_frame = tk.Frame(board_column)
         board_frame.pack(fill="both", expand=True, padx=4)
-
-        # 信息行放在右列顶部：地图 / 金币 / 负重 / 身上的货。
-        # 放这里而不是整窗通栏，是为了把高度留给商人看板。
-        self.header = tk.Label(advice_column, text="当前建议", anchor="w",
-                               justify="left", font=("Microsoft YaHei", 9, "bold"))
-        self.header.pack(fill="x", padx=4)
 
         self.advice_box = tk.Text(advice_column, font=("Microsoft YaHei", 9),
                                   wrap="none", height=ADVICE_ROWS, width=1)
