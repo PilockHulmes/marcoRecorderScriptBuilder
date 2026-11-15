@@ -95,7 +95,15 @@ COUNTDOWN_BOX = (580, 252, 65, 22)
 CARGO_BOX = (672, 223, 279, 345)
 
 #: 金币数量 / 当前重量的数字条。
-COINS_BOX = (788, 234, 52, 20)
+# CARGO 顶部两行数字的取值框（@1368x800 整窗坐标）。
+# 两行文字在两种布局里 y 相同，只有 x 不同：
+#   只开货舱（面板居中） -> x≈670
+#   商店开着（面板在右） -> x≈802
+CARGO_COINS_ONLY = (670, 241, 62, 16)
+CARGO_WEIGHT_ONLY = (666, 258, 74, 16)
+CARGO_COINS_SHOP = (796, 236, 64, 18)
+CARGO_WEIGHT_SHOP = (780, 256, 80, 16)
+COINS_BOX = CARGO_COINS_SHOP
 WEIGHT_BOX = (775, 254, 92, 22)
 
 #: 滚动条：轨道 ROI、滑块颜色、滑块顶端在 0%/100% 时的 y。
@@ -480,20 +488,28 @@ def read_rows(frame) -> list[Row]:
 
 
 # ---------------------------------------------------------------- CARGO
-def read_cargo(frame) -> Cargo:
+def read_cargo(frame, profile="shop") -> Cargo:
     """读 CARGO 顶部的金币 / 当前重量 / 容量。
 
+    ``profile``：``shop`` = 商店开着（货舱在右边）；``only`` = 只开货舱（居中）。
     图里没有 SHOP/CARGO 或 OCR 读不出来时抛 :class:`TradeParseError`。
     """
     if _empty(frame) or not find_shop_window(frame):
         raise TradeParseError("没有检测到 SHOP 窗口")
 
-    coins_crop = _crop(frame, COINS_BOX)
-    weight_crop = _crop(frame, WEIGHT_BOX)
+    if profile == "only":
+        coins_box, weight_box = CARGO_COINS_ONLY, CARGO_WEIGHT_ONLY
+    else:
+        coins_box, weight_box = CARGO_COINS_SHOP, CARGO_WEIGHT_SHOP
+    coins_crop = _crop(frame, coins_box)
+    weight_crop = _crop(frame, weight_box)
     if coins_crop is None or weight_crop is None:
         raise TradeParseError("CARGO 数字区域超出画面")
 
     coins = _first_int(_ocr_text(coins_crop, mode="light"))
+    if coins is None:
+        # 数字是描边字体，二值化常把 0 认成"口"；原图再试一次
+        coins = _first_int(_ocr_text(coins_crop, mode="raw"))
     weight_text = _ocr_text(weight_crop, mode="light")
     match = re.search(r"(\d+)\s*/\s*(\d+)", weight_text)
     if match is None:
