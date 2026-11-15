@@ -9,10 +9,11 @@ from maplebot import advice as advice_module
 from maplebot import gui
 from maplebot import shop
 
+# 按三条跑商线路排（每条线 5 个商人，看板一列就是一条线）
 FIXED_ORDER = [
-    "kobi_1", "kobi_2", "kobi_3", "kobi_4", "kobi_5", "kobi_6", "kobi_7",
-    "dour_4", "dour_5", "dour_6", "dour_7",
-    "ore_4", "ore_5", "ore_6", "ore_7",
+    "kobi_1", "dour_4", "dour_5", "dour_6", "dour_7",      # 納希线
+    "kobi_2", "ore_4", "ore_5", "ore_6", "ore_7",          # 瑪迦线
+    "kobi_3", "kobi_4", "kobi_5", "kobi_6", "kobi_7",      # 古代线
 ]
 
 
@@ -463,7 +464,7 @@ class BoardLayoutTest(unittest.TestCase):
         layout = self.layout()
         self.assertEqual([item.icon_key for item in layout.of_kind("merchant")],
                          ["kobi_1", "dour_4", "ore_7"])
-        self.assertEqual(layout.split, 2)          # 3 个 -> 左 2 右 1
+        self.assertEqual(layout.split, 2)          # 736px 只有 2 列 -> 左 2 右 1
 
     def test_all_fixed_merchants_render_without_any_data(self):
         layout = self.layout()
@@ -672,7 +673,7 @@ class RealFixedMerchantDataTest(unittest.TestCase):
         layout = gui.layout_board([], 736, now=100.0)
         headers = layout.of_kind("merchant")
         self.assertEqual([item.icon_key for item in headers], FIXED_ORDER)
-        self.assertEqual(layout.split, 8)          # 左 8 右 7
+        self.assertEqual(layout.split, 8)          # 3 列 × 5 个
         goods = layout.of_kind("good")
         self.assertEqual(len(goods), 15 * 9)
         for header in headers:

@@ -32,7 +32,26 @@ SHOP_EVERY = 0.4
 CARGO_EVERY = 1.0
 BOARD_EVERY = 2.0
 
-#: 固定商人的线路顺序：kobi < dour < ore，再按 merchant_id 的数字序号
+#: 三条并行路线（每条从豐饒的沙漠-N 走到末尾的 -4）。
+#: 商人按「第几条线 → 线上第几站」排序，看板一列正好一条线。
+LINE_MAPS = [
+    ["豐饒的沙漠-1", "仙人掌沙漠-1", "孤獨的沙漠-1", "寂寞的沙漠-1",
+     "通往納希貿易區的路", "納希貿易區-1", "納希貿易區-2", "納希貿易區-3",
+     "納希貿易區-4"],
+    ["豐饒的沙漠-2", "仙人掌沙漠-2", "孤獨的沙漠-2", "寂寞的沙漠-2",
+     "通往瑪迦提亞貿易區的路", "瑪迦提亞貿易區-1", "瑪迦提亞貿易區-2",
+     "瑪迦提亞貿易區-3", "瑪迦提亞貿易區-4"],
+    ["豐饒的沙漠-3", "仙人掌沙漠-3", "孤獨的沙漠-3", "寂寞的沙漠-3",
+     "通往古代遺跡的路", "古代遺跡地內部-1", "古代遺跡地內部-2",
+     "古代遺跡地內部-3", "古代遺跡地內部-4"],
+]
+
+#: 地图名 -> (线路序号, 站序)
+MAP_STATION = {name: (line, index)
+               for line, maps_in_line in enumerate(LINE_MAPS)
+               for index, name in enumerate(maps_in_line)}
+
+#: 兜底：merchant_id 前缀（地图查不到时用）
 LINE_ORDER = {"kobi": 0, "dour": 1, "ore": 2}
 
 
@@ -56,14 +75,29 @@ def _safe(function, frame, default=None):
         return default
 
 
+def merchant_map_of(merchant_id):
+    """商人站在哪张图（查 merchant_maps.json：地图名 -> 商人）。"""
+    try:
+        for map_name, entry in shop.load_merchant_maps().items():
+            if entry.get("merchant_id") == merchant_id:
+                return map_name
+    except Exception:
+        pass
+    return ""
+
+
 def _merchant_sort_key(merchant_id):
-    """``kobi_1`` -> (0, 1)，线路前缀优先、数字序号其次。"""
+    """按「第几条线 → 线上第几站」排；查不到就退回 merchant_id 前缀。"""
+    map_name = merchant_map_of(merchant_id)
+    station = MAP_STATION.get(map_name)
+    if station is not None:
+        return (station[0], station[1], 0, str(merchant_id or ""))
     prefix, _, suffix = str(merchant_id or "").partition("_")
     try:
         number = int(suffix)
     except (TypeError, ValueError):
         number = 10 ** 9
-    return (LINE_ORDER.get(prefix, len(LINE_ORDER)), number, str(merchant_id or ""))
+    return (len(LINE_MAPS), 0, number, str(merchant_id or ""))
 
 
 def _observed_at(observation):
