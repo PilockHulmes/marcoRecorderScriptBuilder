@@ -99,8 +99,8 @@ CARGO_BOX = (672, 223, 279, 345)
 # 两行文字在两种布局里 y 相同，只有 x 不同：
 #   只开货舱（面板居中） -> x≈670
 #   商店开着（面板在右） -> x≈802
-CARGO_COINS_ONLY = (610, 241, 130, 16)
-CARGO_WEIGHT_ONLY = (666, 258, 74, 16)
+CARGO_COINS_ONLY = (639, 200, 120, 18)
+CARGO_WEIGHT_ONLY = (619, 224, 140, 16)
 CARGO_COINS_SHOP = (750, 236, 122, 18)
 CARGO_WEIGHT_SHOP = (780, 256, 80, 16)
 COINS_BOX = CARGO_COINS_SHOP
@@ -687,7 +687,9 @@ def read_cargo(frame, profile="shop") -> Cargo:
     ``profile``：``shop`` = 商店开着（货舱在右边）；``only`` = 只开货舱（居中）。
     图里没有 SHOP/CARGO 或 OCR 读不出来时抛 :class:`TradeParseError`。
     """
-    if _empty(frame) or not find_shop_window(frame):
+    if _empty(frame):
+        raise TradeParseError("没有画面")
+    if profile != "only" and not find_shop_window(frame):
         raise TradeParseError("没有检测到 SHOP 窗口")
 
     if profile == "only":
@@ -699,7 +701,16 @@ def read_cargo(frame, profile="shop") -> Cargo:
     if coins_crop is None or weight_crop is None:
         raise TradeParseError("CARGO 数字区域超出画面")
 
-    coins_crop = _gold_only(coins_crop)
+    if profile == "only":
+        # 单独货舱的字更小，先放大再 OCR（实测 3 倍最稳）
+        coins_crop = cv2.resize(
+            coins_crop, (coins_crop.shape[1] * 3, coins_crop.shape[0] * 3),
+            interpolation=cv2.INTER_CUBIC)
+        weight_crop = cv2.resize(
+            weight_crop, (weight_crop.shape[1] * 3, weight_crop.shape[0] * 3),
+            interpolation=cv2.INTER_CUBIC)
+    else:
+        coins_crop = _gold_only(coins_crop)
     coins = _digits_of_run(coins_crop)
     if coins is None:
         coins = _longest_int(_ocr_text(coins_crop, mode="light"))

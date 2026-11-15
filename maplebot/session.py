@@ -513,6 +513,12 @@ class TradeSession:
             self.state.note = f"读货舱失败：{exc}"
             self.cargo_error = str(exc)
             return
+        try:
+            cargo = trade.read_cargo(frame, profile="only")
+            self.state.stats = {"coins": cargo.coins, "weight": cargo.weight,
+                                "capacity": cargo.capacity or 135}
+        except Exception:
+            pass
         plan = []
         try:
             plan = advice_module.sell_plan(held, self.ledger, self.travel,

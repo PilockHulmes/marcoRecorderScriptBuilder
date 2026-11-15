@@ -181,11 +181,11 @@ def countdown_seconds(text):
 
 
 #: 货舱物品行（实测，@1368x800 整窗坐标；客户区 x-1, y-32）
-CARGO_ICON_X = 546
-CARGO_ICON_Y = 287
+CARGO_ICON_X = 555
+CARGO_ICON_Y = 252
 CARGO_ROW_H = 33
 CARGO_ROWS = 8
-CARGO_ICON = 35
+CARGO_ICON = 31
 
 
 #: 商店开着时，货舱面板挪到右边，位置和「只开货舱」时不同
@@ -222,6 +222,23 @@ def _cargo_origin(frame):
         return None
 
 
+def _count_items(frame, layout, templates):
+    """在给定的坐标套路上数一数能认出几个商品（用来判断该用哪套坐标）。"""
+    start_x, start_y, row_h, rows, icon = layout
+    count = 0
+    for index in range(rows):
+        try:
+            crop = trade.crop_box(frame, start_x, start_y + index * row_h, icon, icon)
+        except Exception:
+            continue
+        if crop is None or crop.size == 0:
+            continue
+        good_id, score = match_icon_half(crop, templates)
+        if good_id and score >= CARGO_MATCH_THRESHOLD:
+            count += 1
+    return count
+
+
 def read_cargo_items(frame, templates=None, profile="only", with_counts=False):
     """读身上带着哪些货；只认商品，不读价格（最近購買金額不能当成本）。
 
@@ -233,12 +250,20 @@ def read_cargo_items(frame, templates=None, profile="only", with_counts=False):
         # 面板位置靠标题定位，行距/图标尺寸用商店那套（两种布局一致）
         start_x, start_y = origin
         row_h, rows, icon = CARGO_SHOP_ROW_H, CARGO_SHOP_ROWS, CARGO_SHOP_ICON
-    elif profile == "shop":
-        start_x, start_y = CARGO_SHOP_ICON_X, CARGO_SHOP_ICON_Y
-        row_h, rows, icon = CARGO_SHOP_ROW_H, CARGO_SHOP_ROWS, CARGO_SHOP_ICON
     else:
-        start_x, start_y = CARGO_ICON_X, CARGO_ICON_Y
-        row_h, rows, icon = CARGO_ROW_H, CARGO_ROWS, CARGO_ICON
+        # 定位不到就两套坐标都试一遍，谁读到的商品多用谁
+        best_layout, best_count = None, -1
+        for layout in ("shop", "only"):
+            if layout == "shop":
+                probe = (CARGO_SHOP_ICON_X, CARGO_SHOP_ICON_Y,
+                         CARGO_SHOP_ROW_H, CARGO_SHOP_ROWS, CARGO_SHOP_ICON)
+            else:
+                probe = (CARGO_ICON_X, CARGO_ICON_Y, CARGO_ROW_H,
+                         CARGO_ROWS, CARGO_ICON)
+            found = _count_items(frame, probe, templates)
+            if found > best_count:
+                best_layout, best_count = probe, found
+        start_x, start_y, row_h, rows, icon = best_layout
     found = []
     for index in range(rows):
         y = start_y + index * row_h
