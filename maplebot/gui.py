@@ -509,7 +509,7 @@ def layout_board(board, width, now=None):
         return BoardLayout(
             width=width, height=40, columns=0, column_width=width,
             items=[BoardItem(kind="placeholder", x=width // 2, y=12,
-                             w=width, h=40, text="（打开商人界面后显示）",
+                             w=width, h=40, text="（進入跑商地圖後自動顯示）",
                              color=COLOR_GRAY, anchor="n")],
         )
 
@@ -787,7 +787,7 @@ class View:
 
     def paint(self, state):
         # 竖排：每组（同一商店/同一商品）之间空一行，空间足够就不折叠
-        blocks = list(state.blocks or [["（打开商人界面后显示）"]])
+        blocks = list(state.blocks or [["（進入跑商地圖後自動顯示）"]])
         lines = []
         for block in blocks:
             if lines:
