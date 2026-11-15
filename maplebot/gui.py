@@ -685,19 +685,21 @@ def _goods_text(goods, limit=3):
 
 
 def header_text(state):
-    """顶部通栏：当前地图 + 金币 + 负重 + 身上的货。"""
+    """右上角信息行：第一行地图/金币/负重，第二行身上的货。
+
+    分两行是因为右列只有 420px，一行塞不下。
+    """
     stats = state.stats or {}
     coins = stats.get("coins")
     weight = stats.get("weight")
     capacity = stats.get("capacity")
-    parts = ["当前建议", state.map or "(未知地图)"]
-    parts.append(f"金 {coins}" if coins is not None else "金 ?")
+    first = [state.map or "(未知地图)"]
+    first.append(f"金 {coins}" if coins is not None else "金 ?")
     if weight is not None and capacity:
-        parts.append(f"負重 {weight}/{capacity}")
+        first.append(f"負重 {weight}/{capacity}")
     else:
-        parts.append("負重 ?")
-    parts.append(_goods_text(state.goods or []))
-    return "　　".join(parts)
+        first.append("負重 ?")
+    return "　".join(first) + "\n" + _goods_text(state.goods or [])
 
 
 def apply_icon(root):
@@ -729,12 +731,6 @@ class View:
         self.root = root
         self.state = None
 
-        # 顶部通栏：当前地图 / 金币 / 负重 / 身上的货（诊断用，读不到就写 ×?）。
-        # 必须先 pack：main_frame 带 expand=True，先包它会把后面的一起挤到底部。
-        self.header = tk.Label(root, text="当前建议", anchor="w",
-                               font=("Microsoft YaHei", 10, "bold"))
-        self.header.pack(fill="x", padx=4)
-
         # 主区分左右：左边商人看板，右边建议列（整窗高）。
         # 建议列在右侧，因为玩家主屏在看板右边，UI 右缘先进入视线。
         main_frame = tk.Frame(root)
@@ -750,6 +746,12 @@ class View:
                  font=("Microsoft YaHei", 10, "bold")).pack(fill="x")
         board_frame = tk.Frame(board_column)
         board_frame.pack(fill="both", expand=True, padx=4)
+
+        # 信息行放在右列顶部：地图 / 金币 / 负重 / 身上的货。
+        # 放这里而不是整窗通栏，是为了把高度留给商人看板。
+        self.header = tk.Label(advice_column, text="当前建议", anchor="w",
+                               justify="left", font=("Microsoft YaHei", 9, "bold"))
+        self.header.pack(fill="x", padx=4)
 
         self.advice_box = tk.Text(advice_column, font=("Microsoft YaHei", 9),
                                   wrap="none", height=ADVICE_ROWS, width=1)
