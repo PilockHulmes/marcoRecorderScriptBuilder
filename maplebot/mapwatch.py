@@ -890,6 +890,8 @@ class MapWatcher:
                                     "map": map_name or getattr(
                                         getattr(self, "last_map_obs", None), "map_id", ""),
                                     "seconds": round(latency, 2),
+                                    "portal": (self.events[-1].get("to_pos")
+                                               if self.events else None),
                                     "t": time.strftime("%Y-%m-%dT%H:%M:%S"),
                                 }, ensure_ascii=False) + "\n")
                         self._first_shop_done = True

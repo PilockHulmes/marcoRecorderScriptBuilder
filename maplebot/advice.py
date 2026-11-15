@@ -31,6 +31,7 @@ GOODS_PATH = ROOT / "data" / "trade" / "goods.json"
 MERCHANT_MAPS_PATH = ROOT / "data" / "trade" / "merchant_maps.json"
 GRAPH_PATH = ROOT / "data" / "trade" / "map_graph.json"
 EDGE_TIMES_PATH = ROOT / "data" / "trade" / "edge_times.json"
+PORTAL_SHOP_PATH = ROOT / "data" / "trade" / "portal_shop_raw.jsonl"
 EDGE_RAW_PATH = ROOT / "data" / "trade" / "edge_times_raw.jsonl"
 
 #: 还没有实测数据时，每一跳按这个秒数估（刻意保守：玩家不熟练）
@@ -66,7 +67,9 @@ class MapTravel:
         self.graph = graph if graph is not None else _read_json(GRAPH_PATH, {})
         self.per_hop = float(per_hop)
         self.times = {}
-        self.portal_times = {}      # {(from, from_portal, to, to_portal): 秒}
+        self.portal_times = {}
+        self.merchant_times = {}      # {(from, from_portal, to, to_portal): 秒}
+        self.merchant_times = {}    # {(地图, 门) 或 (地图,): [秒]} 落地到商人
         self.reload(edge_times)
 
     def reload(self, edge_times=None):
@@ -112,10 +115,52 @@ class MapTravel:
                 if len(values) >= MIN_SAMPLES:
                     fastest = sorted(values)[:3]
                     self.portal_times[key] = sum(fastest) / len(fastest)
+            self._load_merchant_times()
             return
         for row in (edge_times if edge_times is not None else _read_json(EDGE_TIMES_PATH, [])):
             if row.get("n", 0) >= MIN_SAMPLES:
                 self.times[(row["from"], row["to"])] = float(row["median_fastest"])
+
+    def _load_merchant_times(self):
+        """读"落地门 → 商人"的样本，按 (地图, 门) 和 (地图) 两级分组。"""
+        from collections import defaultdict
+
+        if not PORTAL_SHOP_PATH.exists():
+            return
+        buckets = defaultdict(list)
+        try:
+            lines = PORTAL_SHOP_PATH.read_text(encoding="utf-8").splitlines()
+        except Exception:
+            return
+        for line in lines:
+            if not line.strip():
+                continue
+            try:
+                item = json.loads(line)
+                map_name = item.get("map") or ""
+                seconds = float(item.get("seconds"))
+            except Exception:
+                continue
+            if not map_name:
+                continue
+            buckets[(map_name,)].append(seconds)
+            portal = item.get("portal")
+            if portal:
+                buckets[(map_name, tuple(portal))].append(seconds)
+        self.merchant_times = dict(buckets)
+
+    def merchant_seconds(self, map_name, portal=None):
+        """落地门 → 商人：最快 3 次的均值；门级优先，其次地图级。"""
+        keys = []
+        if portal:
+            keys.append((map_name, tuple(portal)))
+        keys.append((map_name,))
+        for key in keys:
+            values = self.merchant_times.get(key)
+            if values:
+                fastest = sorted(values)[:3]
+                return sum(fastest) / len(fastest)
+        return None
 
     def path(self, a, b):
         """BFS 最短跳数路径（节点列表）；不可达返回 None。"""
@@ -149,7 +194,18 @@ class MapTravel:
                 return self.portal_times[key]
         return self.times.get((a, b))
 
-    def seconds(self, a, b):
+    def seconds(self, a, b, with_merchant=True):
+        """从 a 走到 b 的商人预计耗时（含到达后走到商人那一段）。"""
+        base = self._travel_seconds(a, b)
+        if base is None:
+            return None
+        if with_merchant:
+            extra = self.merchant_seconds(b)
+            if extra:
+                base += extra
+        return base
+
+    def _travel_seconds(self, a, b):
         """逐段相加：这一方向有实测用实测，没有就用每跳估计。"""
         route = self.path(a, b)
         if route is None:
