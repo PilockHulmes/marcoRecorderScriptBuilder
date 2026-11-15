@@ -50,6 +50,9 @@ FACE_DIR = ROOT / "data" / "trade" / "merchants_face"
 
 #: 窗口尺寸：宽度 380 -> 760（加倍），高度 620 -> 930（×1.5）。
 #: 多出来的高度全部给商人看板，当前建议仍是固定 8 行。
+ASSETS_DIR = Path(__file__).resolve().parents[1] / "assets"
+ICON_PATH = ASSETS_DIR / "app_icon.ico"
+
 WINDOW_W = 1500
 WINDOW_H = 730
 ADVICE_ROWS = 4
@@ -669,12 +672,30 @@ def draw_board(canvas, board, now=None, icons=None, width=None):
 
 
 # ---------------------------------------------------------------------- GUI
+def apply_icon(root):
+    """窗口/任务栏图标：跑商小地图里那个图标，比任何自造的图标都有代表性。"""
+    import tkinter as tk
+    path = ASSETS_DIR / "app_icon.png"
+    try:
+        image = tk.PhotoImage(file=str(path))
+        root.iconphoto(True, image)
+        root._icon_ref = image        # 保持引用，否则会被回收
+    except Exception:
+        pass
+    try:
+        if ICON_PATH.exists():
+            root.iconbitmap(default=str(ICON_PATH))
+    except Exception:
+        pass
+
+
 def run_gui(interval=0.1):
     import tkinter as tk
 
     controller = Controller()
     root = tk.Tk()
     root.title("小助手")
+    apply_icon(root)
     root.geometry(f"{WINDOW_W}x{WINDOW_H}")
 
     # 主区分左右：左边商人看板，右边建议列（整窗高）。
