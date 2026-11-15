@@ -147,6 +147,14 @@ def _fixed_merchant_entries(maps):
     return entries
 
 
+def _good_name(good_id):
+    """商品 id -> 显示名（读不到就用 id 本身）。"""
+    try:
+        return shop.load_goods().get(good_id, {}).get("name", good_id)
+    except Exception:
+        return good_id
+
+
 def _as_items(raw):
     """把读到的货统一成 [(good_id, count or None)]；兼容只给 id 的旧调用。"""
     out = []
@@ -202,6 +210,7 @@ class TradeSession:
         self.held = []
         self.held_items = []          # [(good_id, count or None)]
         self.stats = {"coins": 0, "weight": 0, "capacity": 0}
+        self.cargo_known = False
         self._idle_at = 0.0
         self.shop_read = False
         self.cargo_read = False
@@ -263,6 +272,10 @@ class TradeSession:
         if clock - self._board_at >= self.board_every:
             self._read_board(now)
             self._board_at = clock
+        # 顶部通栏的数据：金币/负重来自最近一次商店读取，货物来自最近一次货舱读取
+        self.state.stats = dict(self.stats)
+        self.state.goods = [(_good_name(good_id), count)
+                            for good_id, count in self.held_items]
         return self.state
 
     # ------------------------------------------------------------------
@@ -293,6 +306,7 @@ class TradeSession:
         self.shop_read = True
         self.stats = {"coins": visit.coins, "weight": visit.weight,
                       "capacity": visit.capacity or 135}
+        self.cargo_known = bool(getattr(visit, "cargo_known", False))
         self._advise(now, visit, frame=frame)
 
     def _refresh_idle(self, now):
@@ -339,9 +353,13 @@ class TradeSession:
                                   for item in sell[:advice_module.COLUMNS]]
                         total = len(sell)
                 if not blocks:
+                    known = self.cargo_known
                     trips = advice_module.buy_trip_plan(
                         self.ledger, self.travel, now=now,
-                        current_map=self.state.map)
+                        current_map=self.state.map,
+                        coins=self.stats.get("coins") if known else None,
+                        weight=self.stats.get("weight"),
+                        capacity=self.stats.get("capacity"))
                     if trips:
                         blocks = advice_module.format_buy_trips(trips)
                         total = len(trips)
@@ -356,6 +374,11 @@ class TradeSession:
             blocks, total = [[f"建议计算失败：{exc}"]], 1
         if not blocks:
             return
+        urgent = any(advice_module.urgency(getattr(s, "left", None)) == "urgent"
+                     for s in (locals().get("items") or []))
+        if urgent:
+            blocks.extend(self._calm_down(now))
+            total += 1
         if logger.isEnabledFor(logging.DEBUG):
             logger.debug("[建议] map=%s coins=%s weight=%s/%s blocks=%s",
                          self.state.map, self.stats.get("coins"),
@@ -363,6 +386,39 @@ class TradeSession:
                          len(blocks))
         self._apply_blocks(blocks, total)
 
+
+    def _calm_down(self, now, limit=2):
+        """有时限的建议旁边给"不想赶"的备选：不紧急的买货机会 + 去看看。"""
+        rows = []
+        try:
+            trips = advice_module.buy_trip_plan(
+                self.ledger, self.travel, now=now, current_map=self.state.map,
+                coins=self.stats.get("coins") if self.cargo_known else None,
+                weight=self.stats.get("weight"),
+                capacity=self.stats.get("capacity"))
+        except Exception:
+            trips = []
+        for item in trips:
+            if advice_module.urgency(item.get("left")) == "urgent":
+                continue
+            rows.append(f"　去 {item['merchant']} 買 {item['good']} @{item['price']}"
+                        f"，距离 {item.get('hops', 0)} 张图")
+            if len(rows) >= limit:
+                break
+        if len(rows) < limit:
+            try:
+                explore = advice_module.explore_plan(
+                    self.ledger, self.travel, now=now, current_map=self.state.map)
+            except Exception:
+                explore = []
+            for item in explore:
+                if len(rows) >= limit:
+                    break
+                rows.append(f"　去看看 {item['merchant']}（{item['map']}）"
+                            f" 距离 {item.get('hops', 0)} 张图")
+        if not rows:
+            return []
+        return [["不想赶？"] + rows]
 
     def _apply_blocks(self, blocks, total):
         """把「每条一段」的建议块写进 state：扁平文本给控制台，blocks 给 GUI 分列。"""

@@ -234,7 +234,7 @@ class BuyTripPlanTest(unittest.TestCase):
                 "hops": 2, "left": 150.0}
         self.assertEqual(advice.format_buy_trips([item]),
                          [["去 石鉄",
-                           "  買 桔梗 @13 距离 2 张图，到了还剩 2:30"]])
+                           "  買 桔梗 @13 距离 2 张图　到了还剩 2:30"]])
 
     def test_format_buy_trips_uses_map_and_folds_rest(self):
         items = [
@@ -247,7 +247,7 @@ class BuyTripPlanTest(unittest.TestCase):
         self.assertEqual(len(blocks), 2)          # 两列各一条
         self.assertEqual(blocks[0],
                          ["去 石鉄（豐饒的沙漠-1）",
-                          "  買 桔梗 @12 距离 2 张图，到了还剩 2:30"])
+                          "  買 桔梗 @12 距离 2 张图　到了还剩 2:30"])
         self.assertEqual(blocks[1][0], "去 藍明（豐饒的沙漠-2）")
 
 

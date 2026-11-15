@@ -151,6 +151,7 @@ class Suggestion:
     reason: str
     price_known: bool = True
     route: list = field(default_factory=list)
+    left: float | None = None      # 到达时买家价格还剩多少秒（越少越赶）
     #: 买点所在地图（显示「在 石鉄（豐饒的沙漠-1）」用；老测试直接构造时可为空）
     buy_map: str = ""
     #: 卖点所在地图（``sell_at`` 是商人名时用来补全；为空则不显示）
@@ -226,6 +227,7 @@ def suggest(visit, ledger=None, travel=None, now=None, remaining=None, limit=5):
                 continue
             arrival = now + seconds
             best = None
+            best_until = None
             for observation in observations:
                 if observation.get("map") != buyer_map:
                     continue
@@ -237,6 +239,8 @@ def suggest(visit, ledger=None, travel=None, now=None, remaining=None, limit=5):
                     price = int(other.get("price", 0))
                     if price > 0 and (best is None or price > best):
                         best = price
+                        best_until = ledger.valid_until(observation)
+            left = (best_until - arrival) if best_until else None
             units = ledger_module.max_units(row.price, visit.coins, visit.weight,
                                             visit.capacity or 135)
             if units <= 0:
@@ -257,7 +261,7 @@ def suggest(visit, ledger=None, travel=None, now=None, remaining=None, limit=5):
                     profit_per_unit=profit, profit_total=profit * units,
                     reason="文档阈值" if cheap else "记忆比价",
                     route=travel.path(visit.map, buyer_map) or [],
-                    buy_map=visit.map, sell_map=buyer_map,
+                    buy_map=visit.map, sell_map=buyer_map, left=left,
                 ))
             elif cheap:
                 # 第一类：价格已经够低，不需要先知道买家报价，直接建议去找该货的买家
@@ -269,7 +273,7 @@ def suggest(visit, ledger=None, travel=None, now=None, remaining=None, limit=5):
                     profit_per_unit=0, profit_total=0,
                     reason="够便宜，卖给他稳赚", price_known=False,
                     route=travel.path(visit.map, buyer_map) or [],
-                    buy_map=visit.map, sell_map=buyer_map,
+                    buy_map=visit.map, sell_map=buyer_map, left=None,
                 ))
 
     out.sort(key=lambda s: (s.hops, -s.profit_total))
@@ -289,8 +293,9 @@ def sell_plan(held_goods, ledger=None, travel=None, now=None, current_map="", li
         good = goods.get(good_id, {})
         for buyer_id in good.get("buyers", []):
             buyer_map = where.get(buyer_id, "")
-            if not buyer_map or buyer_map == current_map:
+            if not buyer_map:
                 continue
+            # 当前地图的买家**不跳过**：就地卖永远比跑图好，距离记 0
             seconds = travel.seconds(current_map, buyer_map) if current_map else None
             arrival = now + (seconds or 0)
             best = None
@@ -313,15 +318,15 @@ def sell_plan(held_goods, ledger=None, travel=None, now=None, current_map="", li
                         "merchant_id": buyer_id,
                         "price": best,
                         "seconds": seconds,
-                        "hops": travel.hops(current_map, buyer_map)
-                        if current_map else None})
+                        "hops": 0 if buyer_map == current_map else (
+                            travel.hops(current_map, buyer_map) if current_map else None)})
     out.sort(key=lambda r: (r["hops"] if r["hops"] is not None else 99,
                             -(r["price"] or 0)))
     return out[:limit]
 
 
 def buy_trip_plan(ledger=None, travel=None, now=None, current_map="",
-                  remaining=None, limit=5):
+                  remaining=None, limit=5, coins=None, weight=None, capacity=None):
     """别处有便宜货、现在跑过去还来得及：建议专程去买。
 
     数据来源是记录簿里所有**还没过期**的 ``side == "sell"`` 行（他卖给我）。
@@ -373,6 +378,9 @@ def buy_trip_plan(ledger=None, travel=None, now=None, current_map="",
             good = goods.get(good_id, {})
             if price > _price_limit(good):
                 continue
+            if coins is not None and ledger_module.max_units(
+                    price, coins, weight or 0, capacity or 135) <= 0:
+                continue                   # 买不起或装不下：别让人白跑
             item = {
                 "good": good.get("name") or row.get("good") or good_id,
                 "good_id": good_id,
@@ -487,9 +495,34 @@ def format_suggestions(items):
             if s.price_known and s.sell_price is not None:
                 tail += f"，賺 {s.profit_total}"
             block.append(head)
-            block.append(tail)
+            block.append(tail + leave_mark(getattr(s, "left", None)))
         blocks.append(block)
     return blocks
+
+
+URGENT_SEC = 45      # 到达后剩余少于这个就算"赶"
+TIGHT_SEC = 120      # 少于这个算"有点紧"
+
+
+def urgency(left):
+    """到达时剩余秒数 -> 'urgent' / 'tight' / ''。"""
+    if left is None:
+        return ""
+    if left <= URGENT_SEC:
+        return "urgent"
+    if left <= TIGHT_SEC:
+        return "tight"
+    return ""
+
+
+def leave_mark(left):
+    """显示用的剩余时间标记：赶的话带 ⚠。"""
+    level = urgency(left)
+    if not level:
+        return ""
+    total = max(0, int(left))
+    text = f"{total // 60}:{total % 60:02d}"
+    return f"　⚠ 剩 {text}" if level == "urgent" else f"　剩 {text}"
 
 
 def _clock(seconds):
@@ -509,9 +542,16 @@ def format_buy_trips(items):
     for (merchant, map_name), group in list(groups.items())[:COLUMNS]:
         block = [f"去 {_place(merchant, map_name)}"]
         for item in group[:3]:
+            left = item.get("left")
+            level = urgency(left)
+            if level == "urgent":
+                tail = f"　⚠ 剩 {_clock(left)}"
+            elif left is not None:
+                tail = f"　到了还剩 {_clock(left)}"
+            else:
+                tail = ""
             block.append(f"  買 {item['good']} @{item['price']} "
-                         f"距离 {item.get('hops', 0)} 张图，"
-                         f"到了还剩 {_clock(item.get('left', 0))}")
+                         f"距离 {item.get('hops', 0)} 张图{tail}")
         blocks.append(block)
     return blocks
 

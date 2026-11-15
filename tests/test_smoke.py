@@ -85,9 +85,10 @@ class SessionSmokeTest(unittest.TestCase):
         self.assertEqual(state.map, "孤獨的沙漠-2")
         self.assertTrue(state.board)
         self.assertNotIn("失败", " ".join(state.advice))
-        # 这一帧的矿石碎片 12 ≤ 一类阈值，所以走"买"的分支（不读身上的货）
+        # 这一帧金币是 0：买不起就不该给"买"的建议（会被过滤掉）
         self.assertTrue(state.advice)
-        self.assertIn("矿石碎片", " ".join(state.advice))
+        self.assertEqual(state.stats.get("coins"), 0)
+        self.assertTrue(state.stats.get("weight") is not None)
 
 
 class BoardSmokeTest(unittest.TestCase):

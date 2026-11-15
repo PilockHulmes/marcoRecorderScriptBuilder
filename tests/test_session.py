@@ -118,7 +118,7 @@ class SessionStateTest(unittest.TestCase):
             state = self.session.update(self.frame, now=1.0)
         self.assertEqual(state.advice,
                          ["去 石鉄",
-                          "  買 桔梗 @13 距离 2 张图，到了还剩 2:30"])
+                          "  買 桔梗 @13 距离 2 张图　到了还剩 2:30"])
         explore.assert_not_called()
 
     def test_advice_falls_back_to_explore(self):

@@ -231,3 +231,51 @@ class NoInternalFailureTest(unittest.TestCase):
         # 这里确实会记录失败原因，但必须是明确的一行，而不是静默变成别的建议
         self.assertTrue(any("失败" in line for line in state.advice))
         self.assertEqual(len(state.advice), 1)
+
+class UrgencyTest(unittest.TestCase):
+    """有时限的建议要标出"赶"，并给出"不想赶"的备选。"""
+
+    def _suggestion(self, left):
+        return advice_module.Suggestion(
+            good_id="g", good="桔梗", buy_at="石铁", buy_price=10, units=5,
+            sell_at="寇比", sell_price=22, hops=4, seconds=240,
+            profit_per_unit=12, profit_total=60, reason="t",
+            buy_map="A", sell_map="B", left=left)
+
+    def test_levels(self):
+        self.assertEqual(advice_module.urgency(30), "urgent")
+        self.assertEqual(advice_module.urgency(90), "tight")
+        self.assertEqual(advice_module.urgency(300), "")
+        self.assertEqual(advice_module.urgency(None), "")
+
+    def test_urgent_line_is_marked(self):
+        blocks = advice_module.format_suggestions([self._suggestion(30)])
+        self.assertIn("⚠ 剩 0:30", blocks[0][-1])
+
+    def test_calm_line_when_urgent(self):
+        ledger = mock.Mock()
+        ledger.record = lambda v, now=None: None
+        ledger.load.return_value = []
+        ledger.valid_until = lambda observation: 0
+        watcher = mock.Mock()
+        watcher.last_map_obs = mock.Mock(map_id="A")
+        session = session_module.TradeSession(
+            watcher=watcher, ledger=ledger,
+            travel=advice_module.MapTravel(graph={"A": ["B"], "B": ["A"]},
+                                           edge_times=[]))
+        frame = np.zeros((8, 8, 3), np.uint8)
+        visit = shop.Visit(map="A", merchant="石铁", kind="fixed", refresh_in=120,
+                           coins=50, weight=0, capacity=135)
+        visit.rows = [shop.Row("g", "g", "sell", 10)]
+        with mock.patch.object(session_module.trade, "find_shop_window",
+                               return_value=True), \
+                mock.patch.object(shop, "read_visit", return_value=visit), \
+                mock.patch.object(advice_module, "suggest",
+                                  return_value=[self._suggestion(30)]), \
+                mock.patch.object(advice_module, "buy_trip_plan", return_value=[]), \
+                mock.patch.object(advice_module, "explore_plan",
+                                  return_value=[{"merchant": "瑪帕", "map": "B",
+                                                 "hops": 1}]):
+            state = session.update(frame, now=1.0)
+        self.assertTrue(any("不想赶" in line for line in state.advice))
+        self.assertTrue(any("瑪帕" in line for line in state.advice))
