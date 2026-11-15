@@ -193,9 +193,10 @@ CARGO_SHOP_ICON_Y = 285
 CARGO_SHOP_ROW_H = 33
 CARGO_SHOP_ROWS = 6
 CARGO_SHOP_ICON = 31
+CARGO_COUNT_SHOP = (896, 298, 46, 20)   # 行右侧的「N 個」
 
 
-def read_cargo_items(frame, templates=None, profile="only"):
+def read_cargo_items(frame, templates=None, profile="only", with_counts=False):
     """读身上带着哪些货；只认商品，不读价格（最近購買金額不能当成本）。
 
     ``profile``：``only`` = 只开货舱（居中）；``shop`` = 商店开着时右侧的货舱面板。
@@ -216,8 +217,23 @@ def read_cargo_items(frame, templates=None, profile="only"):
             continue
         good_id, score = match_icon_half(patch, templates)
         if good_id and score >= 0.80:
-            found.append(good_id)
+            count = read_cargo_count(frame, profile=profile, index=index)
+            found.append((good_id, count) if with_counts else good_id)
     return found
+
+
+def read_cargo_count(frame, profile="shop", index=0):
+    """读货舱第 index 行的数量；读不到返回 None（界面显示 ×?）。"""
+    if profile != "shop":
+        return None            # 只开货舱那套的数量框还没标定
+    x, y, w, h = CARGO_COUNT_SHOP
+    try:
+        crop = trade.crop_box(frame, x, y + index * CARGO_SHOP_ROW_H, w, h)
+    except Exception:
+        return None
+    text = trade._ocr_text(crop, mode="light") or ""
+    digits = "".join(ch for ch in text if ch.isdigit())
+    return int(digits) if digits else None
 
 
 #: 货舱图标是商店图标的 50%，用滑动匹配（不要去拉伸模板）

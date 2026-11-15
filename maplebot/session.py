@@ -21,7 +21,11 @@ from dataclasses import dataclass, field
 from . import advice as advice_module
 from . import ledger as ledger_module
 from . import mapwatch
+import logging
+
 from . import shop
+
+logger = logging.getLogger(__name__)
 from . import trade
 
 SHOP_EVERY = 0.4
@@ -37,6 +41,8 @@ class State:
     map: str = ""
     advice: list = field(default_factory=list)
     blocks: list = field(default_factory=list)
+    stats: dict = field(default_factory=dict)   # 金币 / 负重 / 容量
+    goods: list = field(default_factory=list)   # [(名字, 数量 or None)]
     cargo: list = field(default_factory=list)
     board: list = field(default_factory=list)
     note: str = ""
@@ -141,6 +147,17 @@ def _fixed_merchant_entries(maps):
     return entries
 
 
+def _as_items(raw):
+    """把读到的货统一成 [(good_id, count or None)]；兼容只给 id 的旧调用。"""
+    out = []
+    for item in raw or []:
+        if isinstance(item, (tuple, list)) and len(item) == 2:
+            out.append((item[0], item[1]))
+        else:
+            out.append((item, None))
+    return out
+
+
 def _sell_line(item):
     """卖货建议的一行：去哪（带地图）、有没有已知价、多远。"""
     price = item.get("price")
@@ -183,6 +200,8 @@ class TradeSession:
         #: 最近一次成功读到的商店 / 货舱（控制台视图用）
         self.visit = None
         self.held = []
+        self.held_items = []          # [(good_id, count or None)]
+        self.stats = {"coins": 0, "weight": 0, "capacity": 0}
         self.shop_read = False
         self.cargo_read = False
         self.shop_error = ""
@@ -217,7 +236,10 @@ class TradeSession:
             self.watcher.step(frame, now=clock)
         except Exception as exc:
             self.watcher_error = str(exc)
+        previous_map = self.state.map
         self.state.map = self.current_map()
+        if previous_map and self.state.map and self.state.map != previous_map:
+            self._refresh_sell(now)          # 过图后距离全变了，重算一次
 
         opened = self._shop_open(frame)
         if opened:
@@ -264,6 +286,8 @@ class TradeSession:
             pass
         self.visit = visit
         self.shop_read = True
+        self.stats = {"coins": visit.coins, "weight": visit.weight,
+                      "capacity": visit.capacity or 135}
         blocks, total = [], 0
         try:
             if getattr(visit, "kind", "") == "random":
@@ -283,9 +307,12 @@ class TradeSession:
                     # 商店开着时货舱面板在右边，用 shop 位置读。
                     held = []
                     try:
-                        held = shop.read_cargo_items(frame, profile="shop")
+                        held_items = shop.read_cargo_items(
+                            frame, profile="shop", with_counts=True)
                     except Exception:
-                        held = []
+                        held_items = []
+                    self.held_items = _as_items(held_items)
+                    held = [good_id for good_id, _c in self.held_items]
                     sell = (advice_module.sell_plan(held, self.ledger, self.travel,
                                                     now=now, current_map=self.state.map)
                             if held else [])
@@ -308,6 +335,11 @@ class TradeSession:
                             total = len(explore)
         except Exception as exc:
             blocks, total = [[f"建议计算失败：{exc}"]], 1
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug("[建议] map=%s coins=%s weight=%s/%s price=%s units=%s blocks=%s",
+                         self.state.map, self.stats.get("coins"),
+                         self.stats.get("weight"), self.stats.get("capacity"),
+                         locals().get("price"), locals().get("units"), len(blocks))
         self._apply_blocks(blocks, total)
 
     def _apply_blocks(self, blocks, total):
@@ -323,7 +355,9 @@ class TradeSession:
 
     def _read_cargo(self, frame, now):
         try:
-            held = shop.read_cargo_items(frame)
+            held_items = shop.read_cargo_items(frame, with_counts=True)
+            self.held_items = _as_items(held_items)
+            held = [good_id for good_id, _c in self.held_items]
         except Exception as exc:
             self.state.note = f"读货舱失败：{exc}"
             self.cargo_error = str(exc)

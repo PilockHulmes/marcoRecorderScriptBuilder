@@ -668,6 +668,37 @@ def draw_board(canvas, board, now=None, icons=None, width=None):
 
 
 # ---------------------------------------------------------------------- GUI
+def _goods_text(goods, limit=3):
+    """货名×数量；数量读不到写 ×?；超过 limit 条折叠成「還有 N 項」。"""
+    if not goods:
+        return "貨 —"
+    shown = goods[:limit]
+    parts = []
+    for name, count in shown:
+        parts.append(f"{name}×{'?' if count is None else count}")
+    text = "貨 " + "、".join(parts)
+    rest = len(goods) - len(shown)
+    if rest > 0:
+        text += f"　還有 {rest} 項"
+    return text
+
+
+def header_text(state):
+    """顶部通栏：当前地图 + 金币 + 负重 + 身上的货。"""
+    stats = state.stats or {}
+    coins = stats.get("coins")
+    weight = stats.get("weight")
+    capacity = stats.get("capacity")
+    parts = ["当前建议", state.map or "(未知地图)"]
+    parts.append(f"金 {coins}" if coins is not None else "金 ?")
+    if weight is not None and capacity:
+        parts.append(f"負重 {weight}/{capacity}")
+    else:
+        parts.append("負重 ?")
+    parts.append(_goods_text(state.goods or []))
+    return "　　".join(parts)
+
+
 def apply_icon(root):
     """窗口/任务栏图标：跑商小地图里那个图标，比任何自造的图标都有代表性。"""
     import tkinter as tk
@@ -710,8 +741,10 @@ def run_gui(interval=0.1):
     board_frame = tk.Frame(board_column)
     board_frame.pack(fill="both", expand=True, padx=4)
 
-    tk.Label(advice_column, text="当前建议", anchor="w",
-             font=("Microsoft YaHei", 10, "bold")).pack(fill="x")
+    # 顶部通栏：当前地图 / 金币 / 负重 / 身上的货（诊断用，读不到就写 ×?）
+    header = tk.Label(root, text="当前建议", anchor="w",
+                      font=("Microsoft YaHei", 10, "bold"))
+    header.pack(fill="x", padx=4)
     advice_box = tk.Text(advice_column, font=("Microsoft YaHei", 9), wrap="none",
                          height=ADVICE_ROWS, width=1)
     advice_box.pack(fill="both", expand=True, padx=4)
@@ -765,7 +798,8 @@ def run_gui(interval=0.1):
                 scrollbar.pack_forget()
         except Exception:
             pass
-        status.config(text=f"{state.map or '(未知地图)'}　{state.note}")
+        header.config(text=header_text(state))
+        status.config(text=state.note or "")
         shown["state"] = state
 
     def on_resize(event):
