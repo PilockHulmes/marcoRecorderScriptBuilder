@@ -394,10 +394,17 @@ def read_visit(frame, map_name="", templates=None, *, learn_names=None,
         pass
     try:
         cargo = trade.read_cargo(frame)
-        visit.coins = int(getattr(cargo, "coins", 0) or 0)
+        coins = getattr(cargo, "coins", None)
+        visit.coins = int(coins) if coins is not None else None
         visit.weight = int(getattr(cargo, "weight", 0) or 0)
         visit.capacity = int(getattr(cargo, "capacity", 0) or 0)
         visit.cargo_known = True     # 金币/负重确实读到了（0 也是真实值）
+        # 金币读不准（千位分隔被读成多一位）时不要硬当 0，否则"买不起"会吞掉建议
+        if getattr(visit, "coins", None) is None:
+            visit.coins = 10 ** 9
+            visit.coins_known = False
+        else:
+            visit.coins_known = True
         if visit.capacity < 50:      # 读残了（'0/135' 可能只认出 '13'），用已知固定值
             visit.capacity = 135
 

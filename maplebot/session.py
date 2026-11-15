@@ -322,7 +322,8 @@ class TradeSession:
                          for _ in range(max(1, int(count or 1)))]
         except Exception:
             pass
-        self.stats = {"coins": visit.coins, "weight": visit.weight,
+        self.stats = {"coins": visit.coins if getattr(visit, "coins_known", True) else None,
+                      "weight": visit.weight,
                       "capacity": visit.capacity or 135}
         self.cargo_known = bool(getattr(visit, "cargo_known", False))
         self._advise(now, visit, frame=frame)

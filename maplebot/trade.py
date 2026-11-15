@@ -564,6 +564,33 @@ def _digits_by_gap(crop):
     return int("".join(pieces))
 
 
+def _digits_count_matches(crop, value):
+    """金色区域里的字形个数，和识别出来的位数是否一致。
+
+    游戏用空格分千位（3 518），整段 OCR 会把空格当数字，
+    位数一多就对不上——这时候宁可返回 None（界面显示「金 ?」）。
+    """
+    try:
+        hsv = cv2.cvtColor(crop, cv2.COLOR_BGR2HSV)
+        mask = cv2.inRange(hsv, (12, 90, 150), (40, 255, 255))
+        cols = (mask > 0).sum(axis=0)
+        runs, start = 0, None
+        for index, count in enumerate(cols):
+            if count > 0 and start is None:
+                start = index
+            elif count == 0 and start is not None:
+                if index - start >= 3:
+                    runs += 1
+                start = None
+        if start is not None and len(cols) - start >= 3:
+            runs += 1
+        if runs <= 1:
+            return True
+        return runs == len(str(value))
+    except Exception:
+        return True
+
+
 def read_cargo(frame, profile="shop") -> Cargo:
     """读 CARGO 顶部的金币 / 当前重量 / 容量。
 
@@ -586,6 +613,8 @@ def read_cargo(frame, profile="shop") -> Cargo:
     coins = _longest_int(_ocr_text(coins_crop, mode="light"))
     if coins is None:
         coins = _digits_by_gap(coins_crop)
+    if coins is not None and not _digits_count_matches(coins_crop, coins):
+        coins = None          # 位数对不上（3 518 读成 31518）就别硬用
     if coins is None:
         # 数字是描边字体，二值化常把 0 认成"口"；原图再试一次
         coins = _longest_int(_ocr_text(coins_crop, mode="raw"))
