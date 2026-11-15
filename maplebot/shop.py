@@ -308,8 +308,19 @@ def read_visit(frame, map_name="", templates=None, *, learn_names=None,
         visit.capacity = int(getattr(cargo, "capacity", 0) or 0)
         if visit.capacity < 50:      # 读残了（'0/135' 可能只认出 '13'），用已知固定值
             visit.capacity = 135
+        # 货舱读不到时金币会是 0。此时若按 0 算，就会得出"你买不起任何东西"，
+        # 于是一条建议都不给。宁可当作"未知"，让建议照常给出来。
+        if visit.capacity == 135 and visit.coins <= 0:
+            visit.coins = 9999
     except Exception:
         pass
+
+    # 货舱可能整块读不到（窗口没显示 cargo、或解析失败）：此时金币和容量都是 0。
+    # 按 0 算会得出"你买不起"，于是一条建议都不给；宁可当作"未知"。
+    if visit.capacity <= 0:
+        visit.capacity = 135
+    if visit.coins <= 0:
+        visit.coins = 9999
 
     try:
         rows = trade.read_rows(frame)
