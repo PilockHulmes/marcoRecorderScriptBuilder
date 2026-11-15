@@ -546,6 +546,135 @@ def buy_trip_plan(ledger=None, travel=None, now=None, current_map="",
     return out[:limit]
 
 
+#: 看到"高价收购"就去反向找卖家的门槛（用户定的，波动货暂不做）
+HIGH_BUY_TIER1 = 21
+HIGH_BUY_TIER2 = 61
+
+
+def high_buy_plan(ledger=None, travel=None, now=None, current_map="", visit=None,
+                  limit=3):
+    """看到某商人**高价收购**某件货 -> 去它唯一的卖家那里确认/进货。
+
+    - 只处理一类/二类（波动货有"不一定上架"的问题，暂不做）；
+    - 卖家是唯一的（`goods.json` 里每件货只有 1 个卖家），目标确定；
+    - 来回都要走，所以时间预算按**双程**算；
+    - 卖家价格已知且 <= 无脑买阈值 -> 直接给"买"的建议；
+      价格未知 -> 只提示"去看看"，不盲目推荐进货。
+    """
+    now = _wall_now(now)
+    ledger = ledger if ledger is not None else ledger_module.Ledger()
+    travel = travel if travel is not None else MapTravel()
+    goods = _goods()
+    names = _merchant_names()
+
+    # 1) 收集"谁在高价收"
+    quotes = []
+    if visit is not None:
+        expiry = now + float(getattr(visit, "refresh_in", 0) or 0)
+        for row in getattr(visit, "rows", []) or []:
+            if getattr(row, "side", "") != "buy":
+                continue
+            quotes.append((row.good_id, getattr(row, "good_name", "") or row.good_id,
+                           int(getattr(row, "price", 0) or 0), visit.map,
+                           getattr(visit, "merchant", ""), expiry))
+    else:
+        for observation in ledger.load():
+            if not _fixed_observation(observation):
+                continue
+            expiry = ledger.valid_until(observation)
+            if expiry <= now:
+                continue
+            for row in observation.get("rows", []) or []:
+                if row.get("side") != "buy":
+                    continue
+                quotes.append((row.get("good_id", ""), row.get("good", "") or "",
+                               int(row.get("price", 0) or 0),
+                               observation.get("map", ""),
+                               names.get(observation.get("merchant_id"))
+                               or observation.get("merchant", ""), expiry))
+
+    out = []
+    seen = set()
+    for good_id, good_name, buy_price, buyer_map, buyer_name, expiry in quotes:
+        good = goods.get(good_id, {})
+        tier = good.get("tier")
+        if tier == "tier1":
+            threshold, limit_price = HIGH_BUY_TIER1, TIER1_MAX
+        elif tier == "tier2":
+            threshold, limit_price = HIGH_BUY_TIER2, TIER2_MAX
+        else:
+            continue                       # 波动货暂不做
+        if buy_price < threshold:
+            continue
+        seller_id = good.get("seller") or ""
+        seller_map = _merchant_maps().get(seller_id, "")
+        if not seller_map or seller_map == buyer_map:
+            continue
+        key = (good_id, seller_map)
+        if key in seen:
+            continue
+        seen.add(key)
+
+        one_way = travel.seconds(buyer_map, seller_map)
+        if one_way is None:
+            continue
+        round_trip = one_way * 2
+        if now + round_trip > expiry:
+            continue                       # 来回都塞不进刷新窗口，别跑
+        left = expiry - now - round_trip
+
+        # 卖家当前的售价（已知才敢说"买"）
+        seller_price = None
+        for observation in ledger.load():
+            if observation.get("map") != seller_map:
+                continue
+            if ledger.valid_until(observation) <= now:
+                continue
+            for row in observation.get("rows", []) or []:
+                if row.get("good_id") != good_id or row.get("side") != "sell":
+                    continue
+                price = int(row.get("price", 0) or 0)
+                if price > 0 and (seller_price is None or price < seller_price):
+                    seller_price = price
+
+        if seller_price is not None and seller_price > limit_price:
+            continue                       # 有价但不便宜，不值得跑
+        out.append({
+            "good_id": good_id,
+            "good": good.get("name_tw") or good.get("name") or good_name or good_id,
+            "buy_price": buy_price,            # 买家（收）给的价格
+            "buyer": buyer_name,
+            "buyer_map": buyer_map,
+            "seller": names.get(seller_id) or seller_id,
+            "seller_map": seller_map,
+            "seller_price": seller_price,      # None = 未知
+            "hops": travel.hops(buyer_map, seller_map) or 0,
+            "seconds": round(round_trip, 1),
+            "left": round(left, 1),
+            "profit": (buy_price - seller_price) if seller_price is not None else 0,
+        })
+
+    out.sort(key=lambda item: (item["hops"], -item["profit"]))
+    return out[:limit]
+
+
+def format_high_buys(items):
+    """把"高价收购 -> 去找卖家"写成建议块。"""
+    blocks = []
+    for item in items:
+        if item["seller_price"] is None:
+            line = (f"  收 {item['good']} @{item['buy_price']}（{item['buyer']}）"
+                    f"→ 去看看 {item['seller']} 的售价")
+        else:
+            line = (f"  收 {item['good']} @{item['buy_price']}（{item['buyer']}）"
+                    f"→ 去 {item['seller']} 買 @{item['seller_price']}"
+                    f"，赚 {item['profit']}")
+        tail = (f"　来回 {item['hops'] * 2} 张图 剩 {_clock(item['left'])}"
+                if item.get("left") is not None else "")
+        blocks.append([line + tail])
+    return blocks
+
+
 def explore_plan(ledger=None, travel=None, now=None, current_map="",
                  remaining=None, limit=3):
     """没有生意时：就近找价格未知/已过期的商人去看看。"""

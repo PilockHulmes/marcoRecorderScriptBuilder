@@ -405,3 +405,61 @@ class PortalTimeTest(unittest.TestCase):
         self.assertAlmostEqual(travel.edge_seconds("A", "B", [9, 9], [3, 4]), 31.0)
         # 门未知时回落地图级（取全部样本的最快 3 次）
         self.assertAlmostEqual(travel.edge_seconds("A", "B"), 11.0)
+
+class HighBuyPlanTest(unittest.TestCase):
+    """看到高价收购 -> 去唯一卖家确认/进货。"""
+
+    NOW = 5000.0
+
+    class FakeLedger:
+        def __init__(self, rows): self.rows = rows
+        def load(self): return self.rows
+        def valid_until(self, obs): return obs["t"] + obs["refresh_in"]
+
+    def plan(self, rows, **kwargs):
+        goods = {"balloon_flower": {"name": "桔梗", "name_tw": "人蔘",
+                                    "tier": "tier1", "seller": "kobi_1"},
+                 "cotton": {"name": "棉花", "name_tw": "棉",
+                            "tier": "tier2", "seller": "kobi_3"},
+                 "potion": {"name": "补药", "name_tw": "傳說的精神劑",
+                            "tier": "volatile", "seller": "kobi_1"}}
+        maps = {"kobi_1": "豐饒的沙漠-1", "ore_4": "孤獨的沙漠-2",
+                "dour_6": "納希貿易區-2"}
+        graph = {"豐饒的沙漠-1": ["孤獨的沙漠-2"],
+                 "孤獨的沙漠-2": ["豐饒的沙漠-1"]}
+        travel = advice.MapTravel(graph=graph, edge_times=[], per_hop=60)
+        with mock.patch.object(advice, "_goods", return_value=goods), \
+                mock.patch.object(advice, "_merchant_maps", return_value=maps), \
+                mock.patch.object(advice, "_merchant_names",
+                                  return_value={"kobi_1": "石鉄"}):
+            return advice.high_buy_plan(self.FakeLedger(rows), travel, **kwargs)
+
+    def quote(self, good_id, price, side, map_name, refresh=900):
+        return {"merchant_id": "kobi_5", "map": map_name, "t": self.NOW,
+                "refresh_in": refresh,
+                "rows": [{"good_id": good_id, "side": side, "price": price}]}
+
+    def test_known_cheap_seller_gives_profit(self):
+        rows = [self.quote("balloon_flower", 23, "buy", "豐饒的沙漠-1"),
+                self.quote("balloon_flower", 11, "sell", "豐饒的沙漠-1")]
+        # 卖家就在买家同一张图 -> 按规则跳过（同一地图不用跑）
+        self.assertEqual(self.plan(rows, now=self.NOW), [])
+
+    def test_unknown_seller_price_asks_to_check(self):
+        rows = [self.quote("balloon_flower", 23, "buy", "孤獨的沙漠-2")]
+        items = self.plan(rows, now=self.NOW)
+        self.assertEqual(len(items), 1)
+        self.assertIsNone(items[0]["seller_price"])
+        self.assertIn("去看看", advice.format_high_buys(items)[0][0])
+
+    def test_below_threshold_is_ignored(self):
+        rows = [self.quote("balloon_flower", 20, "buy", "孤獨的沙漠-2")]
+        self.assertEqual(self.plan(rows, now=self.NOW), [])
+
+    def test_volatile_is_skipped(self):
+        rows = [self.quote("potion", 260, "buy", "孤獨的沙漠-2")]
+        self.assertEqual(self.plan(rows, now=self.NOW), [])
+
+    def test_window_too_short_is_rejected(self):
+        rows = [self.quote("balloon_flower", 23, "buy", "孤獨的沙漠-2", refresh=10)]
+        self.assertEqual(self.plan(rows, now=self.NOW), [])

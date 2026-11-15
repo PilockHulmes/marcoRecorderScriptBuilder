@@ -417,6 +417,16 @@ class TradeSession:
                     self.held_items = _as_items(held_items)
                     self.held = [good_id for good_id, count in self.held_items
                          for _ in range(max(1, int(count or 1)))]
+                if not blocks and visit is not None:
+                    try:
+                        highs = advice_module.high_buy_plan(
+                            self.ledger, self.travel, now=now,
+                            current_map=self.state.map, visit=visit)
+                    except Exception:
+                        highs = []
+                    if highs:
+                        blocks = advice_module.format_high_buys(highs)
+                        total = len(highs)
                 if not blocks and self.held_items:
                     held = [good_id for good_id, _c in self.held_items]
                     sell = advice_module.sell_plan(held, self.ledger, self.travel,
@@ -436,6 +446,16 @@ class TradeSession:
                     if trips:
                         blocks = advice_module.format_buy_trips(trips)
                         total = len(trips)
+                if not blocks:
+                    try:
+                        highs = advice_module.high_buy_plan(
+                            self.ledger, self.travel, now=now,
+                            current_map=self.state.map)
+                    except Exception:
+                        highs = []
+                    if highs:
+                        blocks = advice_module.format_high_buys(highs)
+                        total = len(highs)
                 if not blocks:
                     explore = advice_module.explore_plan(
                         self.ledger, self.travel, now=now,
