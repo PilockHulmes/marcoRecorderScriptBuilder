@@ -313,6 +313,15 @@ class TradeSession:
             pass
         self.visit = visit
         self.shop_read = True
+        # 每次都刷新身上的货：卖掉之后库存要立刻反映出来，
+        # 不能只在"没有买建议"时才读（否则会一直显示已经卖掉的货）。
+        try:
+            self.held_items = _as_items(
+                shop.read_cargo_items(frame, profile="shop", with_counts=True))
+            self.held = [good_id for good_id, count in self.held_items
+                         for _ in range(max(1, int(count or 1)))]
+        except Exception:
+            pass
         self.stats = {"coins": visit.coins, "weight": visit.weight,
                       "capacity": visit.capacity or 135}
         self.cargo_known = bool(getattr(visit, "cargo_known", False))
@@ -352,7 +361,8 @@ class TradeSession:
                     except Exception:
                         held_items = []
                     self.held_items = _as_items(held_items)
-                    self.held = [good_id for good_id, _c in self.held_items]
+                    self.held = [good_id for good_id, count in self.held_items
+                         for _ in range(max(1, int(count or 1)))]
                 if not blocks and self.held_items:
                     held = [good_id for good_id, _c in self.held_items]
                     sell = advice_module.sell_plan(held, self.ledger, self.travel,

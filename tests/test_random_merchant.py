@@ -271,7 +271,9 @@ class RandomMerchantSessionTest(unittest.TestCase):
 
     def test_random_buy_with_matching_held_goods(self):
         self.session.held = ["cotton", "cotton", "cotton"]
-        state = self._update(make_visit([("cotton", "buy", 22)]))
+        with mock.patch.object(shop, "read_cargo_items",
+                               return_value=[("cotton", 3)]):
+            state = self._update(make_visit([("cotton", "buy", 22)]))
         self.assertEqual(
             state.advice,
             ["在 隨機商人（random_map）",
