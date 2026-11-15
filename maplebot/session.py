@@ -150,7 +150,7 @@ def _fixed_merchant_entries(maps):
 def _good_name(good_id):
     """商品 id -> 显示名（读不到就用 id 本身）。"""
     try:
-        return shop.load_goods().get(good_id, {}).get("name", good_id)
+        return shop.goods_name(good_id)
     except Exception:
         return good_id
 

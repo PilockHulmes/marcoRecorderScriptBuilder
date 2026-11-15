@@ -143,7 +143,7 @@ class ReadVisitLearningTest(unittest.TestCase):
         self.assertEqual(len(visit.rows), 1)
         row = visit.rows[0]
         self.assertEqual(row.good_id, "balloon_flower")
-        self.assertEqual(row.good_name, "桔梗")
+        self.assertEqual(row.good_name, "人蔘")
         self.assertEqual(row.side, "sell")
         self.assertEqual(row.price, 13)
 

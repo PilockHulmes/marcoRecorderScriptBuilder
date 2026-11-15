@@ -335,7 +335,7 @@ def sell_plan(held_goods, ledger=None, travel=None, now=None, current_map="", li
                     if price > 0 and (best is None or price > best):
                         best = price
             # 没有已知收购价也照样给方向：谁收是确定的，价格到了才知道。
-            out.append({"good": good.get("name", good_id), "map": buyer_map,
+            out.append({"good": good.get("name_tw") or good.get("name", good_id), "map": buyer_map,
                         "merchant": names.get(buyer_id, buyer_id),
                         "merchant_id": buyer_id,
                         "price": best,
@@ -404,7 +404,7 @@ def buy_trip_plan(ledger=None, travel=None, now=None, current_map="",
                     price, coins, weight or 0, capacity or 135) <= 0:
                 continue                   # 买不起或装不下：别让人白跑
             item = {
-                "good": good.get("name") or row.get("good") or good_id,
+                "good": good.get("name_tw") or good.get("name") or row.get("good") or good_id,
                 "good_id": good_id,
                 "price": price,
                 "merchant": merchant,

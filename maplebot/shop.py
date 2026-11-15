@@ -260,6 +260,13 @@ def match_icon_half(region, templates, scale=CARGO_ICON_SCALE):
     return (best_id if best >= CARGO_MATCH_THRESHOLD else ""), best
 
 
+def goods_name(good_id, goods=None):
+    """商品在界面上的显示名：优先游戏内繁体名，其次文档简体名。"""
+    table = goods if goods is not None else load_goods()
+    item = table.get(good_id) or {}
+    return item.get("name_tw") or item.get("name") or good_id
+
+
 def identify(map_name):
     """地图 -> (merchant_id, merchant, kind)。"""
     entry = load_merchant_maps().get(map_name)
@@ -295,7 +302,7 @@ def _append_row(visit, good_id, row, score, goods):
     side, price = _row_side_and_price(row)
     if not side:
         return False
-    visit.rows.append(Row(good_id, goods.get(good_id, {}).get("name", good_id),
+    visit.rows.append(Row(good_id, goods_name(good_id, goods),
                           side, price, score))
     return True
 

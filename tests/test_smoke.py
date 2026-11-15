@@ -48,9 +48,9 @@ class ReadPipelineSmokeTest(unittest.TestCase):
         self.assertEqual(visit.merchant, "幹員 0")
         self.assertEqual(len(visit.rows), 3)
         prices = {row.good_name: (row.side, row.price) for row in visit.rows}
-        self.assertEqual(prices["矿石碎片"], ("sell", 12))
-        self.assertEqual(prices["蓝宝石碎片"], ("sell", 40))
-        self.assertEqual(prices["猪肉"], ("buy", 13))
+        self.assertEqual(prices["礦石碎片"], ("sell", 12))
+        self.assertEqual(prices["藍寶石碎片"], ("sell", 40))
+        self.assertEqual(prices["豬肉"], ("buy", 13))
 
     def test_cargo_numbers(self):
         cargo = trade.read_cargo(self.frame, profile="shop")

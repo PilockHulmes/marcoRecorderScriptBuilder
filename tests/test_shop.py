@@ -59,9 +59,9 @@ class ReadVisitTest(unittest.TestCase):
 
     def test_rows(self):
         rows = {(r.good_name, r.side): r.price for r in self.visit.rows}
-        self.assertEqual(rows.get(("桔梗", "sell")), 13)
-        self.assertEqual(rows.get(("天然蜂蜜", "sell")), 45)
-        self.assertEqual(rows.get(("柔顺的丝绸", "buy")), 22)
+        self.assertEqual(rows.get(("人蔘", "sell")), 13)
+        self.assertEqual(rows.get(("蜂蜜", "sell")), 45)
+        self.assertEqual(rows.get(("柔軟的綢緞", "buy")), 22)
 
     def test_icons_matched_confidently(self):
         self.assertTrue(self.visit.rows)

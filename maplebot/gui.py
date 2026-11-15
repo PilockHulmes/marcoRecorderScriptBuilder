@@ -333,7 +333,8 @@ def tier_color(good_id):
 
 def _goods_slot(good, side):
     good_id = good.get("id") or ""
-    return {"good_id": good_id, "name": good.get("name") or good_id, "side": side}
+    return {"good_id": good_id, "name": good.get("name_tw") or good.get("name") or good_id,
+            "side": side}
 
 
 def _fixed_goods_slots(merchant_id, goods=None):
