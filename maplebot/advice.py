@@ -444,9 +444,10 @@ def explore_plan(ledger=None, travel=None, now=None, current_map="",
         last_seen[merchant_id] = max(last_seen.get(merchant_id, 0),
                                      ledger.valid_until(observation))
     out = []
+    current = (current_map or "").strip()
     for merchant_id, map_name in where.items():
-        if not map_name or map_name == current_map:
-            continue
+        if not map_name or map_name.strip() == current:
+            continue                       # 就在脚下，不需要“去看看”
         if last_seen.get(merchant_id, 0) > now:
             continue                       # 还有效，不用去看
         seconds = travel.seconds(current_map, map_name) if current_map else None

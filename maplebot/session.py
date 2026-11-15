@@ -263,8 +263,12 @@ class TradeSession:
                 self._shop_at = clock
             self._open = True
         else:
+            was_open = self._open
             self._open = False
             self._merged = {}
+            if was_open:
+                self._refresh_idle(now)          # 关商店就重算，别留着旧建议
+                self._idle_at = clock
             if self._cargo_open(frame):
                 if clock - self._cargo_at >= self.cargo_every:
                     self._read_cargo(frame, now)
