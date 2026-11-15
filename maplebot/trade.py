@@ -99,9 +99,9 @@ CARGO_BOX = (672, 223, 279, 345)
 # 两行文字在两种布局里 y 相同，只有 x 不同：
 #   只开货舱（面板居中） -> x≈670
 #   商店开着（面板在右） -> x≈802
-CARGO_COINS_ONLY = (670, 241, 62, 16)
+CARGO_COINS_ONLY = (610, 241, 130, 16)
 CARGO_WEIGHT_ONLY = (666, 258, 74, 16)
-CARGO_COINS_SHOP = (796, 236, 64, 18)
+CARGO_COINS_SHOP = (750, 236, 122, 18)
 CARGO_WEIGHT_SHOP = (780, 256, 80, 16)
 COINS_BOX = CARGO_COINS_SHOP
 WEIGHT_BOX = (775, 254, 92, 22)
@@ -488,6 +488,44 @@ def read_rows(frame) -> list[Row]:
 
 
 # ---------------------------------------------------------------- CARGO
+def _longest_int(text):
+    """取文本里最长的连续数字（金币是右对齐的，放宽后可能有杂字）。"""
+    runs = re.findall(r"\d+", text or "")
+    if not runs:
+        return None
+    return int(max(runs, key=len))
+
+
+def _gold_only(crop):
+    """只留金色像素（数字是金色、标签是白色），返回裁好的小图。
+
+    找不到金色就原样返回，交给后面的兜底逻辑。
+    """
+    if crop is None or crop.size == 0:
+        return crop
+    hsv = cv2.cvtColor(crop, cv2.COLOR_BGR2HSV)
+    mask = cv2.inRange(hsv, (12, 90, 150), (40, 255, 255))
+    cols = mask.any(axis=0)
+    rows = mask.any(axis=1)
+    if not cols.any() or not rows.any():
+        return crop
+    xs = np.where(cols)[0]
+    ys = np.where(rows)[0]
+    x0, x1 = int(xs.min()), int(xs.max()) + 1
+    y0, y1 = int(ys.min()), int(ys.max()) + 1
+    if x1 - x0 < 3 or y1 - y0 < 5:
+        return crop
+    return crop[y0:y1, x0:x1]
+
+
+def _longest_int(text):
+    """取文本里最长的连续数字（放宽取数框后可能有杂字）。"""
+    runs = re.findall(r"\d+", text or "")
+    if not runs:
+        return None
+    return int(max(runs, key=len))
+
+
 def read_cargo(frame, profile="shop") -> Cargo:
     """读 CARGO 顶部的金币 / 当前重量 / 容量。
 
@@ -506,10 +544,11 @@ def read_cargo(frame, profile="shop") -> Cargo:
     if coins_crop is None or weight_crop is None:
         raise TradeParseError("CARGO 数字区域超出画面")
 
-    coins = _first_int(_ocr_text(coins_crop, mode="light"))
+    coins_crop = _gold_only(coins_crop)
+    coins = _longest_int(_ocr_text(coins_crop, mode="light"))
     if coins is None:
         # 数字是描边字体，二值化常把 0 认成"口"；原图再试一次
-        coins = _first_int(_ocr_text(coins_crop, mode="raw"))
+        coins = _longest_int(_ocr_text(coins_crop, mode="raw"))
     weight_text = _ocr_text(weight_crop, mode="light")
     match = re.search(r"(\d+)\s*/\s*(\d+)", weight_text)
     if match is None:
