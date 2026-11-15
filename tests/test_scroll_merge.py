@@ -34,9 +34,7 @@ class ScrollMergeTest(unittest.TestCase):
         ]
         with mock.patch.object(runtime_module, "shop_open", return_value=True), \
                 mock.patch.object(shop, "read_visit", side_effect=frames), \
-                mock.patch.object(advice_module, "suggest", return_value=[]), \
-                mock.patch.object(runtime_module.Runtime, "_remaining_seconds",
-                                  return_value=None):
+                mock.patch.object(advice_module, "suggest", return_value=[]):
             rt.step(np.zeros((4, 4, 3), np.uint8), now=0.0)
             rt.step(np.zeros((4, 4, 3), np.uint8), now=1.0)
 

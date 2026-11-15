@@ -32,6 +32,41 @@ class TravelTest(unittest.TestCase):
         travel = advice.MapTravel(graph=graph, edge_times=times, per_hop=60)
         self.assertAlmostEqual(travel.seconds("A", "B"), 60.0)
 
+    def test_edge_times_are_directed(self):
+        """A→B 和 B→A 是两条独立的边，不能互相顶替。"""
+        graph = {"A": ["B"], "B": ["A"]}
+        times = [{"from": "A", "to": "B", "n": 5, "median_fastest": 10.0},
+                 {"from": "B", "to": "A", "n": 5, "median_fastest": 30.0}]
+        travel = advice.MapTravel(graph=graph, edge_times=times, per_hop=60)
+        self.assertEqual(set(travel.times), {("A", "B"), ("B", "A")})
+        self.assertAlmostEqual(travel.seconds("A", "B"), 10.0)
+        self.assertAlmostEqual(travel.seconds("B", "A"), 30.0)
+
+    def test_missing_direction_uses_default_per_hop(self):
+        """只测过 A→B：B→A 仍按默认每跳秒数，不会用正向实测。"""
+        graph = {"A": ["B"], "B": ["A"]}
+        times = [{"from": "A", "to": "B", "n": 5, "median_fastest": 10.0}]
+        travel = advice.MapTravel(graph=graph, edge_times=times, per_hop=60)
+        self.assertAlmostEqual(travel.seconds("A", "B"), 10.0)
+        self.assertAlmostEqual(travel.seconds("B", "A"), 60.0)
+
+    def test_raw_samples_are_directed(self):
+        """运行时原始样本按 (from, to) 分桶：反向样本不参与正向最快 3 次。"""
+        import json
+        import tempfile
+        from pathlib import Path
+        with tempfile.TemporaryDirectory() as tmp:
+            raw = Path(tmp) / "raw.jsonl"
+            rows = ([{"from": "A", "to": "B", "seconds": 10.0}] * 3
+                    + [{"from": "B", "to": "A", "seconds": 90.0}] * 3)
+            raw.write_text("\n".join(json.dumps(row) for row in rows),
+                           encoding="utf-8")
+            with mock.patch.object(advice, "EDGE_RAW_PATH", raw):
+                travel = advice.MapTravel(graph={"A": ["B"], "B": ["A"]},
+                                          edge_times=None, per_hop=60)
+        self.assertAlmostEqual(travel.seconds("A", "B"), 10.0)
+        self.assertAlmostEqual(travel.seconds("B", "A"), 90.0)
+
 
 class SuggestTest(unittest.TestCase):
     def setUp(self):

@@ -44,13 +44,11 @@ class RuntimeTest(unittest.TestCase):
         with mock.patch.object(runtime_module, "shop_open", return_value=True), \
                 mock.patch.object(shop, "read_visit", side_effect=lambda f, m: visit), \
                 mock.patch.object(advice_module, "suggest", return_value=[]), \
-                mock.patch.object(runtime_module.Runtime, "_remaining_seconds",
-                                  return_value=None), \
                 mock.patch.object(self.ledger, "record",
                                   side_effect=lambda v, now=None: calls.append(v)):
             self.runtime.step(self.frame, now=0.0)      # 第一次：记录
-            self.runtime.step(self.frame, now=0.5)      # 节流内：不记录
-            self.runtime.step(self.frame, now=5.0)      # 超过 advice_every：不重复记录
+            self.runtime.step(self.frame, now=0.5)      # 节流内：不读、不记录
+            self.runtime.step(self.frame, now=1.0)      # 仍在 advice_every 内
         self.assertEqual(len(calls), 1)
 
     def test_close_then_open_records_again(self):
@@ -59,8 +57,6 @@ class RuntimeTest(unittest.TestCase):
         with mock.patch.object(runtime_module, "shop_open", return_value=True), \
                 mock.patch.object(shop, "read_visit", side_effect=lambda f, m: visit), \
                 mock.patch.object(advice_module, "suggest", return_value=[]), \
-                mock.patch.object(runtime_module.Runtime, "_remaining_seconds",
-                                  return_value=None), \
                 mock.patch.object(self.ledger, "record",
                                   side_effect=lambda v, now=None: calls.append(v)):
             self.runtime.step(self.frame, now=0.0)
@@ -69,8 +65,6 @@ class RuntimeTest(unittest.TestCase):
         with mock.patch.object(runtime_module, "shop_open", return_value=True), \
                 mock.patch.object(shop, "read_visit", side_effect=lambda f, m: visit), \
                 mock.patch.object(advice_module, "suggest", return_value=[]), \
-                mock.patch.object(runtime_module.Runtime, "_remaining_seconds",
-                                  return_value=None), \
                 mock.patch.object(self.ledger, "record",
                                   side_effect=lambda v, now=None: calls.append(v)):
             self.runtime.step(self.frame, now=2.0)

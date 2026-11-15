@@ -45,7 +45,11 @@ def _read_json(path, default):
 
 
 class MapTravel:
-    """地图之间的距离（秒）。实测优先，否则按跳数估。"""
+    """地图之间的距离（秒）。实测优先，否则按跳数估。
+
+    时间表是**有向**的：``(from, to)`` 和 ``(to, from)`` 是两条独立的边。
+    反向没有实测时照常用默认每跳秒数，不会把正向的实测倒过来用。
+    """
 
     def __init__(self, graph=None, edge_times=None, per_hop=DEFAULT_SECONDS_PER_HOP):
         self.graph = graph if graph is not None else _read_json(GRAPH_PATH, {})
@@ -61,7 +65,7 @@ class MapTravel:
         if edge_times is not None:        # 显式传入就用它（测试/离线用）
             for row in edge_times:
                 if row.get("n", 0) >= MIN_SAMPLES:
-                    self.times[frozenset((row["from"], row["to"]))] = float(row["median_fastest"])
+                    self.times[(row["from"], row["to"])] = float(row["median_fastest"])
             return
         raw = []
         try:
@@ -80,11 +84,11 @@ class MapTravel:
             for pair, values in buckets.items():
                 if len(values) >= MIN_SAMPLES:
                     fastest = sorted(values)[:3]
-                    self.times[frozenset(pair)] = sum(fastest) / len(fastest)
+                    self.times[pair] = sum(fastest) / len(fastest)
             return
         for row in (edge_times if edge_times is not None else _read_json(EDGE_TIMES_PATH, [])):
             if row.get("n", 0) >= MIN_SAMPLES:
-                self.times[frozenset((row["from"], row["to"]))] = float(row["median_fastest"])
+                self.times[(row["from"], row["to"])] = float(row["median_fastest"])
 
     def path(self, a, b):
         """BFS 最短跳数路径（节点列表）；不可达返回 None。"""
@@ -111,13 +115,13 @@ class MapTravel:
         return None if route is None else len(route) - 1
 
     def seconds(self, a, b):
-        """逐段相加：有实测用实测，没有就用每跳估计。"""
+        """逐段相加：这一方向有实测用实测，没有就用每跳估计。"""
         route = self.path(a, b)
         if route is None:
             return None
         total = 0.0
         for x, y in zip(route, route[1:]):
-            total += self.times.get(frozenset((x, y)), self.per_hop)
+            total += self.times.get((x, y), self.per_hop)
         return total
 
 

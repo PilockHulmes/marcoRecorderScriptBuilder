@@ -1,4 +1,11 @@
-"""跑商运行时：地图 watcher + 购物界面读取 + 记录 + 单跳建议。
+"""跑商控制台视图：地图跟踪 + 读商店/货舱 + 三级建议，全部调用共享会话。
+
+逻辑在 :class:`maplebot.session.TradeSession`（GUI 用的是同一个类），这里只
+做两件事：
+
+- 每帧把画面交给 ``TradeSession.update``（必要时按 ``advice_every`` 放慢读取）；
+- 把返回的 :class:`~maplebot.session.State` 格式化成控制台文本行：
+  ``[商店] …``、``[货舱] …`` 和三级建议文本。
 
 行为（TRADE_DESIGN.md 13）：
 
@@ -9,15 +16,15 @@
 """
 
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 import numpy as np
 
 from . import advice as advice_module
 from . import ledger as ledger_module
 from . import mapwatch
-from . import shop
 from . import trade
+from .session import TradeSession
 
 
 def cargo_open(frame):
@@ -35,11 +42,14 @@ def shop_open(frame):
         return False
 
 
-def _good_name(good_id):
-    try:
-        return shop.load_goods().get(good_id, {}).get("name", good_id)
-    except Exception:
-        return good_id
+class _ConsoleSession(TradeSession):
+    """控制台的窗口探测仍走模块级函数，测试可以直接打桩。"""
+
+    def _shop_open(self, frame):
+        return shop_open(frame)
+
+    def _cargo_open(self, frame):
+        return cargo_open(frame)
 
 
 @dataclass
@@ -49,131 +59,42 @@ class Runtime:
     travel: object = None
     advice_every: float = 2.0
     emit: object = print
-
-    _open: bool = False
-    _last_advice: float = 0.0
-    _merged: dict = field(default_factory=dict)     # (good_id, side) -> price，跨滚动累积
-    _messages: list = field(default_factory=list)
+    session: object = None
 
     def __post_init__(self):
-        if self.watcher is None:
-            self.watcher = mapwatch.MapWatcher()
-        if self.ledger is None:
-            self.ledger = ledger_module.Ledger()
-        if self.travel is None:
-            self.travel = advice_module.MapTravel()
+        self.watcher = self.watcher or mapwatch.MapWatcher()
+        self.ledger = self.ledger or ledger_module.Ledger()
+        self.travel = self.travel or advice_module.MapTravel()
+        if self.session is None:
+            self.session = _ConsoleSession(self.watcher, self.ledger, self.travel)
+        # 控制台按 advice_every 放慢读取（GUI 用自己的 0.4s / 1.0s）
+        self.session.shop_every = float(self.advice_every)
+        self.session.cargo_every = float(self.advice_every)
 
     # ------------------------------------------------------------------
     def step(self, frame, now=None):
         """处理一帧；返回这一帧要对玩家说的话（可能为空）。"""
         now = time.monotonic() if now is None else float(now)
+        state = self.session.update(frame, now)
         out = []
-        try:
-            self.watcher.step(frame, now=now)
-        except Exception as exc:
-            out.append(f"[runtime] 地图更新异常：{exc}")
-
-        current_map = self._current_map()
-        opened = shop_open(frame)
-        if not opened:
-            self._open = False
-            if cargo_open(frame):
-                out.extend(self._cargo_advice(frame, current_map, now))
+        if self.session.watcher_error:
+            out.append(f"[runtime] 地图更新异常：{self.session.watcher_error}")
+        if self.session.shop_error:
+            out.append(f"[runtime] 读取商店失败：{self.session.shop_error}")
             return out
-
-        first = not self._open
-        self._open = True
-        if not first and now - self._last_advice < self.advice_every:
+        if self.session.shop_read:
+            visit = self.session.visit
+            out.append(f"[商店] {visit.merchant or '(随机商人)'} @ {state.map}"
+                       f"　金币 {visit.coins}　载重 {visit.weight}/{visit.capacity}")
+            out.extend(state.advice)
             return out
-        self._last_advice = now
-
-        try:
-            visit = shop.read_visit(frame, current_map)
-        except Exception as exc:
-            out.append(f"[runtime] 读取商店失败：{exc}")
+        if self.session.cargo_error:
+            out.append(f"[runtime] 读货舱失败：{self.session.cargo_error}")
             return out
-
-        if first:
-            self._merged = {}
-
-        # 滚动拼接：每次只看到 3 行，把多帧的 (商品, 方向) 合并起来
-        before = len(self._merged)
-        for row in visit.rows:
-            self._merged[(row.good_id, row.side)] = row.price
-        merged_rows = [shop.Row(good_id, _good_name(good_id), side, price)
-                       for (good_id, side), price in self._merged.items()]
-        if len(self._merged) > before or first:
-            visit.rows = merged_rows
-            try:
-                self.ledger.record(visit, now=now)
-            except Exception as exc:
-                out.append(f"[runtime] 记录失败：{exc}")
-        else:
-            visit.rows = merged_rows
-
-        out.append(f"[商店] {visit.merchant or '(随机商人)'} @ {current_map}"
-                   f"　金币 {visit.coins}　载重 {visit.weight}/{visit.capacity}")
-        items = []
-        if visit.rows:
-            remaining = None
-            try:
-                remaining = self._remaining_seconds(frame)
-                items = advice_module.suggest(visit, self.ledger, self.travel,
-                                              now=now, remaining=remaining)
-                out.extend(advice_module.format_suggestions(items))
-            except Exception as exc:
-                out.append(f"[runtime] 建议计算失败：{exc}")
-                items = []
-        if not items and visit.rows:
-            try:
-                explore = advice_module.explore_plan(self.ledger, self.travel, now=now,
-                                                    current_map=current_map,
-                                                    remaining=remaining)
-            except Exception:
-                explore = []
-            if explore:
-                out.append("  （暂时没有生意，就近去看看价也许有收获：）")
-                for item in explore:
-                    out.append(f"    {item['merchant']}({item['map']})　"
-                               f"{item['hops']} 张图　约 {int(item['seconds'])} 秒")
+        if self.session.cargo_read and self.session.held:
+            out.append(f"[货舱] 身上 {len(self.session.held)} 种货")
+            out.extend(f"  {line}" for line in state.cargo)
         return out
-
-    # ------------------------------------------------------------------
-    def _cargo_advice(self, frame, current_map, now):
-        """只开货舱：告诉玩家身上的货该去哪卖。"""
-        if not current_map or now - self._last_advice < self.advice_every:
-            return []
-        self._last_advice = now
-        try:
-            held = shop.read_cargo_items(frame)
-        except Exception as exc:
-            return [f"[runtime] 读货舱失败：{exc}"]
-        if not held:
-            return []
-        plan = advice_module.sell_plan(held, self.ledger, self.travel,
-                                       now=now, current_map=current_map)
-        lines = [f"[货舱] 身上 {len(held)} 种货"]
-        if not plan:
-            lines.append("  （没有可信的收购价，先去附近的商人看看）")
-        for item in plan:
-            hops = item.get("hops")
-            distance = f"{hops} 张图" if hops is not None else "? 张图"
-            lines.append(f"  {item['good']} → {item['merchant']}({item['map']}) "
-                         f"收 @{item['price']}（{distance}）")
-        return lines
-
-    def _current_map(self):
-        previous = getattr(self.watcher, "last_map_obs", None)
-        return getattr(previous, "map_id", "") or ""
-
-    def _remaining_seconds(self, frame):
-        """本局剩余时间（秒）；读不到返回 None（不限制）。"""
-        try:
-            text = trade.read_remaining_time(frame)
-            seconds = shop.countdown_seconds(text)
-            return seconds or None
-        except Exception:
-            return None
 
 
 def _grabber():
