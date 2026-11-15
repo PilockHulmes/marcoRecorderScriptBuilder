@@ -526,6 +526,44 @@ def _longest_int(text):
     return int(max(runs, key=len))
 
 
+def _digits_by_gap(crop):
+    """把金色数字按空隙切开分别识别，避免千位分隔的空格被读成数字。
+
+    游戏里 3518 显示成「3 518」：整段 OCR 会把空格当成 1，读成 31518。
+    这里找到内部最宽的一段空白，左右分别识别再拼起来。
+    """
+    if crop is None or crop.size == 0:
+        return None
+    hsv = cv2.cvtColor(crop, cv2.COLOR_BGR2HSV)
+    mask = cv2.inRange(hsv, (12, 90, 150), (40, 255, 255))
+    cols = (mask > 0).sum(axis=0)
+    if cols.max() == 0:
+        return None
+    # 内部空隙：连续为 0 的列
+    gaps = []
+    start = None
+    for index, value in enumerate(cols):
+        if value == 0:
+            if start is None:
+                start = index
+        elif start is not None:
+            gaps.append((start, index - 1))
+            start = None
+    inner = [(a, b) for a, b in gaps if a > 0 and b < len(cols) - 1]
+    if not inner:
+        return None
+    a, b = max(inner, key=lambda gap: gap[1] - gap[0])
+    left, right = crop[:, :a], crop[:, b + 1:]
+    pieces = []
+    for part in (left, right):
+        text = _ocr_text(part, mode="light") or _ocr_text(part, mode="raw") or ""
+        digits = "".join(ch for ch in text if ch.isdigit())
+        if not digits:
+            return None
+        pieces.append(digits)
+    return int("".join(pieces))
+
+
 def read_cargo(frame, profile="shop") -> Cargo:
     """读 CARGO 顶部的金币 / 当前重量 / 容量。
 
@@ -546,6 +584,8 @@ def read_cargo(frame, profile="shop") -> Cargo:
 
     coins_crop = _gold_only(coins_crop)
     coins = _longest_int(_ocr_text(coins_crop, mode="light"))
+    if coins is None:
+        coins = _digits_by_gap(coins_crop)
     if coins is None:
         # 数字是描边字体，二值化常把 0 认成"口"；原图再试一次
         coins = _longest_int(_ocr_text(coins_crop, mode="raw"))
