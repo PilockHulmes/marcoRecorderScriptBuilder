@@ -230,7 +230,74 @@ class BuyTripPlanTest(unittest.TestCase):
         item = {"merchant": "石鉄", "good": "桔梗", "price": 13,
                 "hops": 2, "left": 150.0}
         self.assertEqual(advice.format_buy_trips([item]),
-                         ["去 石鉄 买 桔梗 @13，2 张图，到了还剩 2:30"])
+                         ["去 石鉄",
+                          "  買 桔梗 @13",
+                          "  2 張圖，到了還剩 2:30"])
+
+    def test_format_buy_trips_uses_map_and_folds_rest(self):
+        items = [
+            {"merchant": "石鉄", "map": "豐饒的沙漠-1", "good": "桔梗",
+             "price": 12, "hops": 2, "left": 150.0},
+            {"merchant": "藍明", "map": "豐饒的沙漠-2", "good": "桔梗",
+             "price": 13, "hops": 3, "left": 90.0},
+        ]
+        self.assertEqual(advice.format_buy_trips(items),
+                         ["去 石鉄（豐饒的沙漠-1）",
+                          "  買 桔梗 @12",
+                          "  2 張圖，到了還剩 2:30",
+                          "还有 1 条…"])
+
+
+class FormatSuggestionsTest(unittest.TestCase):
+    """三级建议统一成「动作行 + 物品行 + 结果行」，只展开 top-1。"""
+
+    @staticmethod
+    def suggestion(**overrides):
+        values = dict(
+            good_id="balloon_flower", good="桔梗", buy_at="石鉄",
+            buy_price=12, units=3, sell_at="羅森", sell_price=22,
+            hops=2, seconds=120, profit_per_unit=10, profit_total=30,
+            reason="test", buy_map="豐饒的沙漠-1", sell_map="豐饒的沙漠-3")
+        values.update(overrides)
+        return advice.Suggestion(**values)
+
+    def test_known_price_is_three_lines(self):
+        self.assertEqual(
+            advice.format_suggestions([self.suggestion()]),
+            ["在 石鉄（豐饒的沙漠-1）",
+             "  買 桔梗 @12 × 3 個",
+             "  到 羅森 賣 @22，2 張圖，賺 30"])
+
+    def test_unknown_price_result_line_asks_to_check(self):
+        item = self.suggestion(price_known=False, sell_price=None,
+                               profit_total=0, sell_at="豐饒的沙漠-3",
+                               sell_map="")
+        self.assertEqual(
+            advice.format_suggestions([item]),
+            ["在 石鉄（豐饒的沙漠-1）",
+             "  買 桔梗 @12 × 3 個",
+             "  到 豐饒的沙漠-3 看價，2 張圖"])
+
+    def test_only_top_one_is_expanded(self):
+        items = [self.suggestion(), self.suggestion(good="棉花"),
+                 self.suggestion(good="蜂蜜")]
+        lines = advice.format_suggestions(items)
+        self.assertEqual(len(lines), 4)          # 3 行 + 折叠行 = 建议区高度
+        self.assertEqual(lines[-1], "还有 2 条…")
+
+    def test_fold_line_is_absent_for_single_item(self):
+        self.assertEqual(len(advice.format_suggestions([self.suggestion()])), 3)
+
+    def test_no_items_is_one_placeholder_line(self):
+        self.assertEqual(advice.format_suggestions([]), ["（暂无值得跑的建议）"])
+
+    def test_explore_is_action_plus_distance(self):
+        items = [{"merchant": "瑪帕", "map": "B", "hops": 2},
+                 {"merchant": "哲利", "map": "C", "hops": 3}]
+        self.assertEqual(advice.format_explore(items),
+                         ["去看看 瑪帕（B）", "  2 張圖", "还有 1 条…"])
+        self.assertEqual(advice.format_explore(items[:1]),
+                         ["去看看 瑪帕（B）", "  2 張圖"])
 
 
 class MerchantNamesTest(unittest.TestCase):

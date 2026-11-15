@@ -145,6 +145,10 @@ class Suggestion:
     reason: str
     price_known: bool = True
     route: list = field(default_factory=list)
+    #: 买点所在地图（显示「在 石鉄（豐饒的沙漠-1）」用；老测试直接构造时可为空）
+    buy_map: str = ""
+    #: 卖点所在地图（``sell_at`` 是商人名时用来补全；为空则不显示）
+    sell_map: str = ""
 
 
 def _merchant_maps():
@@ -196,6 +200,7 @@ def suggest(visit, ledger=None, travel=None, now=0.0, remaining=None, limit=5):
     travel = travel if travel is not None else MapTravel()
     goods = _goods()
     where = _merchant_maps()
+    names = _merchant_names()
     observations = ledger.load()
 
     out = []
@@ -214,7 +219,6 @@ def suggest(visit, ledger=None, travel=None, now=0.0, remaining=None, limit=5):
                 continue
             arrival = now + seconds
             best = None
-            best_merchant = buyer_map
             for observation in observations:
                 if observation.get("map") != buyer_map:
                     continue
@@ -241,22 +245,24 @@ def suggest(visit, ledger=None, travel=None, now=0.0, remaining=None, limit=5):
                 out.append(Suggestion(
                     good_id=row.good_id, good=row.good_name, buy_at=visit.merchant or visit.map,
                     buy_price=row.price, units=units,
-                    sell_at=best_merchant, sell_price=best,
+                    sell_at=names.get(buyer_id) or buyer_map, sell_price=best,
                     hops=hops, seconds=round(seconds, 1),
                     profit_per_unit=profit, profit_total=profit * units,
                     reason="文档阈值" if cheap else "记忆比价",
                     route=travel.path(visit.map, buyer_map) or [],
+                    buy_map=visit.map, sell_map=buyer_map,
                 ))
             elif cheap:
                 # 第一类：价格已经够低，不需要先知道买家报价，直接建议去找该货的买家
                 out.append(Suggestion(
                     good_id=row.good_id, good=row.good_name, buy_at=visit.merchant or visit.map,
                     buy_price=row.price, units=units,
-                    sell_at=buyer_map, sell_price=None,
+                    sell_at=names.get(buyer_id) or buyer_map, sell_price=None,
                     hops=hops, seconds=round(seconds, 1),
                     profit_per_unit=0, profit_total=0,
                     reason="价格够低（去买家处再看价）", price_known=False,
                     route=travel.path(visit.map, buyer_map) or [],
+                    buy_map=visit.map, sell_map=buyer_map,
                 ))
 
     out.sort(key=lambda s: (s.hops, -s.profit_total))
@@ -413,20 +419,37 @@ def explore_plan(ledger=None, travel=None, now=0.0, current_map="",
     return out[:limit]
 
 
+def _place(merchant, map_name=""):
+    """「石鉄（豐饒的沙漠-1）」；名字和地图相同或地图缺失时不重复。"""
+    name = str(merchant or map_name or "?")
+    map_name = str(map_name or "")
+    if map_name and map_name != name:
+        return f"{name}（{map_name}）"
+    return name
+
+
+def _folded(items):
+    """只展开 top-1，其余折叠成一行（建议区只有 4 行高）。"""
+    extra = max(0, len(items) - 1)
+    return [f"还有 {extra} 条…"] if extra else []
+
+
 def format_suggestions(items):
+    """当前商店的建议：动作行 + 物品行 + 结果行，只有 top-1 展开。"""
     if not items:
         return ["（暂无值得跑的建议）"]
-    lines = []
-    for s in items:
-        via = ""      # 路线不再显示：玩家自己看地图更快
-        if s.price_known:
-            lines.append(f"  {s.good}：在 {s.buy_at} 买 @{s.buy_price} × {s.units} 个"
-                         f" → {s.sell_at} 卖 @{s.sell_price}"
-                         f"（{s.hops} 张图 / 约 {int(s.seconds)} 秒，赚 {s.profit_total}）{via}")
-        else:
-            lines.append(f"  {s.good}：便宜（@{s.buy_price}），可买 {s.units} 个"
-                         f" → 去 {s.sell_at} 找买家（{s.hops} 张图 / 约 {int(s.seconds)} 秒）{via}")
-    return lines
+    s = items[0]
+    sell_at = s.sell_at or s.sell_map or "?"
+    lines = [
+        f"在 {_place(s.buy_at, s.buy_map)}",
+        f"  買 {s.good} @{s.buy_price} × {s.units} 個",
+    ]
+    if s.price_known and s.sell_price is not None:
+        lines.append(f"  到 {sell_at} 賣 @{s.sell_price}，"
+                     f"{s.hops} 張圖，賺 {s.profit_total}")
+    else:
+        lines.append(f"  到 {sell_at} 看價，{s.hops} 張圖")
+    return lines + _folded(items)
 
 
 def _clock(seconds):
@@ -436,10 +459,30 @@ def _clock(seconds):
 
 
 def format_buy_trips(items):
-    """把 buy_trip_plan 的结果排成界面文字。"""
-    return [f"去 {item['merchant']} 买 {item['good']} @{item['price']}，"
-            f"{item['hops']} 张图，到了还剩 {_clock(item['left'])}"
-            for item in items]
+    """别处有便宜货（专程去买）：动作行 + 物品行 + 结果行，只有 top-1 展开。"""
+    if not items:
+        return format_suggestions([])
+    item = items[0]
+    lines = [
+        f"去 {_place(item.get('merchant'), item.get('map', ''))}",
+        f"  買 {item['good']} @{item['price']}",
+        f"  {item.get('hops', 0)} 張圖，到了還剩 {_clock(item.get('left', 0))}",
+    ]
+    return lines + _folded(items)
+
+
+def format_explore(items):
+    """没有生意时「去看看」：动作行 + 距离行两行，只有 top-1 展开。"""
+    if not items:
+        return format_suggestions([])
+    item = items[0]
+    hops = item.get("hops")
+    hops_text = "?" if hops is None else str(hops)
+    lines = [
+        f"去看看 {_place(item.get('merchant'), item.get('map', ''))}",
+        f"  {hops_text} 張圖",
+    ]
+    return lines + _folded(items)
 
 
 # ---------------------------------------------------------------------------
@@ -526,6 +569,7 @@ def random_sell_plan(visit, ledger=None, travel=None, now=0.0, limit=2):
                 "merchant_id": buyer_id,
                 "merchant": names.get(buyer_id) or buyer_id,
                 "map": buyer_map,
+                "from_map": current,
                 "hops": travel.hops(current, buyer_map) or 0,
                 "seconds": round(seconds, 1),
                 "sell_price": _observed_buy_price(
@@ -562,31 +606,42 @@ def random_buy_plan(visit, held=()):
                     or getattr(row, "good_name", "") or good_id,
             "price": price,
             "units": units,
+            "map": getattr(visit, "map", "") or "",
         })
     out.sort(key=lambda item: (-item["price"], item["good_id"]))
     return out
 
 
 def format_random_sell(items):
-    """随机商人（卖货型）的界面文字；随机商人本人不会出现在目的地。"""
+    """随机商人（卖货型）：动作行 + 物品行 + 结果行，只有 top-1 展开。"""
     if not items:
         return format_suggestions([])
-    lines = []
-    for item in items:
-        tail = (f"賣 @{item['sell_price']}" if item.get("sell_price") else "賣")
-        lines.append(
-            f"随机商人：買 {item['good']} @{item['price']} × {item['units']} 個"
-            f" → 去 {item['merchant']}({item['map']}) {tail}"
-            f"（{item['hops']} 張圖）")
-    return lines
+    item = items[0]
+    tail = (f"賣 @{item['sell_price']}" if item.get("sell_price") else "賣")
+    from_map = item.get("from_map") or ""
+    where = f"在 隨機商人（{from_map}）" if from_map else "在 隨機商人"
+    lines = [
+        where,
+        f"  買 {item['good']} @{item['price']} × {item['units']} 個",
+        f"  到 {_place(item.get('merchant'), item.get('map', ''))} "
+        f"{tail}，{item.get('hops', 0)} 張圖",
+    ]
+    return lines + _folded(items)
 
 
 def format_random_buy(items):
-    """随机商人（收货型）的界面文字；没有匹配时明确说没货可卖。"""
+    """随机商人（收货型）：动作行 + 物品行 + 结果行，只有 top-1 展开。"""
     if not items:
         return ["随机商人只收货，你身上没有他要的"]
-    return [f"随机商人：把 {item['good']} 賣給他 @{item['price']} × {item['units']} 個（就地）"
-            for item in items]
+    item = items[0]
+    from_map = item.get("map") or ""
+    where = f"在 隨機商人（{from_map}）" if from_map else "在 隨機商人"
+    lines = [
+        where,
+        f"  賣 {item['good']} @{item['price']} × {item['units']} 個",
+        "  就地成交，不用跑圖",
+    ]
+    return lines + _folded(items)
 
 
 def random_advice(visit, ledger=None, travel=None, held=(), now=0.0, limit=2):

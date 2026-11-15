@@ -263,11 +263,7 @@ class TradeSession:
                         explore = advice_module.explore_plan(
                             self.ledger, self.travel, now=now,
                             current_map=self.state.map)
-                        for item in explore:
-                            lines.append(f"去看看 {item['merchant']}({item['map']}) "
-                                         f"{item['hops']} 张图")
-                        if not lines:
-                            lines = advice_module.format_suggestions([])
+                        lines = advice_module.format_explore(explore)
         except Exception as exc:
             lines = [f"建议计算失败：{exc}"]
         self.state.advice = lines

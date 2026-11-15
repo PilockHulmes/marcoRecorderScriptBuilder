@@ -44,6 +44,9 @@ REPAINT_EVERY = 0.25
 ROOT = Path(__file__).resolve().parents[1]
 ICON_DIR = ROOT / "data" / "trade" / "icons"
 PORTRAIT_DIR = ROOT / "data" / "trade" / "merchants"
+#: 裁好的脸（``tools/build_faces.py`` 生成，尺寸不一但都只含头 + 少量肩）；
+#: 显示层仍缩到 ICON_SIZE（16×16），优先用它，没有才退回整张立绘。
+FACE_DIR = ROOT / "data" / "trade" / "merchants_face"
 
 #: 窗口尺寸：宽度 380 -> 760（加倍），高度 620 -> 930（×1.5）。
 #: 多出来的高度全部给商人看板，当前建议仍是固定 8 行。
@@ -201,8 +204,8 @@ def _valid_key(key):
 def _load_photo(master, path, size, pil):
     """把一张 png 缩成 `size`×`size`，返回 (PhotoImage, 后端名)。
 
-    PIL 可用时走 LANCZOS（商品 63×63、头像 88×68 都压到 16×16）；
-    否则用 PhotoImage.subsample，按两轴各自最接近的整数倍缩小。
+    PIL 可用时走 LANCZOS（商品 63×63、裁好的脸 32–54 见方、整张立绘 88×68
+    都压到 16×16）；否则用 PhotoImage.subsample，按两轴各自最接近的整数倍缩小。
     """
     image_module, image_tk = pil
     if image_module is not None:
@@ -222,14 +225,17 @@ class IconCache:
     """每张图只缩放一次；dict 持有 PhotoImage，防止被 Tk 回收。
 
     键是 ``("merchant", merchant_id)`` / ``("good", good_id)``。
-    找不到的图也记进 `_missing`，避免每次重绘都去摸磁盘。
+    商人头像优先读 ``merchants_face/``（裁好的脸），没有再退回 ``merchants/``
+    （整张 88×68 立绘）；两条路径都找不到的图也记进 `_missing`，避免每次
+    重绘都去摸磁盘。
     """
 
     def __init__(self, master, icon_dir=None, portrait_dir=None,
-                 size=ICON_SIZE, use_pil=None):
+                 face_dir=None, size=ICON_SIZE, use_pil=None):
         self.master = master
         self.icon_dir = Path(icon_dir) if icon_dir else ICON_DIR
         self.portrait_dir = Path(portrait_dir) if portrait_dir else PORTRAIT_DIR
+        self.face_dir = Path(face_dir) if face_dir else FACE_DIR
         self.size = size
         self._pil = (None, None) if use_pil is False else _pil_modules()
         self._images = {}
@@ -238,6 +244,22 @@ class IconCache:
         self.misses = 0
         self.backends = set()
         self.sizes = {}
+
+    def directories(self, kind):
+        """按优先级列出某个 kind 的图片目录（商人：脸 -> 整张立绘）。"""
+        if kind == "merchant":
+            return [self.face_dir, self.portrait_dir]
+        return [self.icon_dir]
+
+    def path_for(self, kind, key):
+        """返回第一张存在的图路径；face 缺失时自动退回 ``merchants/``。"""
+        if not _valid_key(key):
+            return None
+        for directory in self.directories(kind):
+            path = Path(directory) / (key + ".png")
+            if path.is_file():
+                return path
+        return None
 
     def get(self, kind, key):
         if not _valid_key(key):
@@ -250,9 +272,8 @@ class IconCache:
             return None
 
         self.misses += 1
-        directory = self.portrait_dir if kind == "merchant" else self.icon_dir
-        path = directory / (key + ".png")
-        if not path.is_file():
+        path = self.path_for(kind, key)
+        if path is None:
             self._missing.add(cache_key)
             return None
         try:

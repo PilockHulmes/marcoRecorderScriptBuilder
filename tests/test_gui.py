@@ -84,7 +84,7 @@ class ControllerTest(unittest.TestCase):
                 mock.patch.object(advice_module, "buy_trip_plan") as trips, \
                 mock.patch.object(advice_module, "explore_plan") as explore:
             state = self.controller.update(self.frame, now=1.0)
-        self.assertIn("桔梗", state.advice[0])
+        self.assertIn("桔梗", " ".join(state.advice))
         trips.assert_not_called()
         explore.assert_not_called()
 
@@ -101,7 +101,9 @@ class ControllerTest(unittest.TestCase):
                 mock.patch.object(advice_module, "explore_plan") as explore:
             state = self.controller.update(self.frame, now=1.0)
         self.assertEqual(state.advice,
-                         ["去 石鉄 买 桔梗 @13，2 张图，到了还剩 2:30"])
+                         ["去 石鉄",
+                          "  買 桔梗 @13",
+                          "  2 張圖，到了還剩 2:30"])
         explore.assert_not_called()
 
     def test_advice_falls_back_to_explore(self):
@@ -115,7 +117,7 @@ class ControllerTest(unittest.TestCase):
                                   return_value=[{"merchant": "瑪帕", "map": "B",
                                                  "hops": 2}]):
             state = self.controller.update(self.frame, now=1.0)
-        self.assertEqual(state.advice, ["去看看 瑪帕(B) 2 张图"])
+        self.assertEqual(state.advice, ["去看看 瑪帕（B）", "  2 張圖"])
 
     def test_shop_throttled(self):
         visit = shop.Visit(map="A", merchant="石铁", kind="fixed", refresh_in=120,
