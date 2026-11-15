@@ -456,7 +456,7 @@ class BoardLayoutTest(unittest.TestCase):
                                     now=self.NOW if now is None else now)
 
     def test_window_size_and_advice_rows(self):
-        self.assertEqual((gui.WINDOW_W, gui.WINDOW_H), (1180, 924))
+        self.assertEqual((gui.WINDOW_W, gui.WINDOW_H), (1500, 730))
         self.assertEqual(gui.ADVICE_ROWS, 4)
 
     def test_fixed_order_is_line_then_number(self):
@@ -470,7 +470,7 @@ class BoardLayoutTest(unittest.TestCase):
         headers = layout.of_kind("merchant")
         goods = layout.of_kind("good")
         self.assertEqual(len(headers), 3)
-        self.assertEqual(len(goods), 3 * 7)      # 每个商人 3 卖 + 4 收，空槽留白
+        self.assertEqual(len(goods), 3 * 9)      # 每个商人 3 卖 + 4 收，空槽留白
         for header in headers:
             self.assertEqual(header.suffix, gui.UNSEEN_TEXT)
             self.assertEqual(header.suffix_color, gui.COLOR_UNSEEN)
@@ -483,11 +483,11 @@ class BoardLayoutTest(unittest.TestCase):
         layout = self.layout()
         for owner in ("石鉄", "史來", "哲利"):
             goods = [item for item in layout.of_kind("good") if item.owner == owner]
-            # 空槽位留白不画：只有真正存在的商品才有条目（3 卖 + 4 收）
-            self.assertEqual(len(goods), 7)
-            self.assertEqual({item.slot for item in goods}, set(range(7)))
+            # 3 卖 + 6 收（含 2 个波动货），空槽留白不画
+            self.assertEqual(len(goods), 9)
+            self.assertEqual({item.slot for item in goods}, set(range(9)))
             self.assertEqual(len({item.x for item in goods}), 2)   # 左列卖、右列收
-            self.assertEqual(len({item.y for item in goods}), 4)
+            self.assertEqual(len({item.y for item in goods}), 6)
             self.assertEqual(len({item.w for item in goods}), 1)
 
     def test_goods_slots_are_sells_then_buys_in_file_order(self):
@@ -505,10 +505,11 @@ class BoardLayoutTest(unittest.TestCase):
         layout = self.layout(goods=goods)
         slots = sorted((item for item in layout.of_kind("good")
                         if item.owner == "石鉄"), key=lambda item: item.slot)
+        # 档位顺序：波动（绿）排最后；收列不再截断
         self.assertEqual([item.good_id for item in slots],
-                         ["s1", "s2", "s3", "b1", "b2", "b3", "b4"])
+                         ["s1", "s2", "s3", "b1", "b2", "b3", "b4", "b5"])
         self.assertEqual([item.side for item in slots],
-                         ["sell", "sell", "sell", "buy", "buy", "buy", "buy"])
+                         ["sell"] * 3 + ["buy"] * 5)
 
     def test_empty_slots_are_padded_to_eight(self):
         maps = dict(self.maps)
@@ -600,7 +601,7 @@ class BoardLayoutTest(unittest.TestCase):
                                 for item in layout.of_kind("good")]
         self.assertEqual(headers(empty), headers(priced))
         self.assertEqual(goods(empty), goods(priced))
-        self.assertEqual(len(goods(priced)), 3 * 7)
+        self.assertEqual(len(goods(priced)), 3 * 9)
 
     def test_countdown_colors_and_text_are_computed_at_layout_time(self):
         board = [
@@ -673,10 +674,10 @@ class RealFixedMerchantDataTest(unittest.TestCase):
         self.assertEqual([item.icon_key for item in headers], FIXED_ORDER)
         self.assertEqual(layout.split, 8)          # 左 8 右 7
         goods = layout.of_kind("good")
-        self.assertEqual(len(goods), 15 * 7)
+        self.assertEqual(len(goods), 15 * 9)
         for header in headers:
             slots = [item for item in goods if item.owner == header.owner]
-            self.assertEqual(len(slots), 7, header.icon_key)
+            self.assertEqual(len(slots), 9, header.icon_key)
 
     def test_empty_data_all_prices_dash_and_all_unseen(self):
         layout = gui.layout_board([], 736, now=100.0)
@@ -740,7 +741,7 @@ class DrawBoardTest(unittest.TestCase):
     @staticmethod
     def expected_text_count():
         # 每个商人：标题 + 倒计时 + 7 个有货槽位 × 3 段文字（空槽位留白不画）
-        return 3 * (2 + 7 * 3)
+        return 3 * (2 + 9 * 3)
 
     def test_draws_all_text_and_sets_scrollregion(self):
         canvas, height = self.draw()
@@ -756,7 +757,7 @@ class DrawBoardTest(unittest.TestCase):
         icons = mock.Mock()
         icons.get.return_value = "photo"
         canvas, _ = self.draw(icons=icons)
-        self.assertEqual(len(canvas.images), 3 + 3 * 7)
+        self.assertEqual(len(canvas.images), 3 + 3 * 9)
         self.assertEqual(len(canvas.texts), self.expected_text_count())
 
     def test_price_text_is_right_aligned(self):
@@ -801,7 +802,7 @@ class DrawBoardTest(unittest.TestCase):
         self.assertEqual(len(canvas.texts), self.expected_text_count())
         labels = [kwargs.get("text") for _, _, kwargs in canvas.texts]
         self.assertEqual(labels.count(gui.UNSEEN_TEXT), 3)
-        self.assertEqual(labels.count(gui.PRICE_EMPTY), 3 * 7)
+        self.assertEqual(labels.count(gui.PRICE_EMPTY), 3 * 9)
 
 
 class StatusColorTest(unittest.TestCase):

@@ -50,8 +50,8 @@ FACE_DIR = ROOT / "data" / "trade" / "merchants_face"
 
 #: 窗口尺寸：宽度 380 -> 760（加倍），高度 620 -> 930（×1.5）。
 #: 多出来的高度全部给商人看板，当前建议仍是固定 8 行。
-WINDOW_W = 1180
-WINDOW_H = 924
+WINDOW_W = 1500
+WINDOW_H = 730
 ADVICE_ROWS = 4
 ADVICE_COL_W = 420
 ADVICE_COLS = 88
@@ -61,7 +61,7 @@ DEFAULT_BOARD_W = WINDOW_W - 24
 #: 看板尺寸 / 间距（TRADE_DESIGN.md 15.2 / 15.3）
 ICON_SIZE = 16
 HEAD_H = 22
-ROW_H = 20
+ROW_H = 18
 BLOCK_GAP = 2
 BOARD_PAD = 4
 ROW_INDENT = 10
@@ -75,11 +75,14 @@ TIER_COLORS = {
     "tier2": "#C77700",
     "volatile": "#1E8E3E",
 }
+TIER_RANK = {"tier1": 0, "tier2": 1, "volatile": 2}   # 紫 → 橙 → 绿
 COLOR_ROW = "#212121"
 
 GOODS_COLUMNS = 2        # 商品固定两列
-GOODS_ROWS = 4           # 商品固定四行
-GOODS_SLOTS = GOODS_COLUMNS * GOODS_ROWS    # 每个商人固定 8 个槽位
+SELL_ROWS = 3            # 左列：他卖的（2 普通 + 1 波动）
+BUY_ROWS = 6             # 右列：他收的（4 普通 + 2 波动），波动价最值钱，必须常驻
+GOODS_ROWS = BUY_ROWS    # 块高按较高的一列算
+GOODS_SLOTS = SELL_ROWS + BUY_ROWS           # 每个商人固定 9 个槽位
 MIN_MERCHANT_COL = 260   # 单列至少这么宽才排两列，窄窗口自动退回一列
 
 #: 倒计时颜色（15.5）：>60s 绿、≤60s 黄、已过期灰、未看过浅灰
@@ -346,12 +349,15 @@ def _fixed_goods_slots(merchant_id, goods=None):
         if isinstance(good, dict) and merchant_id in (good.get("buyers") or []):
             buys.append(good)
 
+    def rank(good):
+        return TIER_RANK.get(good.get("tier") or "", 1)   # 未标档位按二类处理，稳住文件顺序
+
     slots = []
-    for good in sells[:GOODS_ROWS]:
+    # 档位顺序固定：紫（一类）→ 橙（二类）→ 绿（波动）；同档位按文件顺序
+    for good in sorted(sells, key=rank)[:SELL_ROWS]:
         slots.append(_goods_slot(good, "sell"))
-    for good in buys[:GOODS_ROWS]:
+    for good in sorted(buys, key=rank)[:BUY_ROWS]:
         slots.append(_goods_slot(good, "buy"))
-    slots = slots[:GOODS_SLOTS]
     while len(slots) < GOODS_SLOTS:
         slots.append({"good_id": "", "name": "", "side": ""})
     return slots
@@ -388,7 +394,7 @@ def _slot_price(slot, prices):
 
 def _block_height(_entry=None):
     """每个商人固定同高（标题 + 8 个商品槽位），位置不随数据变化。"""
-    return HEAD_H + GOODS_ROWS * ROW_H + BLOCK_GAP
+    return HEAD_H + BUY_ROWS * ROW_H + BLOCK_GAP
 
 
 def _split_board(entries):
@@ -509,16 +515,14 @@ def layout_board(board, width, now=None):
         goods = {}
 
     content = max(width - 2 * BOARD_PAD, 1)
-    if content >= 2 * MIN_MERCHANT_COL + COLUMN_GAP:
-        columns = 2
-        column_width = (content - COLUMN_GAP) // 2
-        split = _split_board(entries)
-        chunks = [entries[:split], entries[split:]]
-    else:
-        columns = 1
-        column_width = content
-        split = len(entries)
-        chunks = [entries]
+    # 商人列数：宽度够就三列（15 个商人正好 5/5/5，顺序固定，位置永远不变）
+    columns = 3 if content >= 3 * MIN_MERCHANT_COL + 2 * COLUMN_GAP else (
+        2 if content >= 2 * MIN_MERCHANT_COL + COLUMN_GAP else 1)
+    column_width = (content - (columns - 1) * COLUMN_GAP) // columns
+    # 固定切分：不按高度均衡，避免数据变化导致商人位置跳动
+    per_column = -(-len(entries) // columns)
+    split = per_column
+    chunks = [entries[i * per_column:(i + 1) * per_column] for i in range(columns)]
 
     items = []
     bottom = BOARD_PAD
@@ -552,10 +556,16 @@ def layout_board(board, width, now=None):
             prices = _price_lookup(rows) if not expired else {}
             goods_width = max(1, (column_width - ROW_INDENT) // GOODS_COLUMNS)
             for index, slot in enumerate(slots):
-                # 列优先：左列 4 行全是「他卖的」，右列 4 行全是「他收的」，
-                # 这样方向靠位置读，颜色只留给商品档位。
-                column = index // GOODS_ROWS
-                line = index % GOODS_ROWS
+                # 列由方向决定：左列永远是他卖的，右列永远是他收的。
+                # （按序号切列会错位：卖只有 3 行时，第 1 个收会被挤进左列。）
+                side_of = slot.get("side") or ""
+                column = 0 if side_of == "sell" else 1
+                if column == 0:
+                    line = slots[:index].count(slot) if False else sum(
+                        1 for s in slots[:index] if (s.get("side") or "") == "sell")
+                else:
+                    line = sum(1 for s in slots[:index]
+                               if (s.get("side") or "") == "buy")
                 item_x = column_x + ROW_INDENT + column * goods_width
                 item_y = y + HEAD_H + line * ROW_H
                 name_x = item_x + ICON_SIZE + ICON_GAP
