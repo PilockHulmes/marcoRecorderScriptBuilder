@@ -50,9 +50,10 @@ FACE_DIR = ROOT / "data" / "trade" / "merchants_face"
 
 #: 窗口尺寸：宽度 380 -> 760（加倍），高度 620 -> 930（×1.5）。
 #: 多出来的高度全部给商人看板，当前建议仍是固定 8 行。
-WINDOW_W = 760
-WINDOW_H = 1020
+WINDOW_W = 1180
+WINDOW_H = 924
 ADVICE_ROWS = 4
+ADVICE_COL_W = 420
 ADVICE_COLS = 88
 #: 首帧 canvas 还没实际宽度时的兜底（760 窗口减去内边距和滚动条）
 DEFAULT_BOARD_W = WINDOW_W - 24
@@ -657,21 +658,27 @@ def run_gui(interval=0.1):
     root.title("小助手")
     root.geometry(f"{WINDOW_W}x{WINDOW_H}")
 
-    tk.Label(root, text="当前建议", anchor="w", font=("Microsoft YaHei", 10, "bold")).pack(fill="x")
-    # 8 行高度保持不变，宽度跟着窗口加宽
-    advice_frame = tk.Frame(root)
-    advice_frame.pack(fill="x", padx=4)
-    advice_boxes = []
-    for side in ("left", "right"):
-        box = tk.Text(advice_frame, height=ADVICE_ROWS, width=ADVICE_COLS // 2,
-                      font=("Microsoft YaHei", 9))
-        box.pack(side=side, fill="x", expand=True, padx=(0, 4) if side == "left" else 0)
-        advice_boxes.append(box)
+    # 主区分左右：左边商人看板，右边建议列（整窗高）。
+    # 建议列在右侧，因为玩家主屏在看板右边，UI 右缘先进入视线。
+    main_frame = tk.Frame(root)
+    main_frame.pack(fill="both", expand=True)
 
-    tk.Label(root, text="商人看板（货 + 倒计时）", anchor="w",
+    board_column = tk.Frame(main_frame)
+    board_column.pack(side="left", fill="both", expand=True)
+    advice_column = tk.Frame(main_frame, width=ADVICE_COL_W)
+    advice_column.pack(side="right", fill="y")
+    advice_column.pack_propagate(False)
+
+    tk.Label(board_column, text="商人看板（货 + 倒计时）", anchor="w",
              font=("Microsoft YaHei", 10, "bold")).pack(fill="x")
-    board_frame = tk.Frame(root)
+    board_frame = tk.Frame(board_column)
     board_frame.pack(fill="both", expand=True, padx=4)
+
+    tk.Label(advice_column, text="当前建议", anchor="w",
+             font=("Microsoft YaHei", 10, "bold")).pack(fill="x")
+    advice_box = tk.Text(advice_column, font=("Microsoft YaHei", 9), wrap="none",
+                         height=ADVICE_ROWS, width=1)
+    advice_box.pack(fill="both", expand=True, padx=4)
     canvas = tk.Canvas(board_frame, bg="white", highlightthickness=0, bd=0)
     scrollbar = tk.Scrollbar(board_frame, orient="vertical", command=canvas.yview)
     canvas.configure(yscrollcommand=scrollbar.set)
@@ -695,21 +702,17 @@ def run_gui(interval=0.1):
     shown = {"state": None}
 
     def paint(state):
-        # 两列：左列第一条建议，右列第二条；多余的在左列末行折成「還有 N 條…」
+        # 竖排：每组（同一商店/同一商品）之间空一行，空间足够就不折叠
         blocks = list(state.blocks or [["（打开商人界面后显示）"]])
-        columns = [[], []]
-        for index, block in enumerate(blocks[:2]):
-            columns[index] = list(block)
-        if len(blocks) > 2:
-            columns[0].append(advice_module.fold_text(len(blocks), 2))
-        # 同一家店的第二列不再重复店名，留空行保持行对齐
-        if len(columns) > 1 and columns[1] and columns[1][0] == columns[0][0]:
-            columns[1] = [""] + columns[1][1:]
-        for box, lines in zip(advice_boxes, columns):
-            text = "\n".join(lines)
-            if box.get("1.0", "end-1c") != text:   # 内容没变就别重写，否则选中会被清掉
-                box.delete("1.0", "end")
-                box.insert("end", text)
+        lines = []
+        for block in blocks:
+            if lines:
+                lines.append("")
+            lines.extend(block)
+        text = "\n".join(lines)
+        if advice_box.get("1.0", "end-1c") != text:   # 内容没变就别重写，否则选中会被清掉
+            advice_box.delete("1.0", "end")
+            advice_box.insert("end", text)
         draw_board(canvas, state.board, icons=icons, width=canvas.winfo_width())
         status.config(text=f"{state.map or '(未知地图)'}　{state.note}")
         shown["state"] = state

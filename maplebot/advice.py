@@ -444,7 +444,7 @@ def _folded(items):
     return [f"还有 {extra} 条…"] if extra else []
 
 
-COLUMNS = 2          # 建议框左右两列
+COLUMNS = 8          # 建议列高度够，竖排显示多条
 
 
 def fold_text(total, shown):
@@ -490,31 +490,32 @@ def _clock(seconds):
 
 
 def format_buy_trips(items):
-    """专程去买：每条 3 行。"""
+    """专程去买：按出发商人分组，一组一列，组内每个商品一行。"""
     if not items:
         return format_suggestions([])
+    groups = {}
+    for item in items:
+        groups.setdefault((item.get("merchant"), item.get("map", "")), []).append(item)
     blocks = []
-    for item in items[:COLUMNS]:
-        blocks.append([
-            f"去 {_place(item.get('merchant'), item.get('map', ''))}",
-            f"  買 {item['good']} @{item['price']}",
-            f"  距离 {item.get('hops', 0)} 张图，"
-            f"到了还剩 {_clock(item.get('left', 0))}",
-        ])
+    for (merchant, map_name), group in list(groups.items())[:COLUMNS]:
+        block = [f"去 {_place(merchant, map_name)}"]
+        for item in group[:3]:
+            block.append(f"  買 {item['good']} @{item['price']} "
+                         f"距离 {item.get('hops', 0)} 张图，"
+                         f"到了还剩 {_clock(item.get('left', 0))}")
+        blocks.append(block)
     return blocks
 
 
 def format_explore(items):
-    """去看看：每条 2 行。"""
+    """去看看：一行一个商人（不带地图），按距离从近到远。"""
     if not items:
         return format_suggestions([])
     blocks = []
     for item in items[:COLUMNS]:
         hops = item.get("hops")
-        blocks.append([
-            f"去看看 {_place(item.get('merchant'), item.get('map', ''))}",
-            f"  距离 {'?' if hops is None else hops} 张图",
-        ])
+        blocks.append([f"去看看 {item.get('merchant')} "
+                       f"距离 {'?' if hops is None else hops} 张图"])
     return blocks
 
 

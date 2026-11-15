@@ -103,8 +103,7 @@ class ControllerTest(unittest.TestCase):
             state = self.controller.update(self.frame, now=1.0)
         self.assertEqual(state.advice,
                          ["去 石鉄",
-                          "  買 桔梗 @13",
-                          "  距离 2 张图，到了还剩 2:30"])
+                          "  買 桔梗 @13 距离 2 张图，到了还剩 2:30"])
         explore.assert_not_called()
 
     def test_advice_falls_back_to_explore(self):
@@ -118,7 +117,7 @@ class ControllerTest(unittest.TestCase):
                                   return_value=[{"merchant": "瑪帕", "map": "B",
                                                  "hops": 2}]):
             state = self.controller.update(self.frame, now=1.0)
-        self.assertEqual(state.advice, ["去看看 瑪帕（B）", "  距离 2 张图"])
+        self.assertEqual(state.advice, ["去看看 瑪帕 距离 2 张图"])
 
     def test_shop_throttled(self):
         visit = shop.Visit(map="A", merchant="石铁", kind="fixed", refresh_in=120,
@@ -457,7 +456,7 @@ class BoardLayoutTest(unittest.TestCase):
                                     now=self.NOW if now is None else now)
 
     def test_window_size_and_advice_rows(self):
-        self.assertEqual((gui.WINDOW_W, gui.WINDOW_H), (760, 1020))
+        self.assertEqual((gui.WINDOW_W, gui.WINDOW_H), (1180, 924))
         self.assertEqual(gui.ADVICE_ROWS, 4)
 
     def test_fixed_order_is_line_then_number(self):

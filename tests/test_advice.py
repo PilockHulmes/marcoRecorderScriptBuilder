@@ -234,8 +234,7 @@ class BuyTripPlanTest(unittest.TestCase):
                 "hops": 2, "left": 150.0}
         self.assertEqual(advice.format_buy_trips([item]),
                          [["去 石鉄",
-                           "  買 桔梗 @13",
-                           "  距离 2 张图，到了还剩 2:30"]])
+                           "  買 桔梗 @13 距离 2 张图，到了还剩 2:30"]])
 
     def test_format_buy_trips_uses_map_and_folds_rest(self):
         items = [
@@ -248,8 +247,7 @@ class BuyTripPlanTest(unittest.TestCase):
         self.assertEqual(len(blocks), 2)          # 两列各一条
         self.assertEqual(blocks[0],
                          ["去 石鉄（豐饒的沙漠-1）",
-                          "  買 桔梗 @12",
-                          "  距离 2 张图，到了还剩 2:30"])
+                          "  買 桔梗 @12 距离 2 张图，到了还剩 2:30"])
         self.assertEqual(blocks[1][0], "去 藍明（豐饒的沙漠-2）")
 
 
@@ -285,8 +283,7 @@ class FormatSuggestionsTest(unittest.TestCase):
         items = [self.suggestion(), self.suggestion(good="棉花"),
                  self.suggestion(good="蜂蜜")]
         blocks = advice.format_suggestions(items)
-        self.assertEqual(len(blocks), 2)          # 两列各一条，折叠由界面负责
-        self.assertEqual(advice.fold_text(len(items), len(blocks)), "還有 1 條…")
+        self.assertEqual(len(blocks), 3)          # 三件不同的货 -> 三组，建议列够高全显示
 
     def test_fold_line_is_absent_for_single_item(self):
         blocks = advice.format_suggestions([self.suggestion()])
@@ -300,10 +297,10 @@ class FormatSuggestionsTest(unittest.TestCase):
         items = [{"merchant": "瑪帕", "map": "B", "hops": 2},
                  {"merchant": "哲利", "map": "C", "hops": 3}]
         blocks = advice.format_explore(items)
-        self.assertEqual(blocks[0], ["去看看 瑪帕（B）", "  距离 2 张图"])
+        self.assertEqual(blocks[0], ["去看看 瑪帕 距离 2 张图"])   # 一行一个商人，不带地图
         self.assertEqual(len(blocks), 2)
         self.assertEqual(advice.format_explore(items[:1]),
-                         [["去看看 瑪帕（B）", "  距离 2 张图"]])
+                         [["去看看 瑪帕 距离 2 张图"]])
 
 
 class MerchantNamesTest(unittest.TestCase):
