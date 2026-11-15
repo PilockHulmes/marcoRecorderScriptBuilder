@@ -65,6 +65,7 @@ class MapTravel:
         self.graph = graph if graph is not None else _read_json(GRAPH_PATH, {})
         self.per_hop = float(per_hop)
         self.times = {}
+        self.portal_times = {}      # {(from, from_portal, to, to_portal): 秒}
         self.reload(edge_times)
 
     def reload(self, edge_times=None):
@@ -72,6 +73,7 @@ class MapTravel:
         from collections import defaultdict
 
         self.times = {}
+        self.portal_times = {}
         if edge_times is not None:        # 显式传入就用它（测试/离线用）
             for row in edge_times:
                 if row.get("n", 0) >= MIN_SAMPLES:
@@ -86,15 +88,27 @@ class MapTravel:
             raw = []
         if raw:
             buckets = defaultdict(list)
+            portal_buckets = defaultdict(list)
             for item in raw:
                 try:
-                    buckets[(item["from"], item["to"])].append(float(item["seconds"]))
+                    seconds = float(item["seconds"])
                 except Exception:
                     continue
+                buckets[(item["from"], item["to"])].append(seconds)
+                from_portal = item.get("from_portal")
+                to_portal = item.get("to_portal")
+                if from_portal and to_portal:
+                    key = (item["from"], tuple(from_portal),
+                           item["to"], tuple(to_portal))
+                    portal_buckets[key].append(seconds)
             for pair, values in buckets.items():
                 if len(values) >= MIN_SAMPLES:
                     fastest = sorted(values)[:3]
                     self.times[pair] = sum(fastest) / len(fastest)
+            for key, values in portal_buckets.items():
+                if len(values) >= MIN_SAMPLES:
+                    fastest = sorted(values)[:3]
+                    self.portal_times[key] = sum(fastest) / len(fastest)
             return
         for row in (edge_times if edge_times is not None else _read_json(EDGE_TIMES_PATH, [])):
             if row.get("n", 0) >= MIN_SAMPLES:
@@ -123,6 +137,14 @@ class MapTravel:
     def hops(self, a, b):
         route = self.path(a, b)
         return None if route is None else len(route) - 1
+
+    def edge_seconds(self, a, b, from_portal=None, to_portal=None):
+        """单条边的耗时：门级实测 → 地图级实测 → 默认每跳。"""
+        if from_portal is not None and to_portal is not None:
+            key = (a, tuple(from_portal), b, tuple(to_portal))
+            if key in self.portal_times:
+                return self.portal_times[key]
+        return self.times.get((a, b))
 
     def seconds(self, a, b):
         """逐段相加：这一方向有实测用实测，没有就用每跳估计。"""

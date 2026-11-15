@@ -862,6 +862,39 @@ class MapWatcher:
             self._alarm("blank_name",
                         f"已连续 {now - self._blank_since:.1f} 秒解析不出地图名", now)
 
+    def _record_time_sample(self, event, now):
+        """记一条原始跑图耗时：上次到达这张图到现在（扣掉 loading）。
+
+        门到门的第一段：A 的入口门 -> A 的出口门。``from_portal`` 是离开 A 时的
+        位置（门），``to_portal`` 是落在 B 的位置，后面 P3 会用它们细分。
+        """
+        try:
+            import os
+            if os.environ.get("MAPWATCH_TIMES", "1") == "0":
+                return
+            if self._arrival_ts is None:
+                self._arrival_ts = now
+                return
+            seconds = now - self._arrival_ts - (event.get("load_ms") or 0) / 1000.0
+            self._arrival_ts = now
+            if not (1.0 <= seconds <= 600.0):
+                return
+            import json as _json
+
+            EDGE_RAW_PATH.parent.mkdir(parents=True, exist_ok=True)
+            with EDGE_RAW_PATH.open("a", encoding="utf-8") as handle:
+                handle.write(_json.dumps({
+                    "t": event.get("t"),
+                    "from": event.get("from_map"),
+                    "to": event.get("to_map"),
+                    "seconds": round(seconds, 2),
+                    "load_ms": event.get("load_ms"),
+                    "from_portal": event.get("from_pos"),
+                    "to_portal": event.get("to_pos"),
+                }, ensure_ascii=False) + "\n")
+        except Exception as exc:
+            self._error(f"record_time: {exc}")
+
     def _record_transition(self, before, obs, load_ms, now):
         """把一次真实的换图写成事件；出发/到达位置各自"能测就测"。"""
         if not usable_id(before.map_id):
@@ -896,6 +929,7 @@ class MapWatcher:
             "from_name": self.name_of(before.map_id),
             "to_name": self.name_of(obs.map_id),
         }
+        self._record_time_sample(event, now)
         self._append(event, now)
         self._flush_portals(now)
         self.events.append(event)

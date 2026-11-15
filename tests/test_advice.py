@@ -357,3 +357,32 @@ def _as_visit(payload):
 
 if __name__ == "__main__":
     unittest.main()
+
+class PortalTimeTest(unittest.TestCase):
+    """门到门的时间表：门级优先，没有就回落地图级。"""
+
+    def setUp(self):
+        import json, tempfile
+        from pathlib import Path as _P
+        self.tmp = _P(tempfile.mkdtemp()) / "raw.jsonl"
+        rows = [
+            {"from": "A", "to": "B", "seconds": 10, "from_portal": [1, 2], "to_portal": [3, 4]},
+            {"from": "A", "to": "B", "seconds": 11, "from_portal": [1, 2], "to_portal": [3, 4]},
+            {"from": "A", "to": "B", "seconds": 12, "from_portal": [1, 2], "to_portal": [3, 4]},
+            {"from": "A", "to": "B", "seconds": 30, "from_portal": [9, 9], "to_portal": [3, 4]},
+            {"from": "A", "to": "B", "seconds": 31, "from_portal": [9, 9], "to_portal": [3, 4]},
+            {"from": "A", "to": "B", "seconds": 32, "from_portal": [9, 9], "to_portal": [3, 4]},
+        ]
+        self.tmp.write_text("\n".join(json.dumps(r) for r in rows), encoding="utf-8")
+        self.orig = advice.EDGE_RAW_PATH
+        advice.EDGE_RAW_PATH = self.tmp
+
+    def tearDown(self):
+        advice.EDGE_RAW_PATH = self.orig
+
+    def test_portal_beats_map_level(self):
+        travel = advice.MapTravel(graph={"A": ["B"], "B": ["A"]})
+        self.assertAlmostEqual(travel.edge_seconds("A", "B", [1, 2], [3, 4]), 11.0)
+        self.assertAlmostEqual(travel.edge_seconds("A", "B", [9, 9], [3, 4]), 31.0)
+        # 门未知时回落地图级（取全部样本的最快 3 次）
+        self.assertAlmostEqual(travel.edge_seconds("A", "B"), 11.0)
