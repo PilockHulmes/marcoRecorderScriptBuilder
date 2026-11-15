@@ -45,5 +45,12 @@
   "黃金母礦": "gold_ore",
   "黃金水蜜桃": "golden_peach",
   "黑水晶碎片": "black_crystal_shard",
-  "貴族的布料": "noble_satin"
+  "貴族的布料": "noble_satin",
+  "刺繡的布料": "fine_silk",
+  "傳說的精神劑": "legendary_tonic",
+  "怪物的肉": "monster_meat",
+  "精煉的黑水晶": "refined_black_crystal",
+  "精煉的鋰": "refined_lithium",
+  "最高級維他命": "top_vitamin",
+  "百年山蔘": "wild_ginseng"
 }
