@@ -725,6 +725,11 @@ def run_gui(interval=0.1):
     icons = IconCache(canvas)
 
     def on_wheel(event):
+        # 内容一屏放得下就不要滚：否则 scrollregion 只有一屏高，
+        # 滚动仍会把整块内容顶上去，看起来像"没滚动条却会动"。
+        top, bottom = canvas.yview()
+        if top <= 0.0 and bottom >= 1.0:
+            return
         step = -1 if getattr(event, "delta", 0) > 0 else 1
         canvas.yview_scroll(step * 2, "units")
 
@@ -749,7 +754,17 @@ def run_gui(interval=0.1):
         if advice_box.get("1.0", "end-1c") != text:   # 内容没变就别重写，否则选中会被清掉
             advice_box.delete("1.0", "end")
             advice_box.insert("end", text)
-        draw_board(canvas, state.board, icons=icons, width=canvas.winfo_width())
+        content_h = draw_board(canvas, state.board, icons=icons,
+                               width=canvas.winfo_width())
+        # 只有内容真的超出视口才放出滚动条
+        try:
+            need = content_h > canvas.winfo_height() + 1
+            if need and not scrollbar.winfo_ismapped():
+                scrollbar.pack(side="right", fill="y")
+            elif not need and scrollbar.winfo_ismapped():
+                scrollbar.pack_forget()
+        except Exception:
+            pass
         status.config(text=f"{state.map or '(未知地图)'}　{state.note}")
         shown["state"] = state
 
