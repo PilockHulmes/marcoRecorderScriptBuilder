@@ -181,8 +181,8 @@ def countdown_seconds(text):
 
 
 #: 货舱物品行（实测，@1368x800 整窗坐标；客户区 x-1, y-32）
-CARGO_ICON_X = 555
-CARGO_ICON_Y = 252
+CARGO_ICON_X = 556
+CARGO_ICON_Y = 284
 CARGO_ROW_H = 33
 CARGO_ROWS = 8
 CARGO_ICON = 31
@@ -282,8 +282,8 @@ def read_cargo_items(frame, templates=None, profile="only", with_counts=False):
 def read_cargo_count(frame, origin=None, icon=None, row_h=None, index=0):
     """读货舱第 index 行的数量（"135 個"）。
 
-    数量永远在最右边，所以优先只裁"右半段"再 OCR（只有数字，没有名字干扰）；
-    读不到再退回窄框。这样 3 位数不会被截成 2 位。
+    数量在最右边，只裁"右半段"再 OCR（没有商品名干扰）。
+    单个裁法会读出 138/135/136 这种抖动，所以多裁几种、**投票**取多数。
     """
     if origin is None:
         return None
@@ -292,18 +292,25 @@ def read_cargo_count(frame, origin=None, icon=None, row_h=None, index=0):
     row_h = row_h or CARGO_SHOP_ROW_H
     y = start_y + index * row_h - 4
 
-    # 1) 右半段（只含数量）
-    for dx, width in ((180, 120), (150, 150)):
+    votes = {}
+    for dx, width in ((180, 120), (150, 150), (165, 135), (140, 160)):
         try:
             band = trade.crop_box(frame, start_x + dx, y, width, icon + 8)
         except Exception:
             continue
+        if band is None or band.size == 0:
+            continue
         for mode in ("light", "raw"):
             runs = re.findall(r"\d+", trade._ocr_text(band, mode=mode) or "")
-            if runs:
-                return int(max(runs, key=len))
+            if not runs:
+                continue
+            value = int(max(runs, key=len))
+            votes[value] = votes.get(value, 0) + 1
+    if votes:
+        best = max(votes.items(), key=lambda kv: (kv[1], -len(str(kv[0]))))
+        return best[0]
 
-    # 2) 窄框兜底（数量少时字形更清楚）
+    # 兜底：固定窄框
     try:
         crop = trade.crop_box(frame, start_x + 211, y + 13, 46, 20)
     except Exception:
