@@ -279,7 +279,7 @@ class FormatSuggestionsTest(unittest.TestCase):
             advice.format_suggestions([item]),
             ["在 石鉄（豐饒的沙漠-1）",
              "  買 桔梗 @12 × 3 個",
-             "  到 豐饒的沙漠-3 看價，2 張圖"])
+             "  到 豐饒的沙漠-3 賣，2 張圖"])
 
     def test_only_top_one_is_expanded(self):
         items = [self.suggestion(), self.suggestion(good="棉花"),

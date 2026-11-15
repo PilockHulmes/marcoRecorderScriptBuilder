@@ -267,7 +267,7 @@ def suggest(visit, ledger=None, travel=None, now=None, remaining=None, limit=5):
                     sell_at=names.get(buyer_id) or buyer_map, sell_price=None,
                     hops=hops, seconds=round(seconds, 1),
                     profit_per_unit=0, profit_total=0,
-                    reason="价格够低（去买家处再看价）", price_known=False,
+                    reason="够便宜，卖给他稳赚", price_known=False,
                     route=travel.path(visit.map, buyer_map) or [],
                     buy_map=visit.map, sell_map=buyer_map,
                 ))
@@ -458,7 +458,10 @@ def format_suggestions(items):
         lines.append(f"  到 {sell_at} 賣 @{s.sell_price}，"
                      f"{s.hops} 張圖，賺 {s.profit_total}")
     else:
-        lines.append(f"  到 {sell_at} 看價，{s.hops} 張圖")
+        if s.sell_map and s.sell_map != sell_at:
+            lines.append(f"  到 {sell_at}（{s.sell_map}）賣，{s.hops} 張圖")
+        else:
+            lines.append(f"  到 {sell_at} 賣，{s.hops} 張圖")
     return lines + _folded(items)
 
 

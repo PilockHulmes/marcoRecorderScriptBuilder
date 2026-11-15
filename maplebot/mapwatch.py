@@ -37,6 +37,7 @@ VISITS_PATH = ROOT / "data" / "trade" / "map_visits.jsonl"
 PORTALS_PATH = ROOT / "data" / "trade" / "seen_portals.json"
 NAMES_DIR = ROOT / "data" / "trade" / "map_names"
 NAME_THRESHOLD = 0.99
+TEMPLATE_MAX_DIFF = 4   # 同一画面与自己的模板差异 0，别的名字 >= 9
 NAME_MARGIN = 0.02
 NAME_SIZE = (240, 44)
 # 名字裁剪里"第二行文字"的精确区域：不含地区名、不含图标，只留 仙人掌沙漠-1 这一条
@@ -56,6 +57,7 @@ DARK_MEAN = 40
 #: 影响地图记录的异常一律以此为前缀，方便一眼发现 / grep
 ALARM_PREFIX = "！！！！！"
 #: 连续读不出地图名多久后报警（小地图还在，但名字是空的）
+STARTUP_GRACE_SEC = 10.0
 BLANK_ALARM_SEC = 3.0
 #: 连续找不到小地图多久后报警（被窗口遮挡 / 不在跑商地图）
 NO_MINIMAP_ALARM_SEC = 3.0
@@ -216,35 +218,47 @@ def mask_iou(a, b):
     return inter / union if union else 0.0
 
 
-def match_name(crop, threshold=NAME_THRESHOLD, margin=NAME_MARGIN):
+def match_name(crop, threshold=NAME_THRESHOLD, mode="diff", margin=0.01):
     """只比较"小地图名"那一行文字，返回 (name, best, second)。
 
-    以前比整块 240x44（含地区名和图标），相同像素占了九成，只差一个数字的
-    名字根本分不开；现在只比第二行那 162x21 的文字，-1 和 -3 的差别就占了
-    可观比例（实测正确项 1.0000，次优 0.9636）。
+    两种判据，用 ``mode`` 选：
+
+    - ``diff``：按**差异像素数**取最小。同一画面与自己的模板差 0，别的名字至少 9。
+    - ``ncc`` ：按 NCC 取最高，并要求领先第二名 ``margin``（默认 0.01）。
+
+    只差一个数字的地图名 NCC 都在 0.97~0.99，裕度极小，所以 diff 更稳。
     """
     if crop is None or crop.shape[:2] != (NAME_SIZE[1], NAME_SIZE[0]):
         return "", 0.0, 0.0
     x, y, w, h = NAME_TEXT_BOX
     query = crop[y:y + h, x:x + w]
-    scores = []
+    rows = []
     for name, tpl in load_name_templates().items():
         if tpl.shape[:2] != (NAME_SIZE[1], NAME_SIZE[0]):
             continue
         candidate = tpl[y:y + h, x:x + w]
         if candidate.shape != query.shape or query.size == 0:
             continue
-        result = cv2.matchTemplate(query, candidate, cv2.TM_CCOEFF_NORMED)
-        if result.size:
-            scores.append((float(result.max()), name))
-    if not scores:
+        ncc = float(cv2.matchTemplate(query, candidate, cv2.TM_CCOEFF_NORMED).max())
+        diff = int((cv2.absdiff(query, candidate).max(axis=2) > 40).sum())
+        rows.append((ncc, diff, name))
+    if not rows:
         return "", 0.0, 0.0
-    scores.sort(reverse=True)
-    best, best_name = scores[0]
-    second = scores[1][0] if len(scores) > 1 else 0.0
-    if best >= threshold and best - second >= margin:
-        return best_name, best, second
-    return "", best, second
+
+    if mode == "ncc":
+        rows.sort(key=lambda r: -r[0])
+        best_ncc, _best_diff, best_name = rows[0]
+        second = rows[1][0] if len(rows) > 1 else 0.0
+        if best_ncc >= threshold and best_ncc - second >= margin:
+            return best_name, best_ncc, second
+        return "", best_ncc, second
+
+    rows.sort(key=lambda r: (r[1], -r[0]))
+    best_ncc, best_diff, best_name = rows[0]
+    second = rows[1][0] if len(rows) > 1 else 0.0
+    if best_ncc >= threshold and best_diff <= TEMPLATE_MAX_DIFF:
+        return best_name, best_ncc, second
+    return "", best_ncc, second
 
 
 def save_name_template(name, crop):
@@ -438,6 +452,7 @@ class MapWatcher:
         self.skipped_lines = 0    # load_visits 跳过多少坏行
         self._last_map = None
         self._arrival_ts = None
+        self._first_frame_ts = None
         self.names_cache = self.names()
         self.portal_points = {}    # map_id -> [{"key", "x", "y", "n"}]：稳定簇
         self.map_sizes = {}        # map_id -> (w, h)：像素半径聚类用
@@ -809,7 +824,17 @@ class MapWatcher:
         return event
 
     def _track_visibility(self, obs, named, now):
-        """连续读不出名字 / 连续找不到小地图 → 立刻报警（需 3 秒，已去重）。"""
+        """连续读不出名字 / 连续找不到小地图 → 立刻报警（需 3 秒，已去重）。
+
+        启动后先给一段宽限期：第一次命名要走视觉（可能几秒），
+        这期间报警只会吓人。
+        """
+        if self._first_frame_ts is None:
+            self._first_frame_ts = now
+        if now - self._first_frame_ts < getattr(self, "startup_grace", STARTUP_GRACE_SEC):
+            self._blank_since = None
+            self._no_map_since = None
+            return
         has_minimap = bool(obs.size and obs.size[0] > 0 and obs.size[1] > 0)
         if not has_minimap:
             self._blank_since = None

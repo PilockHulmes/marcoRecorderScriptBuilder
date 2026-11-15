@@ -89,11 +89,13 @@ class MapWatchTestBase(unittest.TestCase):
             self.addCleanup(patcher.stop)
 
     def make_watcher(self):
-        return mapwatch.MapWatcher(
+        watcher = mapwatch.MapWatcher(
             visits_path=str(self.visits),
             portals_path=str(self.portals),
             names_path=str(self.names),
         )
+        watcher.startup_grace = 0.0      # 测试不要启动宽限期，否则前 10 秒不报警
+        return watcher
 
     def feed(self, frames, names=()):
         """让 observe 按顺序返回 frames；match_name 按顺序返回 names。"""
