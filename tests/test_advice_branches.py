@@ -142,3 +142,51 @@ class FormatterSmokeTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+class IdleAdviceTest(unittest.TestCase):
+    """什么都没打开时也要给建议（开局/过图后不能空白）。"""
+
+    def setUp(self):
+        self.ledger = mock.Mock()
+        self.ledger.record = lambda v, now=None: None
+        self.ledger.load.return_value = []
+        self.ledger.valid_until = lambda observation: 0
+        self.watcher = mock.Mock()
+        self.watcher.last_map_obs = mock.Mock(map_id="A")
+        self.session = session_module.TradeSession(
+            watcher=self.watcher, ledger=self.ledger,
+            travel=advice_module.MapTravel(graph={"A": ["B"], "B": ["A"]},
+                                           edge_times=[]))
+        self.frame = np.zeros((8, 8, 3), np.uint8)
+
+    def _update(self):
+        with mock.patch.object(session_module.trade, "find_shop_window",
+                               return_value=False), \
+                mock.patch.object(session_module.trade, "find_cargo_window",
+                                  return_value=False), \
+                mock.patch.object(advice_module, "_merchant_maps",
+                                  return_value={"m1": "B"}), \
+                mock.patch.object(advice_module, "_merchant_names",
+                                  return_value={"m1": "石鉄"}):
+            return self.session.update(self.frame, now=1.0)
+
+    def test_idle_shows_explore_when_no_goods(self):
+        state = self._update()
+        self.assertEqual(state.advice, ["去看看 石鉄（B） 距离 1 张图"])
+
+    def test_idle_sell_when_carrying_goods(self):
+        self.session.held_items = [("g", 3)]
+        with mock.patch.object(advice_module, "sell_plan",
+                               return_value=[{"good": "矿石碎片", "merchant": "寇比",
+                                              "map": "B", "price": None, "hops": 1}]):
+            state = self._update()
+        self.assertEqual(state.advice, ["矿石碎片 → 寇比（B），距离 1 张图"])
+
+    def test_map_change_does_not_crash(self):
+        """过图会触发重算；以前这里调用的是未定义的 _refresh_sell。"""
+        self.session.state.map = "A"
+        self.session.held_items = [("g", 1)]
+        self.watcher.last_map_obs = mock.Mock(map_id="B")
+        with mock.patch.object(advice_module, "sell_plan", return_value=[]):
+            state = self._update()
+        self.assertEqual(state.map, "B")

@@ -202,6 +202,7 @@ class TradeSession:
         self.held = []
         self.held_items = []          # [(good_id, count or None)]
         self.stats = {"coins": 0, "weight": 0, "capacity": 0}
+        self._idle_at = 0.0
         self.shop_read = False
         self.cargo_read = False
         self.shop_error = ""
@@ -239,7 +240,7 @@ class TradeSession:
         previous_map = self.state.map
         self.state.map = self.current_map()
         if previous_map and self.state.map and self.state.map != previous_map:
-            self._refresh_sell(now)          # 过图后距离全变了，重算一次
+            self._refresh_idle(now)          # 过图后距离全变了，重算一次
 
         opened = self._shop_open(frame)
         if opened:
@@ -254,6 +255,10 @@ class TradeSession:
                 if clock - self._cargo_at >= self.cargo_every:
                     self._read_cargo(frame, now)
                     self._cargo_at = clock
+            elif clock - self._idle_at >= self.cargo_every:
+                # 商店和货舱都没开：也要给建议，否则开局/过图后整片空白
+                self._refresh_idle(now)
+                self._idle_at = clock
 
         if clock - self._board_at >= self.board_every:
             self._read_board(now)
@@ -341,6 +346,30 @@ class TradeSession:
                          self.stats.get("weight"), self.stats.get("capacity"),
                          len(blocks))
         self._apply_blocks(blocks, total)
+
+    def _refresh_idle(self, now):
+        """没有界面打开时的建议：有货就说卖给谁，没货就去附近商人看看。"""
+        if not self.state.map:
+            return                       # 地图名还没读出来，不猜
+        if self.held_items:
+            held = [good_id for good_id, _c in self.held_items]
+            try:
+                sell = advice_module.sell_plan(held, self.ledger, self.travel,
+                                               now=now, current_map=self.state.map)
+            except Exception:
+                sell = []
+            if sell:
+                blocks = [[_sell_line(item)] for item in sell[:advice_module.COLUMNS]]
+                self._apply_blocks(blocks, len(sell))
+                return
+        try:
+            explore = advice_module.explore_plan(self.ledger, self.travel, now=now,
+                                                 current_map=self.state.map)
+        except Exception:
+            explore = []
+        if not explore:
+            return                      # 没有可去的商人就别刷占位文字
+        self._apply_blocks(advice_module.format_explore(explore), len(explore))
 
     def _apply_blocks(self, blocks, total):
         """把「每条一段」的建议块写进 state：扁平文本给控制台，blocks 给 GUI 分列。"""
