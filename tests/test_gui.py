@@ -472,7 +472,7 @@ class BoardLayoutTest(unittest.TestCase):
         self.assertEqual(len(headers), 3)
         self.assertEqual(len(goods), 3 * 9)      # 每个商人 3 卖 + 4 收，空槽留白
         for header in headers:
-            self.assertEqual(header.suffix, gui.UNSEEN_TEXT)
+            self.assertEqual(header.suffix, gui.EXPIRED_TEXT)
             self.assertEqual(header.suffix_color, gui.COLOR_UNSEEN)
             self.assertEqual(header.color, gui.COLOR_ROW)   # 标题正常显示
         self.assertTrue(all(item.price_text == gui.PRICE_EMPTY for item in goods))
@@ -679,9 +679,9 @@ class RealFixedMerchantDataTest(unittest.TestCase):
             slots = [item for item in goods if item.owner == header.owner]
             self.assertEqual(len(slots), 9, header.icon_key)
 
-    def test_empty_data_all_prices_dash_and_all_unseen(self):
+    def test_empty_data_all_prices_dash_and_all_expired(self):
         layout = gui.layout_board([], 736, now=100.0)
-        self.assertTrue(all(item.suffix == gui.UNSEEN_TEXT
+        self.assertTrue(all(item.suffix == gui.EXPIRED_TEXT
                             for item in layout.of_kind("merchant")))
         self.assertTrue(all(item.price_text == gui.PRICE_EMPTY
                             for item in layout.of_kind("good")))
@@ -801,7 +801,7 @@ class DrawBoardTest(unittest.TestCase):
         canvas, height = self.draw(board=[])
         self.assertEqual(len(canvas.texts), self.expected_text_count())
         labels = [kwargs.get("text") for _, _, kwargs in canvas.texts]
-        self.assertEqual(labels.count(gui.UNSEEN_TEXT), 3)
+        self.assertEqual(labels.count(gui.EXPIRED_TEXT), 3)
         self.assertEqual(labels.count(gui.PRICE_EMPTY), 3 * 9)
 
 

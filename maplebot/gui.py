@@ -536,16 +536,12 @@ def layout_board(board, width, now=None):
             rows = list(entry.get("rows") or [])
             observed = _is_observed(entry)
             left = _remaining(entry, now) if observed else 0.0
+            # 「未看过」和「已过期」对玩家是同一件事：这份价格不能用。
+            # 统一显示「已過期」，不再多一个状态。
             expired = (not observed) or left <= 0
-            if observed:
-                color = status_color(left)
-                suffix = EXPIRED_TEXT if expired else f"剩 {format_duration(left)}"
-                suffix_color = color
-            else:
-                # 没有数据：标题正常显示，倒计时位置显示浅灰「未看過」
-                color = COLOR_ROW
-                suffix = UNSEEN_TEXT
-                suffix_color = COLOR_UNSEEN
+            color = COLOR_ROW if not observed else status_color(left)
+            suffix = EXPIRED_TEXT if expired else f"剩 {format_duration(left)}"
+            suffix_color = COLOR_UNSEEN if not observed else color
             items.append(BoardItem(
                 kind="merchant", x=column_x, y=y, w=column_width, h=HEAD_H,
                 owner=entry.get("merchant") or "",
