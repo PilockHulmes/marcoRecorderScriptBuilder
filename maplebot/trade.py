@@ -591,6 +591,96 @@ def _digits_count_matches(crop, value):
         return True
 
 
+#: 金币数字的字距（像素）。实测 1 位 7px、4 位 32px，按 8px 一位切。
+COIN_DIGIT_PITCH = 8.0
+#: 相邻两位之间最多这么大的空隙还算同一个数字
+COIN_DIGIT_GAP = 5
+
+
+def _rightmost_gold_run(strip):
+    """从右往左把"连在一起的数字"合成一段，返回 (x0, x1)。
+
+    数字是金色的、贴在最右边；但每位之间的空隙有 3~4 像素，
+    所以先把空隙 <= COIN_DIGIT_GAP 的相邻段合并，再从右边取一整块。
+    """
+    if strip is None or strip.size == 0:
+        return None
+    hsv = cv2.cvtColor(strip, cv2.COLOR_BGR2HSV)
+    mask = cv2.inRange(hsv, (12, 90, 150), (40, 255, 255))
+    cols = (mask > 0).any(axis=0)
+    runs, start = [], None
+    for index, value in enumerate(cols):
+        if value and start is None:
+            start = index
+        elif not value and start is not None:
+            runs.append([start, index - 1])
+            start = None
+    if start is not None:
+        runs.append([start, len(cols) - 1])
+    if not runs:
+        return None
+    merged = [runs[-1]]
+    for run in reversed(runs[:-1]):
+        if merged[0][0] - run[1] - 1 <= COIN_DIGIT_GAP:
+            merged[0][0] = run[0]
+        else:
+            break
+    return merged[0][0], merged[0][1] + 1
+
+
+def _digits_by_width(strip):
+    """按固定字宽把金币数字切成一位一位，分别识别再拼起来。
+
+    整段 OCR 会把"3 518"里的空格读成 1、把"90"读成 9，
+    逐位识别能避开这类问题；任何一位读不出来就返回 None（显示「金 ?」）。
+    """
+    run = _rightmost_gold_run(strip)
+    if run is None:
+        return None
+    x0, x1 = run
+    width = x1 - x0
+    count = int(round(width / COIN_DIGIT_PITCH))
+    if count < 1 or count > 8:
+        return None
+    step = width / count
+    digits = []
+    for index in range(count):
+        left = int(round(x0 + index * step)) - 2
+        right = int(round(x0 + (index + 1) * step)) + 2
+        cell = strip[:, max(0, left):min(strip.shape[1], right)]
+        if cell is None or cell.size == 0:
+            return None
+        big = cv2.resize(cell, (cell.shape[1] * 4, cell.shape[0] * 4),
+                         interpolation=cv2.INTER_NEAREST)
+        text = _ocr_text(big, mode="light") or _ocr_text(big, mode="raw") or ""
+        found = [ch for ch in text if ch.isdigit()]
+        if len(found) != 1:
+            return None
+        digits.append(found[0])
+    return int("".join(digits))
+
+
+def _digits_of_run(strip):
+    """逐位识别；某几位粘在一起（切不开）时，整段再认一次做兜底。"""
+    value = _digits_by_width(strip)
+    if value is not None:
+        return value
+    run = _rightmost_gold_run(strip)
+    if run is None:
+        return None
+    x0, x1 = run
+    count = int(round((x1 - x0) / COIN_DIGIT_PITCH))
+    if count < 2:
+        return None            # 只有一位时不敢整段认，宁可当未知
+    crop = strip[:, x0:x1]
+    for mode in ("light", "raw"):
+        text = _ocr_text(crop, mode=mode) or ""
+        found = [ch for ch in text if ch.isdigit()]
+        if len(found) == count:
+            return int("".join(found))
+    return None
+
+
 def read_cargo(frame, profile="shop") -> Cargo:
     """读 CARGO 顶部的金币 / 当前重量 / 容量。
 
@@ -610,7 +700,9 @@ def read_cargo(frame, profile="shop") -> Cargo:
         raise TradeParseError("CARGO 数字区域超出画面")
 
     coins_crop = _gold_only(coins_crop)
-    coins = _longest_int(_ocr_text(coins_crop, mode="light"))
+    coins = _digits_of_run(coins_crop)
+    if coins is None:
+        coins = _longest_int(_ocr_text(coins_crop, mode="light"))
     if coins is None:
         coins = _digits_by_gap(coins_crop)
     if coins is not None and not _digits_count_matches(coins_crop, coins):
