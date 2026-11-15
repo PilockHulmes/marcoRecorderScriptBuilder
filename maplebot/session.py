@@ -254,7 +254,7 @@ class TradeSession:
         opened = self._shop_open(frame)
         try:
             # 告诉观察器"商店开着没有"：它要扣掉逛店时间，并记"门→商人"样本
-            self.watcher.note_shop(clock, opened)
+            self.watcher.note_shop(clock, opened, map_name=self.state.map)
         except Exception:
             pass
         if opened:

@@ -39,6 +39,7 @@ TIER1_MAX = 13      # 一类货：买价 ≤ 13 值得买
 TIER2_MAX = 40      # 二类货：买价 ≤ 40 值得买
 VOLATILE_MAX = 300  # 波动货：价格区间本来就大，只挡明显离谱的报价
 #: 一条边至少要这么多样本才敢用实测值
+MIN_SAMPLE_SEC = 2.0      # 单跳低于这个秒数的样本一律丢弃
 MIN_SAMPLES = 3
 
 
@@ -94,6 +95,8 @@ class MapTravel:
                     seconds = float(item["seconds"])
                 except Exception:
                     continue
+                if seconds < MIN_SAMPLE_SEC:
+                    continue        # 1 秒走完一张图＝连穿两图，不是真的走
                 buckets[(item["from"], item["to"])].append(seconds)
                 from_portal = item.get("from_portal")
                 to_portal = item.get("to_portal")

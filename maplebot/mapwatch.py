@@ -45,6 +45,8 @@ NAME_TEXT_BOX = (38, 20, 162, 21)
 NAME_TEXT_DIR = ROOT / "data" / "trade" / "map_name_text"
 BASELINE_PATH = ROOT / "data" / "trade" / "map_graph.json"
 EDGE_RAW_PATH = ROOT / "data" / "trade" / "edge_times_raw.jsonl"
+#: 单跳低于这个秒数基本是"连穿两张图"，不是真的走完一张图
+MIN_WALK_SEC = 2.0
 PORTAL_SHOP_PATH = ROOT / "data" / "trade" / "portal_shop_raw.jsonl"
 _CROP_NAMES = {}   # 裁剪像素哈希 -> 名字：同一画面不重复问视觉   # 固定裁剪尺寸：锚定小地图左上角，不随面板宽度变化
 NAMES_PATH = ROOT / "data" / "trade" / "map_names.json"
@@ -866,7 +868,7 @@ class MapWatcher:
             self._alarm("blank_name",
                         f"已连续 {now - self._blank_since:.1f} 秒解析不出地图名", now)
 
-    def note_shop(self, now, opened):
+    def note_shop(self, now, opened, map_name=""):
         """会话每帧告诉这里"商店界面开着没有"。
 
         两件事：
@@ -885,8 +887,8 @@ class MapWatcher:
                             PORTAL_SHOP_PATH.parent.mkdir(parents=True, exist_ok=True)
                             with PORTAL_SHOP_PATH.open("a", encoding="utf-8") as handle:
                                 handle.write(_json.dumps({
-                                    "map": getattr(getattr(self, "last_map_obs", None),
-                                                   "map_id", ""),
+                                    "map": map_name or getattr(
+                                        getattr(self, "last_map_obs", None), "map_id", ""),
                                     "seconds": round(latency, 2),
                                     "t": time.strftime("%Y-%m-%dT%H:%M:%S"),
                                 }, ensure_ascii=False) + "\n")
@@ -918,7 +920,7 @@ class MapWatcher:
             self._shop_dwell = 0.0
             self._first_shop_done = False
             self._arrival_ts = now
-            if not (1.0 <= seconds <= 600.0):
+            if not (MIN_WALK_SEC <= seconds <= 600.0):
                 return
             import json as _json
 
