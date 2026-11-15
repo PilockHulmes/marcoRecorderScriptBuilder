@@ -141,6 +141,17 @@ def _fixed_merchant_entries(maps):
     return entries
 
 
+def _sell_line(item):
+    """卖货建议的一行：有已知收购价就带上，没有就只说去哪。"""
+    price = item.get("price")
+    hops = item.get("hops")
+    text = f"{item['good']} → {item['merchant']}"
+    if price:
+        text += f" @{price}"
+    text += f"，距离 {'?' if hops is None else hops} 张图"
+    return text
+
+
 class TradeSession:
     """一张地图跟踪器 + 记录簿 + 路程估算 -> 可显示的状态。
 
