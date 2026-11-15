@@ -14,6 +14,7 @@
 
 import json
 import logging
+import re
 import zlib
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -223,12 +224,30 @@ def read_cargo_items(frame, templates=None, profile="only", with_counts=False):
 
 
 def read_cargo_count(frame, profile="shop", index=0):
-    """读货舱第 index 行的数量；读不到返回 None（界面显示 ×?）。"""
+    """读货舱第 index 行的数量（"135 個"）。
+
+    先扫整行、取「個」前面那个数字（位数多也不会被截断），
+    读不到再用原来的窄框（小数量的字形在窄框里更清楚）。
+    """
     if profile != "shop":
-        return None            # 只开货舱那套的数量框还没标定
-    x, y, w, h = CARGO_COUNT_SHOP
+        return None            # 只开货舱那套的坐标还没单独标定
+
+    x = CARGO_SHOP_ICON_X + CARGO_SHOP_ICON + 6
+    y = CARGO_SHOP_ICON_Y + index * CARGO_SHOP_ROW_H - 4
     try:
-        crop = trade.crop_box(frame, x, y + index * CARGO_SHOP_ROW_H, w, h)
+        band = trade.crop_box(frame, x, y, 260, CARGO_SHOP_ICON + 8)
+    except Exception:
+        band = None
+    for mode in ("light", "raw"):
+        if band is None or band.size == 0:
+            break
+        hits = re.findall(r"(\d+)\s*[個个]", trade._ocr_text(band, mode=mode) or "")
+        if hits:
+            return int(hits[-1])
+
+    bx, by, bw, bh = CARGO_COUNT_SHOP
+    try:
+        crop = trade.crop_box(frame, bx, by + index * CARGO_SHOP_ROW_H, bw, bh)
     except Exception:
         return None
     text = trade._ocr_text(crop, mode="light") or ""
