@@ -336,10 +336,10 @@ class TradeSession:
         except Exception as exc:
             blocks, total = [[f"建议计算失败：{exc}"]], 1
         if logger.isEnabledFor(logging.DEBUG):
-            logger.debug("[建议] map=%s coins=%s weight=%s/%s price=%s units=%s blocks=%s",
+            logger.debug("[建议] map=%s coins=%s weight=%s/%s blocks=%s",
                          self.state.map, self.stats.get("coins"),
                          self.stats.get("weight"), self.stats.get("capacity"),
-                         locals().get("price"), locals().get("units"), len(blocks))
+                         len(blocks))
         self._apply_blocks(blocks, total)
 
     def _apply_blocks(self, blocks, total):
