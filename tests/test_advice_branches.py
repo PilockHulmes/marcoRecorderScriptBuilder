@@ -190,3 +190,44 @@ class IdleAdviceTest(unittest.TestCase):
         with mock.patch.object(advice_module, "sell_plan", return_value=[]):
             state = self._update()
         self.assertEqual(state.map, "B")
+
+class NoInternalFailureTest(unittest.TestCase):
+    """建议里永远不该出现"计算失败"——那说明异常被 except 吞掉了。"""
+
+    def _session(self):
+        ledger = mock.Mock()
+        ledger.record = lambda v, now=None: None
+        ledger.load.return_value = []
+        ledger.valid_until = lambda observation: 0
+        watcher = mock.Mock()
+        watcher.last_map_obs = mock.Mock(map_id="A")
+        return session_module.TradeSession(
+            watcher=watcher, ledger=ledger,
+            travel=advice_module.MapTravel(graph={"A": ["B"], "B": ["A"]},
+                                           edge_times=[]))
+
+    def test_no_failure_text_when_nothing_is_open(self):
+        session = self._session()
+        frame = np.zeros((8, 8, 3), np.uint8)
+        with mock.patch.object(session_module.trade, "find_shop_window",
+                               return_value=False), \
+                mock.patch.object(session_module.trade, "find_cargo_window",
+                                  return_value=False):
+            state = session.update(frame, now=1.0)
+        self.assertNotIn("失败", " ".join(state.advice))
+
+    def test_no_failure_text_when_shop_errors(self):
+        session = self._session()
+        frame = np.zeros((8, 8, 3), np.uint8)
+        visit = shop.Visit(map="A", merchant="石铁", kind="fixed", refresh_in=120,
+                           coins=50, weight=0, capacity=135)
+        visit.rows = [shop.Row("g", "g", "sell", 10)]
+        with mock.patch.object(session_module.trade, "find_shop_window",
+                               return_value=True), \
+                mock.patch.object(shop, "read_visit", return_value=visit), \
+                mock.patch.object(advice_module, "suggest",
+                                  side_effect=RuntimeError("boom")):
+            state = session.update(frame, now=1.0)
+        # 这里确实会记录失败原因，但必须是明确的一行，而不是静默变成别的建议
+        self.assertTrue(any("失败" in line for line in state.advice))
+        self.assertEqual(len(state.advice), 1)

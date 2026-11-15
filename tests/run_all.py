@@ -17,7 +17,7 @@ from pathlib import Path
 TESTS = Path(__file__).resolve().parent
 ROOT = TESTS.parent
 
-CHECK_SCRIPTS = ("check_refactor.py", "check_p0_timing.py")
+CHECK_SCRIPTS = ("check_refactor.py", "check_p0_timing.py", "check_lint.py")
 
 
 def run_unittest():

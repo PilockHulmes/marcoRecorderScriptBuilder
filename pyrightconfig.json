@@ -1,0 +1,21 @@
+{
+  "include": ["maplebot"],
+  "exclude": ["venv", "**/__pycache__"],
+  "typeCheckingMode": "basic",
+  "reportMissingImports": "none",
+  "reportMissingModuleSource": "none",
+  "reportAttributeAccessIssue": "error",
+  "reportUndefinedVariable": "error",
+  "reportGeneralTypeIssues": "none",
+  "reportOptionalMemberAccess": "none",
+  "reportOptionalSubscript": "none",
+  "reportArgumentType": "none",
+  "reportOperatorIssue": "none",
+  "reportCallIssue": "none",
+  "reportReturnType": "none",
+  "reportIndexIssue": "none",
+  "reportAssignmentType": "none",
+  "reportRedeclaration": "error",
+  "reportSelfClsParameterName": "none",
+  "pythonVersion": "3.10"
+}
