@@ -5,6 +5,9 @@ from unittest import mock
 
 from maplebot import advice, ledger
 
+#: 合成时间轴一律用墙钟数量级，避免被 Ledger 的 monotonic 防护改写。
+BASE = 1_700_000_000.0
+
 
 def visit(map_name, merchant, rows, coins=50, weight=0, refresh=300, merchant_id=""):
     return {"map": map_name, "merchant_id": merchant_id, "merchant": merchant,
@@ -82,18 +85,18 @@ class SuggestTest(unittest.TestCase):
         from maplebot import advice as module
         module._merchant_maps = lambda: {"kobi_1": "石铁", "buyer": "甲"}
         module._goods = lambda: {"g": {"name": "货", "buyers": ["buyer"]}}
-        self.ledger.record(visit("甲", "收家", [("g", "buy", 99)], refresh=30), now=0)
+        self.ledger.record(visit("甲", "收家", [("g", "buy", 99)], refresh=30), now=BASE)
         current = visit("石铁", "石铁", [("g", "sell", 100)])
-        items = module.suggest(_as_visit(current), self.ledger, self.travel, now=0)
+        items = module.suggest(_as_visit(current), self.ledger, self.travel, now=BASE)
         self.assertEqual(items, [])
 
     def test_suggestion_when_window_holds(self):
         from maplebot import advice as module
         module._merchant_maps = lambda: {"kobi_1": "石铁", "buyer": "甲"}
         module._goods = lambda: {"g": {"name": "货", "buyers": ["buyer"]}}
-        self.ledger.record(visit("甲", "收家", [("g", "buy", 99)], refresh=600), now=0)
+        self.ledger.record(visit("甲", "收家", [("g", "buy", 99)], refresh=600), now=BASE)
         current = visit("石铁", "石铁", [("g", "sell", 10)], coins=50)
-        items = module.suggest(_as_visit(current), self.ledger, self.travel, now=0)
+        items = module.suggest(_as_visit(current), self.ledger, self.travel, now=BASE)
         self.assertEqual(len(items), 1)
         self.assertEqual(items[0].profit_per_unit, 89)
         self.assertEqual(items[0].units, 5)      # 50 // 10
@@ -120,7 +123,7 @@ class BuyTripPlanTest(unittest.TestCase):
     def tearDown(self):
         self.tmp.cleanup()
 
-    def record(self, map_name, merchant_id, rows, t=0, refresh=300):
+    def record(self, map_name, merchant_id, rows, t=BASE, refresh=300):
         self.ledger.record(
             visit(map_name, self.NAMES.get(merchant_id, merchant_id), rows,
                   refresh=refresh, merchant_id=merchant_id), now=t)
@@ -132,7 +135,7 @@ class BuyTripPlanTest(unittest.TestCase):
 
     def test_cheap_and_reachable(self):
         self.record("one", "kobi_1", [("balloon_flower", "sell", 13)])
-        items = self.plan(now=0, current_map="here")
+        items = self.plan(now=BASE, current_map="here")
         self.assertEqual(len(items), 1)
         item = items[0]
         self.assertEqual(item["good"], "桔梗")
@@ -149,48 +152,48 @@ class BuyTripPlanTest(unittest.TestCase):
     def test_expired_before_arrival(self):
         # 报价 30 秒后刷新，但路上要 60 秒 -> 到了已经没了
         self.record("one", "kobi_1", [("balloon_flower", "sell", 13)], refresh=30)
-        self.assertEqual(self.plan(now=0, current_map="here"), [])
+        self.assertEqual(self.plan(now=BASE, current_map="here"), [])
 
     def test_already_expired_now(self):
-        self.record("one", "kobi_1", [("balloon_flower", "sell", 13)], t=0, refresh=30)
-        self.assertEqual(self.plan(now=100, current_map="here"), [])
+        self.record("one", "kobi_1", [("balloon_flower", "sell", 13)], t=BASE, refresh=30)
+        self.assertEqual(self.plan(now=BASE + 100, current_map="here"), [])
 
     def test_price_above_tier_threshold(self):
         self.record("one", "kobi_1", [("balloon_flower", "sell", 14)],
                     refresh=600)
         self.record("one", "kobi_3", [("cotton", "sell", 41)], refresh=600)
-        self.assertEqual(self.plan(now=0, current_map="here"), [])
+        self.assertEqual(self.plan(now=BASE, current_map="here"), [])
 
     def test_price_at_tier_threshold_is_kept(self):
         self.record("one", "kobi_1", [("balloon_flower", "sell", 13)],
                     refresh=600)
         self.record("one", "kobi_3", [("cotton", "sell", 40)], refresh=600)
         self.assertEqual({item["good_id"] for item in
-                          self.plan(now=0, current_map="here")},
+                          self.plan(now=BASE, current_map="here")},
                          {"balloon_flower", "cotton"})
 
     def test_volatile_cap(self):
         self.record("one", "kobi_1", [("potion", "sell", 300),
                                       ("balloon_flower", "sell", 301)],
                     refresh=600)
-        items = self.plan(now=0, current_map="here")
+        items = self.plan(now=BASE, current_map="here")
         self.assertEqual([item["good_id"] for item in items], ["potion"])
 
     def test_quotes_on_current_map_are_excluded(self):
         self.record("here", "kobi_1", [("balloon_flower", "sell", 10)])
-        self.assertEqual(self.plan(now=0, current_map="here"), [])
+        self.assertEqual(self.plan(now=BASE, current_map="here"), [])
 
     def test_only_sell_rows_are_used(self):
         self.record("one", "kobi_1", [("balloon_flower", "buy", 10)],
                     refresh=600)
-        self.assertEqual(self.plan(now=0, current_map="here"), [])
+        self.assertEqual(self.plan(now=BASE, current_map="here"), [])
 
     def test_sorted_by_distance_then_price(self):
         self.record("far", "kobi_3", [("balloon_flower", "sell", 9)],
                     refresh=600)
         self.record("one", "kobi_1", [("balloon_flower", "sell", 13)],
                     refresh=600)
-        items = self.plan(now=0, current_map="here")
+        items = self.plan(now=BASE, current_map="here")
         self.assertEqual([item["hops"] for item in items], [1, 2])
         self.assertEqual([item["price"] for item in items], [13, 9])
 
@@ -198,29 +201,29 @@ class BuyTripPlanTest(unittest.TestCase):
         self.record("one", "kobi_1", [("balloon_flower", "sell", 12)],
                     refresh=600)
         self.record("one", "kobi_3", [("cotton", "sell", 9)], refresh=600)
-        items = self.plan(now=0, current_map="here")
+        items = self.plan(now=BASE, current_map="here")
         self.assertEqual([item["price"] for item in items], [9, 12])
 
     def test_remaining_time_caps_travel(self):
         self.record("far", "kobi_1", [("balloon_flower", "sell", 13)],
                     refresh=600)
-        self.assertEqual(self.plan(now=0, current_map="here", remaining=60), [])
-        self.assertEqual(len(self.plan(now=0, current_map="here", remaining=120)), 1)
+        self.assertEqual(self.plan(now=BASE, current_map="here", remaining=60), [])
+        self.assertEqual(len(self.plan(now=BASE, current_map="here", remaining=120)), 1)
 
     def test_limit(self):
         for merchant_id, map_name in (("kobi_1", "one"), ("kobi_3", "far")):
             self.record(map_name, merchant_id,
                         [("balloon_flower", "sell", 12)], refresh=600)
-        self.assertEqual(len(self.plan(now=0, current_map="here", limit=1)), 1)
+        self.assertEqual(len(self.plan(now=BASE, current_map="here", limit=1)), 1)
 
     def test_merchant_name_is_traditional(self):
         """名字要用 merchant_maps.json 的 game_name（石鉄），不是 kobi_1。"""
         self.ledger.record(
             visit("豐饒的沙漠-1", "石铁", [("balloon_flower", "sell", 12)],
-                  refresh=600, merchant_id="kobi_1"), now=100)
+                  refresh=600, merchant_id="kobi_1"), now=BASE + 100)
         travel = advice.MapTravel(edge_times=[], per_hop=60)
         with mock.patch.object(advice, "_goods", return_value=self.GOODS):
-            items = advice.buy_trip_plan(self.ledger, travel, now=100,
+            items = advice.buy_trip_plan(self.ledger, travel, now=BASE + 100,
                                          current_map="豐饒的沙漠-3")
         self.assertEqual(len(items), 1)
         self.assertEqual(items[0]["merchant"], "石鉄")
@@ -318,7 +321,7 @@ class MerchantNamesTest(unittest.TestCase):
         with mock.patch.object(advice, "_merchant_maps",
                                return_value={"kobi_1": maps["石鉄"],
                                              "kobi_3": maps["藍明"]}):
-            items = advice.explore_plan(book, travel, now=1000,
+            items = advice.explore_plan(book, travel, now=BASE,
                                         current_map="豐饒的沙漠-3")
         names = {item["merchant_id"]: item["merchant"] for item in items}
         self.assertEqual(names["kobi_1"], "石鉄")

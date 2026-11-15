@@ -1,4 +1,5 @@
 import contextlib
+import time
 import unittest
 from unittest import mock
 
@@ -619,6 +620,16 @@ class BoardLayoutTest(unittest.TestCase):
         later_headers = {item.icon_key: item for item in later.of_kind("merchant")}
         self.assertEqual(later_headers["kobi_1"].suffix, gui.EXPIRED_TEXT)
         self.assertEqual(later_headers["kobi_1"].color, gui.COLOR_GRAY)
+
+    def test_countdown_from_wall_clock_observation(self):
+        """until 是墙钟：now 也必须按墙钟算，175 秒应显示 02:55 而不是几百分钟。"""
+        now = time.time()
+        board = [{"merchant_id": "kobi_1", "merchant": "石铁", "map": "M1",
+                  "until": now + 175, "observed": True, "rows": []}]
+        layout = self.layout(board, now=now)
+        header = next(item for item in layout.of_kind("merchant")
+                      if item.icon_key == "kobi_1")
+        self.assertEqual(header.suffix, "剩 02:55")
 
     def test_random_merchant_is_not_drawn(self):
         layout = self.layout([board_entry("ghost_1", until=self.NOW + 400),

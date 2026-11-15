@@ -14,6 +14,29 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_PATH = ROOT / "data" / "trade" / "observations.jsonl"
 
+#: 墙钟下界（约 2001-09-09）。``time.monotonic()`` 是"开机以来秒数"，正常远小于
+#: 这个值；低于它的 ``t`` 只可能是旧版本用 monotonic 落盘的遗留。
+MIN_WALL_CLOCK = 1_000_000_000
+
+
+def is_wall_clock(value):
+    """这个时刻像不像墙钟（``time.time()``）？"""
+    try:
+        return float(value) >= MIN_WALL_CLOCK
+    except (TypeError, ValueError):
+        return False
+
+
+def _wall_now(value):
+    """把调用方给的时刻统一成墙钟。
+
+    缺省、读不出来、或明显是 monotonic（``< MIN_WALL_CLOCK``）时一律用
+    ``time.time()``：落盘的时间戳必须能与下一次开机的时间比较。
+    """
+    if not is_wall_clock(value):
+        return time.time()
+    return float(value)
+
 
 class Ledger:
     def __init__(self, path=None):
@@ -21,9 +44,13 @@ class Ledger:
 
     # ---------------------------------------------------------------- 写
     def record(self, visit, now=None):
-        """存一条观察；visit 是 shop.Visit 或它的 to_dict()。"""
+        """存一条观察；visit 是 shop.Visit 或它的 to_dict()。
+
+        ``now`` 是墙钟时刻；传进来 monotonic（旧调用方）时会被换成
+        ``time.time()``，返回的 payload 里 ``t`` 就是实际落盘的值。
+        """
         payload = visit.to_dict() if hasattr(visit, "to_dict") else dict(visit)
-        payload["t"] = float(now if now is not None else time.time())
+        payload["t"] = _wall_now(now)
         self.path.parent.mkdir(parents=True, exist_ok=True)
         with self.path.open("a", encoding="utf-8") as handle:
             handle.write(json.dumps(payload, ensure_ascii=False) + "\n")
@@ -38,9 +65,15 @@ class Ledger:
             if not line.strip():
                 continue
             try:
-                out.append(json.loads(line))
+                observation = json.loads(line)
             except Exception:
                 continue
+            # 旧版本用 monotonic 落盘的记录（如 t=61665）跨进程没有意义，直接跳过。
+            if not isinstance(observation, dict):
+                continue
+            if not is_wall_clock(observation.get("t", 0)):
+                continue
+            out.append(observation)
         return out
 
     # ------------------------------------------------------------ 有效期

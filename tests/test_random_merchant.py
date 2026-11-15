@@ -17,6 +17,9 @@ import numpy as np
 
 from maplebot import advice, ledger, session, shop
 
+#: 合成时间轴一律用墙钟数量级，避免被 Ledger 的 monotonic 防护改写。
+BASE = 1_700_000_000.0
+
 
 GOODS = {
     "cotton": {"name": "棉花", "tier": "tier2", "buyers": ["m_near"]},
@@ -80,7 +83,7 @@ class RandomSellAdviceTest(unittest.TestCase):
         self.book = ledger.Ledger(Path(self.tmp.name) / "obs.jsonl")
         self.travel = advice.MapTravel(graph=GRAPH, edge_times=[], per_hop=60)
 
-    def plan(self, rows, now=0.0, coins=50, weight=0):
+    def plan(self, rows, now=BASE, coins=50, weight=0):
         visit = make_visit(rows, coins=coins, weight=weight)
         with fake_data():
             return advice.random_sell_plan(visit, self.book, self.travel, now=now)
@@ -118,13 +121,15 @@ class RandomSellAdviceTest(unittest.TestCase):
 
     def test_format_shows_known_buyer_price(self):
         self.book.record(observation("near_map", [("cotton", "buy", 22)],
-                                     merchant_id="m_near"), now=0)
+                                     merchant_id="m_near"), now=BASE)
         items = self.plan([("cotton", "sell", 12)])
         with fake_data():
             lines = advice.format_random_sell(items)
         self.assertEqual(
             lines,
-            ["随机商人：買 棉花 @12 × 4 個 → 去 近商(near_map) 賣 @22（1 張圖）"])
+            ["在 隨機商人（random_map）",
+             "  買 棉花 @12 × 4 個",
+             "  到 近商（near_map） 賣 @22，1 張圖"])
 
     def test_format_without_buyer_price(self):
         items = self.plan([("silk", "sell", 15)])
@@ -132,7 +137,16 @@ class RandomSellAdviceTest(unittest.TestCase):
             lines = advice.format_random_sell(items)
         self.assertEqual(
             lines,
-            ["随机商人：買 丝绸 @15 × 3 個 → 去 中商(mid_map) 賣（2 張圖）"])
+            ["在 隨機商人（random_map）",
+             "  買 丝绸 @15 × 3 個",
+             "  到 中商（mid_map） 賣，2 張圖"])
+
+    def test_format_folds_extra_candidates(self):
+        items = self.plan([("silk", "sell", 15), ("cotton", "sell", 12)])
+        with fake_data():
+            lines = advice.format_random_sell(items)
+        self.assertEqual(len(lines), 4)
+        self.assertEqual(lines[-1], "还有 1 条…")
 
     def test_no_candidate_is_not_a_recommendation(self):
         items = self.plan([("pork", "sell", 10)])
@@ -151,7 +165,10 @@ class RandomBuyAdviceTest(unittest.TestCase):
             lines = advice.format_random_buy(items)
         self.assertEqual(items[0]["good"], "棉花")
         self.assertEqual(items[0]["units"], 3)
-        self.assertEqual(lines, ["随机商人：把 棉花 賣給他 @22 × 3 個（就地）"])
+        self.assertEqual(lines,
+                         ["在 隨機商人（random_map）",
+                          "  賣 棉花 @22 × 3 個",
+                          "  就地成交，不用跑圖"])
 
     def test_no_matching_held_goods(self):
         visit = make_visit([("cotton", "buy", 22)])
@@ -165,8 +182,9 @@ class RandomBuyAdviceTest(unittest.TestCase):
         travel = advice.MapTravel(graph=GRAPH, edge_times=[], per_hop=60)
         with tempfile.TemporaryDirectory() as tmp, fake_data():
             book = ledger.Ledger(Path(tmp) / "obs.jsonl")
-            lines = advice.random_advice(visit, book, travel, held=["silk"], now=0)
-        self.assertTrue(lines[0].startswith("随机商人：買 "))
+            lines = advice.random_advice(visit, book, travel, held=["silk"], now=BASE)
+        self.assertTrue(lines[0].startswith("在 隨機商人"))
+        self.assertIn("買 ", lines[1])
 
 
 class RandomNeverDestinationTest(unittest.TestCase):
@@ -176,14 +194,14 @@ class RandomNeverDestinationTest(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
         self.book = ledger.Ledger(Path(self.tmp.name) / "obs.jsonl")
-        self.book.record(observation("random_map", [("cotton", "sell", 10)]), now=0)
+        self.book.record(observation("random_map", [("cotton", "sell", 10)]), now=BASE)
         self.travel = advice.MapTravel(graph=GRAPH_FROM_FIXED, edge_times=[],
                                        per_hop=60)
 
     def test_buy_trip_plan_skips_random_observation(self):
         with fake_data():
             self.assertEqual(
-                advice.buy_trip_plan(self.book, self.travel, now=0,
+                advice.buy_trip_plan(self.book, self.travel, now=BASE,
                                      current_map="start_map"),
                 [])
 
@@ -193,18 +211,18 @@ class RandomNeverDestinationTest(unittest.TestCase):
         collided = {"m_near": "random_map", "m_mid": "mid_map", "m_far": "far_map"}
         with fake_data(maps=collided):
             self.assertEqual(
-                advice.sell_plan(["cotton"], self.book, self.travel, now=0,
+                advice.sell_plan(["cotton"], self.book, self.travel, now=BASE,
                                  current_map="start_map"),
                 [])
 
     def test_all_plans_never_point_at_random_map(self):
         with fake_data():
             plans = (
-                advice.buy_trip_plan(self.book, self.travel, now=0,
+                advice.buy_trip_plan(self.book, self.travel, now=BASE,
                                      current_map="start_map"),
-                advice.sell_plan(["cotton"], self.book, self.travel, now=0,
+                advice.sell_plan(["cotton"], self.book, self.travel, now=BASE,
                                  current_map="start_map"),
-                advice.explore_plan(self.book, self.travel, now=0,
+                advice.explore_plan(self.book, self.travel, now=BASE,
                                     current_map="start_map"),
             )
         for plan in plans:
@@ -234,25 +252,30 @@ class RandomMerchantSessionTest(unittest.TestCase):
             stack.enter_context(mock.patch.object(
                 shop, "read_visit", return_value=visit))
             stack.enter_context(fake_data())
-            return self.session.update(self.frame, now=0.0)
+            return self.session.update(self.frame, now=BASE)
 
     def test_random_sell_branch_is_used(self):
         visit = make_visit([("honey", "sell", 20), ("cotton", "sell", 12)])
         with mock.patch.object(advice, "suggest") as suggest:
             state = self._update(visit)
         suggest.assert_not_called()             # 不再走固定商人的三级建议
-        self.assertEqual(len(state.advice), 2)
-        self.assertIn("随机商人：買 棉花 @12 × 4 個", state.advice[0])
-        self.assertIn("去 近商(near_map)", state.advice[0])
-        self.assertIn("去 远商(far_map)", state.advice[1])
-        self.assertNotIn("random_map", " ".join(state.advice))
+        # top-1 展开三行 + 其余折叠成一行（建议区 4 行高）
+        self.assertEqual(len(state.advice), 4)
+        self.assertEqual(state.advice[0], "在 隨機商人（random_map）")
+        self.assertIn("買 棉花 @12 × 4 個", state.advice[1])
+        self.assertIn("到 近商（near_map）", state.advice[2])
+        self.assertEqual(state.advice[3], "还有 1 条…")
+        self.assertNotIn("random_map", state.advice[2])
+        self.assertNotIn("random_map", " ".join(state.advice[2:]))
 
     def test_random_buy_with_matching_held_goods(self):
         self.session.held = ["cotton", "cotton", "cotton"]
         state = self._update(make_visit([("cotton", "buy", 22)]))
         self.assertEqual(
             state.advice,
-            ["随机商人：把 棉花 賣給他 @22 × 3 個（就地）"])
+            ["在 隨機商人（random_map）",
+             "  賣 棉花 @22 × 3 個",
+             "  就地成交，不用跑圖"])
 
     def test_random_buy_without_matching_held_goods(self):
         self.session.held = ["pork"]
@@ -272,7 +295,7 @@ class RandomMerchantSessionTest(unittest.TestCase):
     def test_random_observation_never_becomes_fixed_shop_destination(self):
         # 先留下一条随机商人的记录，随后站在固定商人地图上开店：
         # 建议里不能出现 random_map（不能「买了再回来卖给他」）。
-        self.book.record(observation("random_map", [("cotton", "sell", 10)]), now=0)
+        self.book.record(observation("random_map", [("cotton", "sell", 10)]), now=BASE)
         self.watcher.last_map_obs = mock.Mock(map_id="near_map")
         state = self._update(make_visit([], map_name="near_map", kind="fixed"))
         joined = " ".join(state.advice)

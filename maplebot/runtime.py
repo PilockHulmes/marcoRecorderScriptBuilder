@@ -73,8 +73,12 @@ class Runtime:
 
     # ------------------------------------------------------------------
     def step(self, frame, now=None):
-        """处理一帧；返回这一帧要对玩家说的话（可能为空）。"""
-        now = time.monotonic() if now is None else float(now)
+        """处理一帧；返回这一帧要对玩家说的话（可能为空）。
+
+        ``now`` 是墙钟时刻（落盘 / 有效期 / 建议都用它）；缺省用
+        ``time.time()``，节流由 :class:`TradeSession` 内部用单调时钟处理。
+        """
+        now = time.time() if now is None else float(now)
         state = self.session.update(frame, now)
         out = []
         if self.session.watcher_error:

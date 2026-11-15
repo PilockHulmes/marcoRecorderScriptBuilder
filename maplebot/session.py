@@ -158,6 +158,8 @@ class TradeSession:
         self.travel = travel or advice_module.MapTravel()
         self.state = State()
         self._open = False
+        #: 节流专用的单调时钟：只在本进程内比较，绝不落盘、不传给 ledger/advice。
+        self._mono = time.monotonic
         self._shop_at = 0.0
         self._cargo_at = 0.0
         self._board_at = 0.0
@@ -185,35 +187,41 @@ class TradeSession:
         return _safe(trade.find_cargo_window, frame, default=False)
 
     def update(self, frame, now=None):
-        now = time.monotonic() if now is None else float(now)
+        # 落盘 / 有效期 / 建议一律用墙钟：monotonic 只在同一个进程内有意义。
+        explicit = now is not None
+        now = time.time() if now is None else float(now)
+        # 节流用单调时钟。测试会传合成时间轴（< 1e9）精确控制节流，跟随它；
+        # 真实调用（None 或墙钟）一律用 self._mono()。
+        clock = (now if explicit and not ledger_module.is_wall_clock(now)
+                 else self._mono())
         self.shop_read = False
         self.cargo_read = False
         self.shop_error = ""
         self.cargo_error = ""
         self.watcher_error = ""
         try:
-            self.watcher.step(frame, now=now)
+            self.watcher.step(frame, now=clock)
         except Exception as exc:
             self.watcher_error = str(exc)
         self.state.map = self.current_map()
 
         opened = self._shop_open(frame)
         if opened:
-            if not self._open or now - self._shop_at >= self.shop_every:
+            if not self._open or clock - self._shop_at >= self.shop_every:
                 self._read_shop(frame, now)
-                self._shop_at = now
+                self._shop_at = clock
             self._open = True
         else:
             self._open = False
             self._merged = {}
             if self._cargo_open(frame):
-                if now - self._cargo_at >= self.cargo_every:
+                if clock - self._cargo_at >= self.cargo_every:
                     self._read_cargo(frame, now)
-                    self._cargo_at = now
+                    self._cargo_at = clock
 
-        if now - self._board_at >= self.board_every:
+        if clock - self._board_at >= self.board_every:
             self._read_board(now)
-            self._board_at = now
+            self._board_at = clock
         return self.state
 
     # ------------------------------------------------------------------

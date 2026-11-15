@@ -464,10 +464,11 @@ def layout_board(board, width, now=None):
     - 商人两列（左列 8、右列 7；窄窗口退回一列）；
     - 每个商人固定 2×4 = 8 个商品槽位（先卖后收），坐标与数据无关；
     - 没有观察记录：标题正常、倒计时「未看過」、价格「—」；
-    - 倒计时在这里现算（``until - now``），颜色仍走 :func:`status_color`。
+    - 倒计时在这里现算（``until - now``），颜色仍走 :func:`status_color`；
+    - ``until`` 是墙钟（``time.time()``），所以 ``now`` 缺省也用墙钟。
     """
     if now is None:
-        now = time.monotonic()
+        now = time.time()
     try:
         width = int(width)
     except (TypeError, ValueError):
@@ -581,12 +582,13 @@ def layout_board(board, width, now=None):
 def draw_board(canvas, board, now=None, icons=None, width=None):
     """把 `State.board` 画到 Canvas 上，返回画布内容高度（像素）。
 
-    - 布局由 :func:`layout_board` 纯计算；倒计时在这里现算（``until - now``）；
+    - 布局由 :func:`layout_board` 纯计算；倒计时在这里现算（``until - now``），
+      ``until`` 是墙钟，所以 ``now`` 缺省也用 ``time.time()``；
     - `icons` 必须是调用方持有的 :class:`IconCache`（PhotoImage 生命周期）；
     - 商品名字左对齐、买卖标签固定 x、价格右对齐，不靠空格补位、不用等宽字体。
     """
     if now is None:
-        now = time.monotonic()
+        now = time.time()
     if width is None or width <= 1:
         try:
             width = canvas.winfo_width()
@@ -703,6 +705,7 @@ def run_gui(interval=0.1):
     canvas.bind("<Configure>", on_resize)
 
     def tick():
+        # 只用来看"该不该重画"（本进程内的节流），不参与倒计时/落盘。
         now = time.monotonic()
         try:
             state = worker.latest()

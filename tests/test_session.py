@@ -57,6 +57,29 @@ class SessionStateTest(unittest.TestCase):
         self.assertEqual(state.cargo, [])
         self.assertTrue(state.board)             # 固定商人看板照常生成
 
+    def test_update_default_records_wall_clock(self):
+        """生产路径（不传 now）落盘必须是墙钟，monotonic 只在内部做节流。"""
+        book = mock.Mock()
+        book.load.return_value = []
+        book.valid_until = lambda observation: 0
+        session = session_module.TradeSession(
+            watcher=mock.Mock(last_map_obs=mock.Mock(map_id="A")),
+            ledger=book, travel=advice_module.MapTravel(graph={}, edge_times=[]))
+        with contextlib.ExitStack() as stack:
+            stack.enter_context(mock.patch.object(
+                session_module.trade, "find_shop_window", return_value=True))
+            stack.enter_context(mock.patch.object(
+                shop, "read_visit", return_value=self._visit()))
+            stack.enter_context(mock.patch.object(
+                advice_module, "suggest", return_value=[]))
+            stack.enter_context(mock.patch.object(
+                advice_module, "buy_trip_plan", return_value=[]))
+            stack.enter_context(mock.patch.object(
+                advice_module, "explore_plan", return_value=[]))
+            session.update(self.frame)          # 不传 now：和 GUI / 控制台一样
+        used = book.record.call_args.kwargs["now"]
+        self.assertGreaterEqual(used, 1_000_000_000)
+
     def test_advice_priority_suggest_wins(self):
         suggestion = advice_module.Suggestion(
             good_id="g", good="桔梗", buy_at="A", buy_price=10, units=1,

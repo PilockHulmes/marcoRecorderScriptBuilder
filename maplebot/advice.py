@@ -20,6 +20,7 @@
 """
 
 import json
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -46,6 +47,11 @@ def _read_json(path, default):
         return json.loads(Path(path).read_text(encoding="utf-8"))
     except Exception:
         return default
+
+
+def _wall_now(now):
+    """建议里的 ``now`` 一律是墙钟；缺省用 ``time.time()``。"""
+    return time.time() if now is None else float(now)
 
 
 class MapTravel:
@@ -194,8 +200,9 @@ def _fixed_observation(observation):
     return isinstance(observation, dict) and bool(observation.get("merchant_id"))
 
 
-def suggest(visit, ledger=None, travel=None, now=0.0, remaining=None, limit=5):
+def suggest(visit, ledger=None, travel=None, now=None, remaining=None, limit=5):
     """visit = shop.Visit（当前打开的商店）；返回按距离排序的建议列表。"""
+    now = _wall_now(now)
     ledger = ledger if ledger is not None else ledger_module.Ledger()
     travel = travel if travel is not None else MapTravel()
     goods = _goods()
@@ -269,8 +276,9 @@ def suggest(visit, ledger=None, travel=None, now=0.0, remaining=None, limit=5):
     return out[:limit]
 
 
-def sell_plan(held_goods, ledger=None, travel=None, now=0.0, current_map="", limit=5):
+def sell_plan(held_goods, ledger=None, travel=None, now=None, current_map="", limit=5):
     """身上带着的货该去哪卖：按已知收购价和距离给建议。"""
+    now = _wall_now(now)
     ledger = ledger if ledger is not None else ledger_module.Ledger()
     travel = travel if travel is not None else MapTravel()
     where = _merchant_maps()
@@ -307,7 +315,7 @@ def sell_plan(held_goods, ledger=None, travel=None, now=0.0, current_map="", lim
     return out[:limit]
 
 
-def buy_trip_plan(ledger=None, travel=None, now=0.0, current_map="",
+def buy_trip_plan(ledger=None, travel=None, now=None, current_map="",
                   remaining=None, limit=5):
     """别处有便宜货、现在跑过去还来得及：建议专程去买。
 
@@ -321,6 +329,7 @@ def buy_trip_plan(ledger=None, travel=None, now=0.0, current_map="",
 
     排序：**距离优先**，同距离按价格从低到高。``left`` 是到达时仍剩余的秒数。
     """
+    now = _wall_now(now)
     ledger = ledger if ledger is not None else ledger_module.Ledger()
     travel = travel if travel is not None else MapTravel()
     goods = _goods()
@@ -384,9 +393,10 @@ def buy_trip_plan(ledger=None, travel=None, now=0.0, current_map="",
     return out[:limit]
 
 
-def explore_plan(ledger=None, travel=None, now=0.0, current_map="",
+def explore_plan(ledger=None, travel=None, now=None, current_map="",
                  remaining=None, limit=3):
     """没有生意时：就近找价格未知/已过期的商人去看看。"""
+    now = _wall_now(now)
     ledger = ledger if ledger is not None else ledger_module.Ledger()
     travel = travel if travel is not None else MapTravel()
     where = _merchant_maps()
@@ -523,12 +533,13 @@ def _observed_buy_price(observations, ledger, merchant_id, map_name, good_id, at
     return best
 
 
-def random_sell_plan(visit, ledger=None, travel=None, now=0.0, limit=2):
+def random_sell_plan(visit, ledger=None, travel=None, now=None, limit=2):
     """随机商人只卖货：挑二类（≤40）且买得起的，按到固定买家的距离排序。
 
     返回 1~2 条候选（``limit``）；随机商人所在地图只作为**起点**，``map``
     永远是 ``merchant_maps.json`` 里的固定商人地图。
     """
+    now = _wall_now(now)
     ledger = ledger if ledger is not None else ledger_module.Ledger()
     travel = travel if travel is not None else MapTravel()
     goods = _goods()
@@ -644,13 +655,14 @@ def format_random_buy(items):
     return lines + _folded(items)
 
 
-def random_advice(visit, ledger=None, travel=None, held=(), now=0.0, limit=2):
+def random_advice(visit, ledger=None, travel=None, held=(), now=None, limit=2):
     """``visit.kind == "random"`` 时给视图的建议行。
 
     随机商人只有一种类型（要么只卖、要么只收），所以这里只走一个分支：
     卖货型 -> 买了去固定商人卖；收货型 -> 有货就地卖、没货就明说。
     任何情况下都**不**建议玩家再回来找这个商人。
     """
+    now = _wall_now(now)
     rows = list(getattr(visit, "rows", None) or [])
     if any(getattr(row, "side", "") == "sell" for row in rows):
         return format_random_sell(
