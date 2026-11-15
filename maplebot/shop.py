@@ -402,7 +402,8 @@ def read_visit(frame, map_name="", templates=None, *, learn_names=None,
                 logger.info("[学习] 缺少图标 %s（%s），已存到 %s",
                             known_id, name, created)
         elif icon_learn.should_attempt("unknown:" + name):
-            path = icon_learn.save_unknown_icon(patch, unknown_dir=unknown_dir)
+            path = icon_learn.save_unknown_icon(patch, unknown_dir=unknown_dir,
+                                                read_name=name)
             icon_learn.note_failure("unknown:" + name)
             icon_learn.note_failure(icon_key)
             logger.warning("[学习] 认不出的商品名 %r，图标存到 %s", name, path)

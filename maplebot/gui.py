@@ -728,6 +728,12 @@ class View:
         self.root = root
         self.state = None
 
+        # 顶部通栏：当前地图 / 金币 / 负重 / 身上的货（诊断用，读不到就写 ×?）。
+        # 必须先 pack：main_frame 带 expand=True，先包它会把后面的一起挤到底部。
+        self.header = tk.Label(root, text="当前建议", anchor="w",
+                               font=("Microsoft YaHei", 10, "bold"))
+        self.header.pack(fill="x", padx=4)
+
         # 主区分左右：左边商人看板，右边建议列（整窗高）。
         # 建议列在右侧，因为玩家主屏在看板右边，UI 右缘先进入视线。
         main_frame = tk.Frame(root)
@@ -743,11 +749,6 @@ class View:
                  font=("Microsoft YaHei", 10, "bold")).pack(fill="x")
         board_frame = tk.Frame(board_column)
         board_frame.pack(fill="both", expand=True, padx=4)
-
-        # 顶部通栏：当前地图 / 金币 / 负重 / 身上的货（诊断用，读不到就写 ×?）
-        self.header = tk.Label(root, text="当前建议", anchor="w",
-                               font=("Microsoft YaHei", 10, "bold"))
-        self.header.pack(fill="x", padx=4)
 
         self.advice_box = tk.Text(advice_column, font=("Microsoft YaHei", 9),
                                   wrap="none", height=ADVICE_ROWS, width=1)

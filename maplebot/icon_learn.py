@@ -241,7 +241,7 @@ def save_icon(good_id, crop, icon_dir=None):
         return None
 
 
-def save_unknown_icon(crop, unknown_dir=None, stamp=None):
+def save_unknown_icon(crop, unknown_dir=None, stamp=None, read_name=""):
     """存一块认不出的图标，文件名用时间戳；返回路径或 None。"""
     if crop is None or getattr(crop, "size", 0) == 0:
         return None
@@ -258,6 +258,9 @@ def save_unknown_icon(crop, unknown_dir=None, stamp=None):
         if not ok:
             return None
         buffer.tofile(str(path))
+        if read_name:
+            # 侧车文件：review 时知道这张图标当时被读成了什么名字
+            path.with_suffix(".txt").write_text(read_name, encoding="utf-8")
         return path
     except Exception:
         return None
