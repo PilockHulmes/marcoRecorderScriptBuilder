@@ -69,6 +69,14 @@ ICON_GAP = 4
 
 #: 商人两列 + 每个商人固定 2×4 商品槽位（永久同样的位置）
 COLUMN_GAP = 12          # 两个商人列之间的空隙
+# 档位配色沿用冒险岛稀有度：epic 紫 / unique 橙 / legend 绿，压暗到白底可读
+TIER_COLORS = {
+    "tier1": "#7B2FBE",
+    "tier2": "#C77700",
+    "volatile": "#1E8E3E",
+}
+COLOR_ROW = "#212121"
+
 GOODS_COLUMNS = 2        # 商品固定两列
 GOODS_ROWS = 4           # 商品固定四行
 GOODS_SLOTS = GOODS_COLUMNS * GOODS_ROWS    # 每个商人固定 8 个槽位
@@ -308,6 +316,15 @@ def fixed_merchants():
     return _fixed_merchant_entries(maps)
 
 
+def tier_color(good_id):
+    """按商品档位取颜色；未知档位用正文色。"""
+    try:
+        tier = shop.load_goods().get(good_id, {}).get("tier", "")
+    except Exception:
+        tier = ""
+    return TIER_COLORS.get(tier, COLOR_ROW)
+
+
 def _goods_slot(good, side):
     good_id = good.get("id") or ""
     return {"good_id": good_id, "name": good.get("name") or good_id, "side": side}
@@ -535,8 +552,10 @@ def layout_board(board, width, now=None):
             prices = _price_lookup(rows) if not expired else {}
             goods_width = max(1, (column_width - ROW_INDENT) // GOODS_COLUMNS)
             for index, slot in enumerate(slots):
-                column = index % GOODS_COLUMNS
-                line = index // GOODS_COLUMNS
+                # 列优先：左列 4 行全是「他卖的」，右列 4 行全是「他收的」，
+                # 这样方向靠位置读，颜色只留给商品档位。
+                column = index // GOODS_ROWS
+                line = index % GOODS_ROWS
                 item_x = column_x + ROW_INDENT + column * goods_width
                 item_y = y + HEAD_H + line * ROW_H
                 name_x = item_x + ICON_SIZE + ICON_GAP
@@ -549,29 +568,19 @@ def layout_board(board, width, now=None):
                     side = slot.get("side") or ""
                     price = _slot_price(slot, prices)
                     # 只有真实有效的价格才用买卖色；「—」用浅灰
-                    if price is None:
-                        label_color = COLOR_GRAY
-                    else:
-                        label_color = COLOR_SELL if side == "sell" else COLOR_BUY
+                    label_color = COLOR_ROW if price is not None else COLOR_GRAY
                     items.append(BoardItem(
                         kind="good", x=item_x, y=item_y, w=goods_width, h=ROW_H,
                         owner=entry.get("merchant") or "",
                         text=slot.get("name") or slot.get("good_id") or "?",
-                        color=COLOR_ROW,
+                        color=tier_color(slot.get("good_id") or ""),
                         icon_kind="good", icon_key=slot.get("good_id") or "",
                         good_id=slot.get("good_id") or "", side=side, slot=index,
                         label="卖" if side == "sell" else "收",
                         price_text=PRICE_EMPTY if price is None else str(price),
                         name_x=name_x, label_x=label_x, price_x=price_x,
                         label_color=label_color))
-                else:
-                    items.append(BoardItem(
-                        kind="good", x=item_x, y=item_y, w=goods_width, h=ROW_H,
-                        owner=entry.get("merchant") or "",
-                        text=PRICE_EMPTY, color=COLOR_GRAY,
-                        slot=index, price_text=PRICE_EMPTY,
-                        name_x=name_x, label_x=label_x, price_x=price_x,
-                        label_color=COLOR_GRAY))
+                # 空槽位留白：不画「—」，它在两列布局里只是噪点
 
             y += _block_height(entry)
         bottom = max(bottom, y)

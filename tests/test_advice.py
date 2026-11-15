@@ -268,7 +268,9 @@ class FormatSuggestionsTest(unittest.TestCase):
         self.assertEqual(
             advice.format_suggestions([self.suggestion()]),
             [["在 石鉄（豐饒的沙漠-1）",
-              "  買 桔梗 @12 × 3 個到 羅森 賣 @22，距离 2 张图 賺 30"]])
+              "  買 桔梗 @12 × 3 個",
+              "  → 羅森（豐饒的沙漠-3） 賣 @22",
+              "     距离 2 张图，賺 30"]])
 
     def test_unknown_price_result_line_asks_to_check(self):
         item = self.suggestion(price_known=False, sell_price=None,
@@ -277,7 +279,9 @@ class FormatSuggestionsTest(unittest.TestCase):
         self.assertEqual(
             advice.format_suggestions([item]),
             [["在 石鉄（豐饒的沙漠-1）",
-              "  買 桔梗 @12 × 3 個到 豐饒的沙漠-3 賣，距离 2 张图"]])
+              "  買 桔梗 @12 × 3 個",
+              "  → 豐饒的沙漠-3 賣",
+              "     距离 2 张图"]])
 
     def test_only_top_one_is_expanded(self):
         items = [self.suggestion(), self.suggestion(good="棉花"),
@@ -288,7 +292,7 @@ class FormatSuggestionsTest(unittest.TestCase):
     def test_fold_line_is_absent_for_single_item(self):
         blocks = advice.format_suggestions([self.suggestion()])
         self.assertEqual(len(blocks), 1)
-        self.assertEqual(len(blocks[0]), 2)          # 商店行 + 一条卖点行
+        self.assertEqual(len(blocks[0]), 4)          # 商店 / 买 / 卖点 / 距离
 
     def test_no_items_is_one_placeholder_line(self):
         self.assertEqual(advice.format_suggestions([]), [["（暫無值得跑的建議）"]])
@@ -297,10 +301,10 @@ class FormatSuggestionsTest(unittest.TestCase):
         items = [{"merchant": "瑪帕", "map": "B", "hops": 2},
                  {"merchant": "哲利", "map": "C", "hops": 3}]
         blocks = advice.format_explore(items)
-        self.assertEqual(blocks[0], ["去看看 瑪帕 距离 2 张图"])   # 一行一个商人，不带地图
+        self.assertEqual(blocks[0], ["去看看 瑪帕（B） 距离 2 张图"])   # 一行一个商人，不带地图
         self.assertEqual(len(blocks), 2)
         self.assertEqual(advice.format_explore(items[:1]),
-                         [["去看看 瑪帕 距离 2 张图"]])
+                         [["去看看 瑪帕（B） 距离 2 张图"]])
 
 
 class MerchantNamesTest(unittest.TestCase):

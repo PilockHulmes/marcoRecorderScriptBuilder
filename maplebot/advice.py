@@ -469,16 +469,20 @@ def format_suggestions(items):
     blocks = []
     for _key, group in list(groups.items())[:COLUMNS]:
         first = group[0]
-        block = [f"在 {_place(first.buy_at, first.buy_map)}"]
+        block = [f"在 {_place(first.buy_at, first.buy_map)}",
+                 f"  買 {first.good} @{first.buy_price} × {first.units} 個"]
         for s in group[:3]:
-            sell_at = s.sell_at or s.sell_map or "?"
+            sell_at = s.sell_at or "?"
+            # 第一行：去哪卖（带地图，玩家对地图比商人名敏感）
+            head = f"  → {_place(sell_at, s.sell_map)} 賣"
             if s.price_known and s.sell_price is not None:
-                block.append(f"  買 {s.good} @{s.buy_price} × {s.units} 個"
-                             f"到 {sell_at} 賣 @{s.sell_price}，"
-                             f"距离 {s.hops} 张图 賺 {s.profit_total}")
-            else:
-                block.append(f"  買 {s.good} @{s.buy_price} × {s.units} 個"
-                             f"到 {sell_at} 賣，距离 {s.hops} 张图")
+                head += f" @{s.sell_price}"
+            # 第二行：距离与收益
+            tail = f"     距离 {s.hops} 张图"
+            if s.price_known and s.sell_price is not None:
+                tail += f"，賺 {s.profit_total}"
+            block.append(head)
+            block.append(tail)
         blocks.append(block)
     return blocks
 
@@ -514,7 +518,7 @@ def format_explore(items):
     blocks = []
     for item in items[:COLUMNS]:
         hops = item.get("hops")
-        blocks.append([f"去看看 {item.get('merchant')} "
+        blocks.append([f"去看看 {_place(item.get('merchant'), item.get('map', ''))} "
                        f"距离 {'?' if hops is None else hops} 张图"])
     return blocks
 
@@ -654,7 +658,8 @@ def format_random_sell(items):
         blocks.append([
             where,
             f"  買 {item['good']} @{item['price']} × {item['units']} 個",
-            f"  到 {item.get('merchant')} {tail}，距离 {item.get('hops', 0)} 张图",
+            f"  → {_place(item.get('merchant'), item.get('map', ''))} {tail}",
+            f"     距离 {item.get('hops', 0)} 张图",
         ])
     return blocks
 

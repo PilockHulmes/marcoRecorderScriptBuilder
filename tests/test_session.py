@@ -97,7 +97,7 @@ class SessionStateTest(unittest.TestCase):
             explore = stack.enter_context(mock.patch.object(
                 advice_module, "explore_plan"))
             state = self.session.update(self.frame, now=1.0)
-        self.assertIn("桔梗", " ".join(state.advice))
+        self.assertIn("B 賣", " ".join(state.advice))
         trips.assert_not_called()
         explore.assert_not_called()
 
@@ -135,7 +135,7 @@ class SessionStateTest(unittest.TestCase):
                 advice_module, "explore_plan",
                 return_value=[{"merchant": "瑪帕", "map": "B", "hops": 2}]))
             state = self.session.update(self.frame, now=1.0)
-        self.assertEqual(state.advice, ["去看看 瑪帕 距离 2 张图"])
+        self.assertEqual(state.advice, ["去看看 瑪帕（B） 距离 2 张图"])
 
 
 class ShopMergeResetTest(unittest.TestCase):

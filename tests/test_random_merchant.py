@@ -129,7 +129,8 @@ class RandomSellAdviceTest(unittest.TestCase):
             lines,
             [["在 隨機商人（random_map）",
               "  買 棉花 @12 × 4 個",
-              "  到 近商 賣 @22，距离 1 张图"]])
+              "  → 近商（near_map） 賣 @22",
+              "     距离 1 张图"]])
 
     def test_format_without_buyer_price(self):
         items = self.plan([("silk", "sell", 15)])
@@ -139,7 +140,8 @@ class RandomSellAdviceTest(unittest.TestCase):
             lines,
             [["在 隨機商人（random_map）",
               "  買 丝绸 @15 × 3 個",
-              "  到 中商 賣，距离 2 张图"]])
+              "  → 中商（mid_map） 賣",
+              "     距离 2 张图"]])
 
     def test_format_folds_extra_candidates(self):
         items = self.plan([("silk", "sell", 15), ("cotton", "sell", 12)])
@@ -262,7 +264,7 @@ class RandomMerchantSessionTest(unittest.TestCase):
         self.assertEqual(len(state.blocks), 2)
         self.assertEqual(state.advice[0], "在 隨機商人（random_map）")
         self.assertIn("買 棉花 @12 × 4 個", state.advice[1])
-        self.assertIn("到 近商 賣", state.advice[2])
+        self.assertIn("→ 近商（near_map） 賣", state.advice[2])
         self.assertNotIn("到 隨機商人", " ".join(state.advice))   # 随机商人不能是目的地
 
     def test_random_buy_with_matching_held_goods(self):

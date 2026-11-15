@@ -85,7 +85,7 @@ class ControllerTest(unittest.TestCase):
                 mock.patch.object(advice_module, "buy_trip_plan") as trips, \
                 mock.patch.object(advice_module, "explore_plan") as explore:
             state = self.controller.update(self.frame, now=1.0)
-        self.assertIn("桔梗", " ".join(state.advice))
+        self.assertIn("B 賣", " ".join(state.advice))
         trips.assert_not_called()
         explore.assert_not_called()
 
@@ -117,7 +117,7 @@ class ControllerTest(unittest.TestCase):
                                   return_value=[{"merchant": "瑪帕", "map": "B",
                                                  "hops": 2}]):
             state = self.controller.update(self.frame, now=1.0)
-        self.assertEqual(state.advice, ["去看看 瑪帕 距离 2 张图"])
+        self.assertEqual(state.advice, ["去看看 瑪帕（B） 距离 2 张图"])
 
     def test_shop_throttled(self):
         visit = shop.Visit(map="A", merchant="石铁", kind="fixed", refresh_in=120,
@@ -470,7 +470,7 @@ class BoardLayoutTest(unittest.TestCase):
         headers = layout.of_kind("merchant")
         goods = layout.of_kind("good")
         self.assertEqual(len(headers), 3)
-        self.assertEqual(len(goods), 3 * gui.GOODS_SLOTS)
+        self.assertEqual(len(goods), 3 * 7)      # 每个商人 3 卖 + 4 收，空槽留白
         for header in headers:
             self.assertEqual(header.suffix, gui.UNSEEN_TEXT)
             self.assertEqual(header.suffix_color, gui.COLOR_UNSEEN)
@@ -483,9 +483,10 @@ class BoardLayoutTest(unittest.TestCase):
         layout = self.layout()
         for owner in ("石鉄", "史來", "哲利"):
             goods = [item for item in layout.of_kind("good") if item.owner == owner]
-            self.assertEqual(len(goods), gui.GOODS_SLOTS)
-            self.assertEqual({item.slot for item in goods}, set(range(gui.GOODS_SLOTS)))
-            self.assertEqual(len({item.x for item in goods}), 2)
+            # 空槽位留白不画：只有真正存在的商品才有条目（3 卖 + 4 收）
+            self.assertEqual(len(goods), 7)
+            self.assertEqual({item.slot for item in goods}, set(range(7)))
+            self.assertEqual(len({item.x for item in goods}), 2)   # 左列卖、右列收
             self.assertEqual(len({item.y for item in goods}), 4)
             self.assertEqual(len({item.w for item in goods}), 1)
 
@@ -505,19 +506,18 @@ class BoardLayoutTest(unittest.TestCase):
         slots = sorted((item for item in layout.of_kind("good")
                         if item.owner == "石鉄"), key=lambda item: item.slot)
         self.assertEqual([item.good_id for item in slots],
-                         ["s1", "s2", "s3", "b1", "b2", "b3", "b4", ""])
+                         ["s1", "s2", "s3", "b1", "b2", "b3", "b4"])
         self.assertEqual([item.side for item in slots],
-                         ["sell", "sell", "sell", "buy", "buy", "buy", "buy", ""])
+                         ["sell", "sell", "sell", "buy", "buy", "buy", "buy"])
 
     def test_empty_slots_are_padded_to_eight(self):
         maps = dict(self.maps)
         maps["M9"] = {"merchant_id": "kobi_99", "merchant": "空商人",
                       "game_name": "空商人"}
         layout = self.layout(maps=maps)
+        # 没有任何商品数据的商人：槽位留白，不画「—」
         empty = [item for item in layout.of_kind("good") if item.owner == "空商人"]
-        self.assertEqual(len(empty), gui.GOODS_SLOTS)
-        self.assertTrue(all(item.good_id == "" for item in empty))
-        self.assertTrue(all(item.text == gui.PRICE_EMPTY for item in empty))
+        self.assertEqual(empty, [])
 
     def test_prices_fill_fixed_slots(self):
         board = [board_entry("kobi_1", until=self.NOW + 100, rows=[
@@ -529,8 +529,9 @@ class BoardLayoutTest(unittest.TestCase):
                    if item.owner == "石鉄"}
         self.assertEqual(by_good["natural_honey"].price_text, "12")
         self.assertEqual(by_good["silver_ore"].price_text, "30")
-        self.assertEqual(by_good["natural_honey"].label_color, gui.COLOR_SELL)
-        self.assertEqual(by_good["silver_ore"].label_color, gui.COLOR_BUY)
+        # 卖/收不再靠颜色区分（方向靠列位置），文字统一正文色
+        self.assertEqual(by_good["natural_honey"].label_color, gui.COLOR_ROW)
+        self.assertEqual(by_good["silver_ore"].label_color, gui.COLOR_ROW)
         # 这次没上架/没记录的商品：价格「—」且标签用浅灰
         self.assertEqual(by_good["balloon_flower"].price_text, gui.PRICE_EMPTY)
         self.assertEqual(by_good["balloon_flower"].label_color, gui.COLOR_GRAY)
@@ -562,12 +563,12 @@ class BoardLayoutTest(unittest.TestCase):
         sell, buy = by_good["natural_honey"], by_good["silver_ore"]
         self.assertEqual(sell.label, "卖")
         self.assertEqual(buy.label, "收")
-        self.assertEqual(sell.label_color, gui.COLOR_SELL)
-        self.assertEqual(buy.label_color, gui.COLOR_BUY)
-        self.assertNotEqual(sell.label_color, buy.label_color)
-        # 商品名保持深灰
-        self.assertEqual(sell.color, gui.COLOR_ROW)
-        self.assertEqual(buy.color, gui.COLOR_ROW)
+        self.assertEqual(sell.label_color, gui.COLOR_ROW)
+        self.assertEqual(buy.label_color, gui.COLOR_ROW)
+        self.assertEqual(sell.label_color, buy.label_color)   # 方向靠列位置，不靠颜色
+        # 商品名按档位上色：不同档位颜色不同，且都在档位色表里
+        self.assertIn(sell.color, gui.TIER_COLORS.values())
+        self.assertIn(buy.color, gui.TIER_COLORS.values())
 
     def test_name_label_and_price_have_three_fixed_x_positions(self):
         board = [board_entry("kobi_1", until=self.NOW + 100, rows=[
@@ -599,7 +600,7 @@ class BoardLayoutTest(unittest.TestCase):
                                 for item in layout.of_kind("good")]
         self.assertEqual(headers(empty), headers(priced))
         self.assertEqual(goods(empty), goods(priced))
-        self.assertEqual(len(goods(priced)), 3 * gui.GOODS_SLOTS)
+        self.assertEqual(len(goods(priced)), 3 * 7)
 
     def test_countdown_colors_and_text_are_computed_at_layout_time(self):
         board = [
@@ -672,10 +673,10 @@ class RealFixedMerchantDataTest(unittest.TestCase):
         self.assertEqual([item.icon_key for item in headers], FIXED_ORDER)
         self.assertEqual(layout.split, 8)          # 左 8 右 7
         goods = layout.of_kind("good")
-        self.assertEqual(len(goods), 15 * gui.GOODS_SLOTS)
+        self.assertEqual(len(goods), 15 * 7)
         for header in headers:
             slots = [item for item in goods if item.owner == header.owner]
-            self.assertEqual(len(slots), gui.GOODS_SLOTS, header.icon_key)
+            self.assertEqual(len(slots), 7, header.icon_key)
 
     def test_empty_data_all_prices_dash_and_all_unseen(self):
         layout = gui.layout_board([], 736, now=100.0)
@@ -738,8 +739,8 @@ class DrawBoardTest(unittest.TestCase):
 
     @staticmethod
     def expected_text_count():
-        # 每个商人：标题 + 倒计时 + 7 个有货槽位×3 段文字 + 1 个空槽位
-        return 3 * (2 + 7 * 3 + 1)
+        # 每个商人：标题 + 倒计时 + 7 个有货槽位 × 3 段文字（空槽位留白不画）
+        return 3 * (2 + 7 * 3)
 
     def test_draws_all_text_and_sets_scrollregion(self):
         canvas, height = self.draw()
@@ -778,9 +779,8 @@ class DrawBoardTest(unittest.TestCase):
         for _, _, kwargs in canvas.texts:
             if kwargs.get("text") in ("卖", "收"):
                 fills.setdefault(kwargs["text"], set()).add(kwargs["fill"])
-        self.assertIn(gui.COLOR_SELL, fills["卖"])
-        self.assertIn(gui.COLOR_BUY, fills["收"])
-        self.assertNotEqual(gui.COLOR_SELL, gui.COLOR_BUY)
+        self.assertIn(gui.COLOR_ROW, fills["卖"])
+        self.assertIn(gui.COLOR_ROW, fills["收"])
         # 这次没有有效价格的槽位用浅灰
         self.assertIn(gui.COLOR_GRAY, fills["卖"])
         self.assertIn(gui.COLOR_GRAY, fills["收"])
@@ -801,7 +801,7 @@ class DrawBoardTest(unittest.TestCase):
         self.assertEqual(len(canvas.texts), self.expected_text_count())
         labels = [kwargs.get("text") for _, _, kwargs in canvas.texts]
         self.assertEqual(labels.count(gui.UNSEEN_TEXT), 3)
-        self.assertEqual(labels.count(gui.PRICE_EMPTY), 3 * gui.GOODS_SLOTS)
+        self.assertEqual(labels.count(gui.PRICE_EMPTY), 3 * 7)
 
 
 class StatusColorTest(unittest.TestCase):
