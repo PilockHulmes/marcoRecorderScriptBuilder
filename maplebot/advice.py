@@ -283,6 +283,7 @@ def sell_plan(held_goods, ledger=None, travel=None, now=None, current_map="", li
     travel = travel if travel is not None else MapTravel()
     where = _merchant_maps()
     goods = _goods()
+    names = _merchant_names()
     out = []
     for good_id in held_goods:
         good = goods.get(good_id, {})
@@ -306,12 +307,16 @@ def sell_plan(held_goods, ledger=None, travel=None, now=None, current_map="", li
                     price = int(row.get("price", 0))
                     if price > 0 and (best is None or price > best):
                         best = price
-            if best:
-                out.append({"good": good.get("name", good_id), "map": buyer_map,
-                            "merchant": buyer_id, "price": best,
-                            "seconds": seconds, "hops": travel.hops(current_map, buyer_map)
-                            if current_map else None})
-    out.sort(key=lambda r: (r["hops"] if r["hops"] is not None else 99, -r["price"]))
+            # 没有已知收购价也照样给方向：谁收是确定的，价格到了才知道。
+            out.append({"good": good.get("name", good_id), "map": buyer_map,
+                        "merchant": names.get(buyer_id, buyer_id),
+                        "merchant_id": buyer_id,
+                        "price": best,
+                        "seconds": seconds,
+                        "hops": travel.hops(current_map, buyer_map)
+                        if current_map else None})
+    out.sort(key=lambda r: (r["hops"] if r["hops"] is not None else 99,
+                            -(r["price"] or 0)))
     return out[:limit]
 
 

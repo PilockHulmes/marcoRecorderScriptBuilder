@@ -211,10 +211,12 @@ class RandomNeverDestinationTest(unittest.TestCase):
         # 否则随机商人的收购价会变成固定买家的报价/目的地。
         collided = {"m_near": "random_map", "m_mid": "mid_map", "m_far": "far_map"}
         with fake_data(maps=collided):
-            self.assertEqual(
-                advice.sell_plan(["cotton"], self.book, self.travel, now=BASE,
-                                 current_map="start_map"),
-                [])
+            plan = advice.sell_plan(["cotton"], self.book, self.travel, now=BASE,
+                                    current_map="start_map")
+        # 现在"没有已知收购价"也会给方向（谁收是确定的），所以列表不一定为空；
+        # 但目的地必须是固定商人，价格不能来自随机商人的记录。
+        self.assertTrue(all(item.get("merchant_id") for item in plan))
+        self.assertTrue(all(item.get("price") is None for item in plan))
 
     def test_all_plans_never_point_at_random_map(self):
         with fake_data():

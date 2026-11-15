@@ -277,8 +277,7 @@ class TradeSession:
                                                     now=now, current_map=self.state.map)
                             if held else [])
                     if sell:
-                        blocks = [[f"{item['good']} → {item['merchant']} "
-                                   f"距离 {item.get('hops', 0)} 张图"]
+                        blocks = [[_sell_line(item)]
                                   for item in sell[:advice_module.COLUMNS]]
                         total = len(sell)
                     else:
@@ -325,8 +324,7 @@ class TradeSession:
         lines = []
         for item in plan:
             hops = item.get("hops")
-            lines.append(f"{item['good']} → {item['merchant']} "
-                         f"@{item['price']}，距离 {hops} 张图")
+            lines.append(_sell_line(item))
         self.state.cargo = lines or (["（没有可信收购价，先去附近看看）"] if held else [])
         # 货舱建议也要显示在「当前建议」里（原来只写 cargo，界面看不到）
         blocks = [[line] for line in self.state.cargo] or []
