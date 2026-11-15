@@ -716,6 +716,102 @@ def apply_icon(root):
         pass
 
 
+class View:
+    """窗口与控件；``paint`` 只负责把 ``State`` 画出来。
+
+    单独抽出来是为了能在测试里"建控件 → 画一次 → 销毁"，不必进 mainloop。
+    """
+
+    def __init__(self, root):
+        import tkinter as tk
+
+        self.root = root
+        self.state = None
+
+        # 主区分左右：左边商人看板，右边建议列（整窗高）。
+        # 建议列在右侧，因为玩家主屏在看板右边，UI 右缘先进入视线。
+        main_frame = tk.Frame(root)
+        main_frame.pack(fill="both", expand=True)
+
+        board_column = tk.Frame(main_frame)
+        board_column.pack(side="left", fill="both", expand=True)
+        advice_column = tk.Frame(main_frame, width=ADVICE_COL_W)
+        advice_column.pack(side="right", fill="y")
+        advice_column.pack_propagate(False)
+
+        tk.Label(board_column, text="商人看板（货 + 倒计时）", anchor="w",
+                 font=("Microsoft YaHei", 10, "bold")).pack(fill="x")
+        board_frame = tk.Frame(board_column)
+        board_frame.pack(fill="both", expand=True, padx=4)
+
+        # 顶部通栏：当前地图 / 金币 / 负重 / 身上的货（诊断用，读不到就写 ×?）
+        self.header = tk.Label(root, text="当前建议", anchor="w",
+                               font=("Microsoft YaHei", 10, "bold"))
+        self.header.pack(fill="x", padx=4)
+
+        self.advice_box = tk.Text(advice_column, font=("Microsoft YaHei", 9),
+                                  wrap="none", height=ADVICE_ROWS, width=1)
+        self.advice_box.pack(fill="both", expand=True, padx=4)
+
+        self.canvas = tk.Canvas(board_frame, bg="white", highlightthickness=0, bd=0)
+        self.scrollbar = tk.Scrollbar(board_frame, orient="vertical",
+                                      command=self.canvas.yview)
+        self.canvas.configure(yscrollcommand=self.scrollbar.set)
+        self.canvas.pack(side="left", fill="both", expand=True)
+        self.scrollbar.pack(side="right", fill="y")
+
+        self.icons = IconCache(self.canvas)
+        self.canvas.bind("<MouseWheel>", self.on_wheel)
+        self.canvas.bind("<Configure>", self.on_resize)
+
+        self.status = tk.Label(root, text="", anchor="w",
+                               font=("Microsoft YaHei", 8), fg="#666")
+        self.status.pack(fill="x")
+
+    # ------------------------------------------------------------------
+    def on_wheel(self, event):
+        # 内容一屏放得下就不要滚：否则 scrollregion 只有一屏高，
+        # 滚动仍会把整块内容顶上去，看起来像"没滚动条却会动"。
+        top, bottom = self.canvas.yview()
+        if top <= 0.0 and bottom >= 1.0:
+            return
+        step = -1 if getattr(event, "delta", 0) > 0 else 1
+        self.canvas.yview_scroll(step * 2, "units")
+
+    def on_resize(self, event):
+        if self.state is not None:
+            draw_board(self.canvas, self.state.board, icons=self.icons,
+                       width=event.width)
+
+    def paint(self, state):
+        # 竖排：每组（同一商店/同一商品）之间空一行，空间足够就不折叠
+        blocks = list(state.blocks or [["（打开商人界面后显示）"]])
+        lines = []
+        for block in blocks:
+            if lines:
+                lines.append("")
+            lines.extend(block)
+        text = "\n".join(lines)
+        if self.advice_box.get("1.0", "end-1c") != text:
+            self.advice_box.delete("1.0", "end")
+            self.advice_box.insert("end", text)
+
+        content_h = draw_board(self.canvas, state.board, icons=self.icons,
+                               width=self.canvas.winfo_width())
+        try:
+            need = content_h > self.canvas.winfo_height() + 1
+            if need and not self.scrollbar.winfo_ismapped():
+                self.scrollbar.pack(side="right", fill="y")
+            elif not need and self.scrollbar.winfo_ismapped():
+                self.scrollbar.pack_forget()
+        except Exception:
+            pass
+
+        self.header.config(text=header_text(state))
+        self.status.config(text=state.note or "")
+        self.state = state
+
+
 def run_gui(interval=0.1):
     import tkinter as tk
 
@@ -725,88 +821,9 @@ def run_gui(interval=0.1):
     apply_icon(root)
     root.geometry(f"{WINDOW_W}x{WINDOW_H}")
 
-    # 主区分左右：左边商人看板，右边建议列（整窗高）。
-    # 建议列在右侧，因为玩家主屏在看板右边，UI 右缘先进入视线。
-    main_frame = tk.Frame(root)
-    main_frame.pack(fill="both", expand=True)
-
-    board_column = tk.Frame(main_frame)
-    board_column.pack(side="left", fill="both", expand=True)
-    advice_column = tk.Frame(main_frame, width=ADVICE_COL_W)
-    advice_column.pack(side="right", fill="y")
-    advice_column.pack_propagate(False)
-
-    tk.Label(board_column, text="商人看板（货 + 倒计时）", anchor="w",
-             font=("Microsoft YaHei", 10, "bold")).pack(fill="x")
-    board_frame = tk.Frame(board_column)
-    board_frame.pack(fill="both", expand=True, padx=4)
-
-    # 顶部通栏：当前地图 / 金币 / 负重 / 身上的货（诊断用，读不到就写 ×?）
-    header = tk.Label(root, text="当前建议", anchor="w",
-                      font=("Microsoft YaHei", 10, "bold"))
-    header.pack(fill="x", padx=4)
-    advice_box = tk.Text(advice_column, font=("Microsoft YaHei", 9), wrap="none",
-                         height=ADVICE_ROWS, width=1)
-    advice_box.pack(fill="both", expand=True, padx=4)
-    canvas = tk.Canvas(board_frame, bg="white", highlightthickness=0, bd=0)
-    scrollbar = tk.Scrollbar(board_frame, orient="vertical", command=canvas.yview)
-    canvas.configure(yscrollcommand=scrollbar.set)
-    canvas.pack(side="left", fill="both", expand=True)
-    scrollbar.pack(side="right", fill="y")
-
-    # 图标缓存由 paint 闭包长期持有；每张图只缩放一次
-    icons = IconCache(canvas)
-
-    def on_wheel(event):
-        # 内容一屏放得下就不要滚：否则 scrollregion 只有一屏高，
-        # 滚动仍会把整块内容顶上去，看起来像"没滚动条却会动"。
-        top, bottom = canvas.yview()
-        if top <= 0.0 and bottom >= 1.0:
-            return
-        step = -1 if getattr(event, "delta", 0) > 0 else 1
-        canvas.yview_scroll(step * 2, "units")
-
-    canvas.bind("<MouseWheel>", on_wheel)
-
-    status = tk.Label(root, text="", anchor="w", font=("Microsoft YaHei", 8), fg="#666")
-    status.pack(fill="x")
-
+    view = View(root)
     worker = _Worker(_grabber(), controller, interval=interval)
     painted = {"version": -1, "at": 0.0}
-    shown = {"state": None}
-
-    def paint(state):
-        # 竖排：每组（同一商店/同一商品）之间空一行，空间足够就不折叠
-        blocks = list(state.blocks or [["（打开商人界面后显示）"]])
-        lines = []
-        for block in blocks:
-            if lines:
-                lines.append("")
-            lines.extend(block)
-        text = "\n".join(lines)
-        if advice_box.get("1.0", "end-1c") != text:   # 内容没变就别重写，否则选中会被清掉
-            advice_box.delete("1.0", "end")
-            advice_box.insert("end", text)
-        content_h = draw_board(canvas, state.board, icons=icons,
-                               width=canvas.winfo_width())
-        # 只有内容真的超出视口才放出滚动条
-        try:
-            need = content_h > canvas.winfo_height() + 1
-            if need and not scrollbar.winfo_ismapped():
-                scrollbar.pack(side="right", fill="y")
-            elif not need and scrollbar.winfo_ismapped():
-                scrollbar.pack_forget()
-        except Exception:
-            pass
-        header.config(text=header_text(state))
-        status.config(text=state.note or "")
-        shown["state"] = state
-
-    def on_resize(event):
-        if shown["state"] is not None:
-            draw_board(canvas, shown["state"].board, icons=icons, width=event.width)
-
-    canvas.bind("<Configure>", on_resize)
 
     def tick():
         # 只用来看"该不该重画"（本进程内的节流），不参与倒计时/落盘。
@@ -814,7 +831,7 @@ def run_gui(interval=0.1):
         try:
             state = worker.latest()
         except Exception as exc:
-            status.config(text=f"读取失败：{exc}")
+            view.status.config(text=f"读取失败：{exc}")
             root.after(int(interval * 1000), tick)
             return
         if state is None:
@@ -822,13 +839,14 @@ def run_gui(interval=0.1):
             return
         # 数据变了立刻画；否则每 REPAINT_EVERY 秒重画一次，让倒计时走字
         if state.version != painted["version"] or now - painted["at"] >= REPAINT_EVERY:
-            paint(state)
+            view.paint(state)
             painted["version"] = state.version
             painted["at"] = now
         root.after(int(interval * 1000), tick)
 
     root.after(0, tick)
     root.mainloop()
+
 
 
 class _Worker:
