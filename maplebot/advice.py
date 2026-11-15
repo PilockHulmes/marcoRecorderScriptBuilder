@@ -444,25 +444,31 @@ def _folded(items):
     return [f"还有 {extra} 条…"] if extra else []
 
 
+COLUMNS = 2          # 建议框左右两列
+
+
+def fold_text(total, shown):
+    """还有几条没展开；没有就返回空串。"""
+    rest = total - shown
+    return f"還有 {rest} 條…" if rest > 0 else ""
+
+
 def format_suggestions(items):
-    """当前商店的建议：动作行 + 物品行 + 结果行，只有 top-1 展开。"""
+    """当前商店的建议：每条是 3 行的一段（第一行 / 買 / 到…賣）。"""
     if not items:
-        return ["（暂无值得跑的建议）"]
-    s = items[0]
-    sell_at = s.sell_at or s.sell_map or "?"
-    lines = [
-        f"在 {_place(s.buy_at, s.buy_map)}",
-        f"  買 {s.good} @{s.buy_price} × {s.units} 個",
-    ]
-    if s.price_known and s.sell_price is not None:
-        lines.append(f"  到 {sell_at} 賣 @{s.sell_price}，"
-                     f"{s.hops} 張圖，賺 {s.profit_total}")
-    else:
-        if s.sell_map and s.sell_map != sell_at:
-            lines.append(f"  到 {sell_at}（{s.sell_map}）賣，{s.hops} 張圖")
+        return [["（暫無值得跑的建議）"]]
+    blocks = []
+    for s in items[:COLUMNS]:
+        sell_at = s.sell_at or s.sell_map or "?"
+        block = [f"在 {_place(s.buy_at, s.buy_map)}",
+                 f"  買 {s.good} @{s.buy_price} × {s.units} 個"]
+        if s.price_known and s.sell_price is not None:
+            block.append(f"  到 {sell_at} 賣 @{s.sell_price}，"
+                         f"距离 {s.hops} 张图 赚 {s.profit_total}")
         else:
-            lines.append(f"  到 {sell_at} 賣，{s.hops} 張圖")
-    return lines + _folded(items)
+            block.append(f"  到 {sell_at} 賣，距离 {s.hops} 张图")
+        blocks.append(block)
+    return blocks
 
 
 def _clock(seconds):
@@ -472,36 +478,33 @@ def _clock(seconds):
 
 
 def format_buy_trips(items):
-    """别处有便宜货（专程去买）：动作行 + 物品行 + 结果行，只有 top-1 展开。"""
+    """专程去买：每条 3 行。"""
     if not items:
         return format_suggestions([])
-    item = items[0]
-    lines = [
-        f"去 {_place(item.get('merchant'), item.get('map', ''))}",
-        f"  買 {item['good']} @{item['price']}",
-        f"  {item.get('hops', 0)} 張圖，到了還剩 {_clock(item.get('left', 0))}",
-    ]
-    return lines + _folded(items)
+    blocks = []
+    for item in items[:COLUMNS]:
+        blocks.append([
+            f"去 {_place(item.get('merchant'), item.get('map', ''))}",
+            f"  買 {item['good']} @{item['price']}",
+            f"  距离 {item.get('hops', 0)} 张图，"
+            f"到了还剩 {_clock(item.get('left', 0))}",
+        ])
+    return blocks
 
 
 def format_explore(items):
-    """没有生意时「去看看」：动作行 + 距离行两行，只有 top-1 展开。"""
+    """去看看：每条 2 行。"""
     if not items:
         return format_suggestions([])
-    item = items[0]
-    hops = item.get("hops")
-    hops_text = "?" if hops is None else str(hops)
-    lines = [
-        f"去看看 {_place(item.get('merchant'), item.get('map', ''))}",
-        f"  {hops_text} 張圖",
-    ]
-    return lines + _folded(items)
+    blocks = []
+    for item in items[:COLUMNS]:
+        hops = item.get("hops")
+        blocks.append([
+            f"去看看 {_place(item.get('merchant'), item.get('map', ''))}",
+            f"  距离 {'?' if hops is None else hops} 张图",
+        ])
+    return blocks
 
-
-# ---------------------------------------------------------------------------
-# 随机商人：没有固定商人的地图上遇到的那种。玩家一离开地图他就消失，
-# 而且只有一种类型（只卖 或 只收），所以建议也分成两个完全独立的分支。
-# ---------------------------------------------------------------------------
 
 def _observed_buy_price(observations, ledger, merchant_id, map_name, good_id, at):
     """固定买家在 ``at`` 时刻仍然有效的收购价；没记录就返回 None。
@@ -627,35 +630,35 @@ def random_buy_plan(visit, held=()):
 
 
 def format_random_sell(items):
-    """随机商人（卖货型）：动作行 + 物品行 + 结果行，只有 top-1 展开。"""
+    """随机商人（卖货型）：每条 3 行。"""
     if not items:
         return format_suggestions([])
-    item = items[0]
-    tail = (f"賣 @{item['sell_price']}" if item.get("sell_price") else "賣")
-    from_map = item.get("from_map") or ""
-    where = f"在 隨機商人（{from_map}）" if from_map else "在 隨機商人"
-    lines = [
-        where,
-        f"  買 {item['good']} @{item['price']} × {item['units']} 個",
-        f"  到 {_place(item.get('merchant'), item.get('map', ''))} "
-        f"{tail}，{item.get('hops', 0)} 張圖",
-    ]
-    return lines + _folded(items)
+    blocks = []
+    for item in items[:COLUMNS]:
+        tail = (f"賣 @{item['sell_price']}" if item.get("sell_price") else "賣")
+        from_map = item.get("from_map") or ""
+        where = f"在 隨機商人（{from_map}）" if from_map else "在 隨機商人"
+        blocks.append([
+            where,
+            f"  買 {item['good']} @{item['price']} × {item['units']} 個",
+            f"  到 {item.get('merchant')} {tail}，距离 {item.get('hops', 0)} 张图",
+        ])
+    return blocks
 
 
 def format_random_buy(items):
-    """随机商人（收货型）：动作行 + 物品行 + 结果行，只有 top-1 展开。"""
+    """随机商人（收货型）：每条 2 行，不写「就地成交」。"""
     if not items:
-        return ["随机商人只收货，你身上没有他要的"]
-    item = items[0]
-    from_map = item.get("map") or ""
-    where = f"在 隨機商人（{from_map}）" if from_map else "在 隨機商人"
-    lines = [
-        where,
-        f"  賣 {item['good']} @{item['price']} × {item['units']} 個",
-        "  就地成交，不用跑圖",
-    ]
-    return lines + _folded(items)
+        return [["随机商人只收货，你身上没有他要的"]]
+    blocks = []
+    for item in items[:COLUMNS]:
+        from_map = item.get("map") or ""
+        where = f"在 隨機商人（{from_map}）" if from_map else "在 隨機商人"
+        blocks.append([
+            where,
+            f"  賣 {item['good']} @{item['price']} × {item['units']} 個",
+        ])
+    return blocks
 
 
 def random_advice(visit, ledger=None, travel=None, held=(), now=None, limit=2):

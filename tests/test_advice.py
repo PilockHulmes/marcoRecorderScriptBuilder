@@ -233,9 +233,9 @@ class BuyTripPlanTest(unittest.TestCase):
         item = {"merchant": "石鉄", "good": "桔梗", "price": 13,
                 "hops": 2, "left": 150.0}
         self.assertEqual(advice.format_buy_trips([item]),
-                         ["去 石鉄",
-                          "  買 桔梗 @13",
-                          "  2 張圖，到了還剩 2:30"])
+                         [["去 石鉄",
+                           "  買 桔梗 @13",
+                           "  距离 2 张图，到了还剩 2:30"]])
 
     def test_format_buy_trips_uses_map_and_folds_rest(self):
         items = [
@@ -244,11 +244,13 @@ class BuyTripPlanTest(unittest.TestCase):
             {"merchant": "藍明", "map": "豐饒的沙漠-2", "good": "桔梗",
              "price": 13, "hops": 3, "left": 90.0},
         ]
-        self.assertEqual(advice.format_buy_trips(items),
+        blocks = advice.format_buy_trips(items)
+        self.assertEqual(len(blocks), 2)          # 两列各一条
+        self.assertEqual(blocks[0],
                          ["去 石鉄（豐饒的沙漠-1）",
                           "  買 桔梗 @12",
-                          "  2 張圖，到了還剩 2:30",
-                          "还有 1 条…"])
+                          "  距离 2 张图，到了还剩 2:30"])
+        self.assertEqual(blocks[1][0], "去 藍明（豐饒的沙漠-2）")
 
 
 class FormatSuggestionsTest(unittest.TestCase):
@@ -267,9 +269,9 @@ class FormatSuggestionsTest(unittest.TestCase):
     def test_known_price_is_three_lines(self):
         self.assertEqual(
             advice.format_suggestions([self.suggestion()]),
-            ["在 石鉄（豐饒的沙漠-1）",
-             "  買 桔梗 @12 × 3 個",
-             "  到 羅森 賣 @22，2 張圖，賺 30"])
+            [["在 石鉄（豐饒的沙漠-1）",
+              "  買 桔梗 @12 × 3 個",
+              "  到 羅森 賣 @22，距离 2 张图 赚 30"]])
 
     def test_unknown_price_result_line_asks_to_check(self):
         item = self.suggestion(price_known=False, sell_price=None,
@@ -277,30 +279,33 @@ class FormatSuggestionsTest(unittest.TestCase):
                                sell_map="")
         self.assertEqual(
             advice.format_suggestions([item]),
-            ["在 石鉄（豐饒的沙漠-1）",
-             "  買 桔梗 @12 × 3 個",
-             "  到 豐饒的沙漠-3 賣，2 張圖"])
+            [["在 石鉄（豐饒的沙漠-1）",
+              "  買 桔梗 @12 × 3 個",
+              "  到 豐饒的沙漠-3 賣，距离 2 张图"]])
 
     def test_only_top_one_is_expanded(self):
         items = [self.suggestion(), self.suggestion(good="棉花"),
                  self.suggestion(good="蜂蜜")]
-        lines = advice.format_suggestions(items)
-        self.assertEqual(len(lines), 4)          # 3 行 + 折叠行 = 建议区高度
-        self.assertEqual(lines[-1], "还有 2 条…")
+        blocks = advice.format_suggestions(items)
+        self.assertEqual(len(blocks), 2)          # 两列各一条，折叠由界面负责
+        self.assertEqual(advice.fold_text(len(items), len(blocks)), "還有 1 條…")
 
     def test_fold_line_is_absent_for_single_item(self):
-        self.assertEqual(len(advice.format_suggestions([self.suggestion()])), 3)
+        blocks = advice.format_suggestions([self.suggestion()])
+        self.assertEqual(len(blocks), 1)
+        self.assertEqual(len(blocks[0]), 3)
 
     def test_no_items_is_one_placeholder_line(self):
-        self.assertEqual(advice.format_suggestions([]), ["（暂无值得跑的建议）"])
+        self.assertEqual(advice.format_suggestions([]), [["（暫無值得跑的建議）"]])
 
     def test_explore_is_action_plus_distance(self):
         items = [{"merchant": "瑪帕", "map": "B", "hops": 2},
                  {"merchant": "哲利", "map": "C", "hops": 3}]
-        self.assertEqual(advice.format_explore(items),
-                         ["去看看 瑪帕（B）", "  2 張圖", "还有 1 条…"])
+        blocks = advice.format_explore(items)
+        self.assertEqual(blocks[0], ["去看看 瑪帕（B）", "  距离 2 张图"])
+        self.assertEqual(len(blocks), 2)
         self.assertEqual(advice.format_explore(items[:1]),
-                         ["去看看 瑪帕（B）", "  2 張圖"])
+                         [["去看看 瑪帕（B）", "  距离 2 张图"]])
 
 
 class MerchantNamesTest(unittest.TestCase):

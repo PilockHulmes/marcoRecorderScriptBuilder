@@ -659,9 +659,14 @@ def run_gui(interval=0.1):
 
     tk.Label(root, text="当前建议", anchor="w", font=("Microsoft YaHei", 10, "bold")).pack(fill="x")
     # 8 行高度保持不变，宽度跟着窗口加宽
-    advice_box = tk.Text(root, height=ADVICE_ROWS, width=ADVICE_COLS,
-                         font=("Microsoft YaHei", 9))
-    advice_box.pack(fill="x", padx=4)
+    advice_frame = tk.Frame(root)
+    advice_frame.pack(fill="x", padx=4)
+    advice_boxes = []
+    for side in ("left", "right"):
+        box = tk.Text(advice_frame, height=ADVICE_ROWS, width=ADVICE_COLS // 2,
+                      font=("Microsoft YaHei", 9))
+        box.pack(side=side, fill="x", expand=True, padx=(0, 4) if side == "left" else 0)
+        advice_boxes.append(box)
 
     tk.Label(root, text="商人看板（货 + 倒计时）", anchor="w",
              font=("Microsoft YaHei", 10, "bold")).pack(fill="x")
@@ -690,10 +695,18 @@ def run_gui(interval=0.1):
     shown = {"state": None}
 
     def paint(state):
-        advice_text = "\n".join(state.advice) or "（打开商人界面后显示）"
-        if advice_box.get("1.0", "end-1c") != advice_text:   # 内容没变就别重写，否则选中会被清掉
-            advice_box.delete("1.0", "end")
-            advice_box.insert("end", advice_text)
+        # 两列：左列第一条建议，右列第二条；多余的在左列末行折成「還有 N 條…」
+        blocks = list(state.blocks or [["（打开商人界面后显示）"]])
+        columns = [[], []]
+        for index, block in enumerate(blocks[:2]):
+            columns[index] = list(block)
+        if len(blocks) > 2:
+            columns[0].append(advice_module.fold_text(len(blocks), 2))
+        for box, lines in zip(advice_boxes, columns):
+            text = "\n".join(lines)
+            if box.get("1.0", "end-1c") != text:   # 内容没变就别重写，否则选中会被清掉
+                box.delete("1.0", "end")
+                box.insert("end", text)
         draw_board(canvas, state.board, icons=icons, width=canvas.winfo_width())
         status.config(text=f"{state.map or '(未知地图)'}　{state.note}")
         shown["state"] = state

@@ -104,7 +104,7 @@ class ControllerTest(unittest.TestCase):
         self.assertEqual(state.advice,
                          ["去 石鉄",
                           "  買 桔梗 @13",
-                          "  2 張圖，到了還剩 2:30"])
+                          "  距离 2 张图，到了还剩 2:30"])
         explore.assert_not_called()
 
     def test_advice_falls_back_to_explore(self):
@@ -118,7 +118,7 @@ class ControllerTest(unittest.TestCase):
                                   return_value=[{"merchant": "瑪帕", "map": "B",
                                                  "hops": 2}]):
             state = self.controller.update(self.frame, now=1.0)
-        self.assertEqual(state.advice, ["去看看 瑪帕（B）", "  2 張圖"])
+        self.assertEqual(state.advice, ["去看看 瑪帕（B）", "  距离 2 张图"])
 
     def test_shop_throttled(self):
         visit = shop.Visit(map="A", merchant="石铁", kind="fixed", refresh_in=120,

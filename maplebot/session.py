@@ -36,6 +36,7 @@ LINE_ORDER = {"kobi": 0, "dour": 1, "ore": 2}
 class State:
     map: str = ""
     advice: list = field(default_factory=list)
+    blocks: list = field(default_factory=list)
     cargo: list = field(default_factory=list)
     board: list = field(default_factory=list)
     note: str = ""
@@ -250,31 +251,45 @@ class TradeSession:
             pass
         self.visit = visit
         self.shop_read = True
-        lines = []
+        blocks, total = [], 0
         try:
             if getattr(visit, "kind", "") == "random":
                 # 随机商人只有一种类型（只卖/只收），而且离开地图就消失：
                 # 只给「买了去固定商人卖」或「就地卖给他」，绝不建议回头找他。
-                lines = advice_module.random_advice(
+                blocks = advice_module.random_advice(
                     visit, self.ledger, self.travel, held=self.held, now=now)
+                total = len(blocks)
             else:
                 # 三级建议：当前商店有生意 -> 去别处买便宜货 -> 去未知/过期的商人看看
                 items = advice_module.suggest(visit, self.ledger, self.travel, now=now)
                 if items:
-                    lines = advice_module.format_suggestions(items)
+                    blocks = advice_module.format_suggestions(items)
+                    total = len(items)
                 else:
                     trips = advice_module.buy_trip_plan(self.ledger, self.travel,
                                                         now=now, current_map=self.state.map)
                     if trips:
-                        lines = advice_module.format_buy_trips(trips)
+                        blocks = advice_module.format_buy_trips(trips)
+                        total = len(trips)
                     else:
                         explore = advice_module.explore_plan(
                             self.ledger, self.travel, now=now,
                             current_map=self.state.map)
-                        lines = advice_module.format_explore(explore)
+                        blocks = advice_module.format_explore(explore)
+                        total = len(explore)
         except Exception as exc:
-            lines = [f"建议计算失败：{exc}"]
-        self.state.advice = lines
+            blocks, total = [[f"建议计算失败：{exc}"]], 1
+        self._apply_blocks(blocks, total)
+
+    def _apply_blocks(self, blocks, total):
+        """把「每条一段」的建议块写进 state：扁平文本给控制台，blocks 给 GUI 分列。"""
+        blocks = [b for b in blocks if b]
+        fold = advice_module.fold_text(total, len(blocks))
+        flat = [line for block in blocks for line in block]
+        if fold:
+            flat.append(fold)
+        self.state.blocks = blocks
+        self.state.advice = flat or ["（暫無值得跑的建議）"]
         self.state.version += 1
 
     def _read_cargo(self, frame, now):
@@ -293,9 +308,12 @@ class TradeSession:
         lines = []
         for item in plan:
             hops = item.get("hops")
-            lines.append(f"{item['good']} → {item['merchant']}({item['map']}) "
-                         f"@{item['price']}（{hops} 张图）")
+            lines.append(f"{item['good']} → {item['merchant']} "
+                         f"@{item['price']}，距离 {hops} 张图")
         self.state.cargo = lines or (["（没有可信收购价，先去附近看看）"] if held else [])
+        # 货舱建议也要显示在「当前建议」里（原来只写 cargo，界面看不到）
+        blocks = [[line] for line in self.state.cargo] or []
+        self._apply_blocks(blocks, len(blocks))
         self.held = list(held)
         self.cargo_read = True
         self.state.version += 1

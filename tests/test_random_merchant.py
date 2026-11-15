@@ -127,9 +127,9 @@ class RandomSellAdviceTest(unittest.TestCase):
             lines = advice.format_random_sell(items)
         self.assertEqual(
             lines,
-            ["在 隨機商人（random_map）",
-             "  買 棉花 @12 × 4 個",
-             "  到 近商（near_map） 賣 @22，1 張圖"])
+            [["在 隨機商人（random_map）",
+              "  買 棉花 @12 × 4 個",
+              "  到 近商 賣 @22，距离 1 张图"]])
 
     def test_format_without_buyer_price(self):
         items = self.plan([("silk", "sell", 15)])
@@ -137,16 +137,15 @@ class RandomSellAdviceTest(unittest.TestCase):
             lines = advice.format_random_sell(items)
         self.assertEqual(
             lines,
-            ["在 隨機商人（random_map）",
-             "  買 丝绸 @15 × 3 個",
-             "  到 中商（mid_map） 賣，2 張圖"])
+            [["在 隨機商人（random_map）",
+              "  買 丝绸 @15 × 3 個",
+              "  到 中商 賣，距离 2 张图"]])
 
     def test_format_folds_extra_candidates(self):
         items = self.plan([("silk", "sell", 15), ("cotton", "sell", 12)])
         with fake_data():
             lines = advice.format_random_sell(items)
-        self.assertEqual(len(lines), 4)
-        self.assertEqual(lines[-1], "还有 1 条…")
+        self.assertEqual(len(lines), 2)          # 两条各占一段，折叠由界面负责
 
     def test_no_candidate_is_not_a_recommendation(self):
         items = self.plan([("pork", "sell", 10)])
@@ -166,15 +165,14 @@ class RandomBuyAdviceTest(unittest.TestCase):
         self.assertEqual(items[0]["good"], "棉花")
         self.assertEqual(items[0]["units"], 3)
         self.assertEqual(lines,
-                         ["在 隨機商人（random_map）",
-                          "  賣 棉花 @22 × 3 個",
-                          "  就地成交，不用跑圖"])
+                         [["在 隨機商人（random_map）",
+                           "  賣 棉花 @22 × 3 個"]])
 
     def test_no_matching_held_goods(self):
         visit = make_visit([("cotton", "buy", 22)])
         with fake_data():
             lines = advice.format_random_buy(advice.random_buy_plan(visit, ["pork"]))
-        self.assertEqual(lines, ["随机商人只收货，你身上没有他要的"])
+        self.assertEqual(lines, [["随机商人只收货，你身上没有他要的"]])
 
     def test_sell_rows_take_priority_over_buy_rows(self):
         """真随机商人只有一种类型；万一读到两种，按卖货型处理，不臆测回头卖。"""
@@ -182,7 +180,8 @@ class RandomBuyAdviceTest(unittest.TestCase):
         travel = advice.MapTravel(graph=GRAPH, edge_times=[], per_hop=60)
         with tempfile.TemporaryDirectory() as tmp, fake_data():
             book = ledger.Ledger(Path(tmp) / "obs.jsonl")
-            lines = advice.random_advice(visit, book, travel, held=["silk"], now=BASE)
+            blocks = advice.random_advice(visit, book, travel, held=["silk"], now=BASE)
+            lines = [line for block in blocks for line in block]
         self.assertTrue(lines[0].startswith("在 隨機商人"))
         self.assertIn("買 ", lines[1])
 
@@ -259,14 +258,12 @@ class RandomMerchantSessionTest(unittest.TestCase):
         with mock.patch.object(advice, "suggest") as suggest:
             state = self._update(visit)
         suggest.assert_not_called()             # 不再走固定商人的三级建议
-        # top-1 展开三行 + 其余折叠成一行（建议区 4 行高）
-        self.assertEqual(len(state.advice), 4)
+        # 两列各一段，每段三行；两列都放得下，所以没有折叠行
+        self.assertEqual(len(state.blocks), 2)
         self.assertEqual(state.advice[0], "在 隨機商人（random_map）")
         self.assertIn("買 棉花 @12 × 4 個", state.advice[1])
-        self.assertIn("到 近商（near_map）", state.advice[2])
-        self.assertEqual(state.advice[3], "还有 1 条…")
-        self.assertNotIn("random_map", state.advice[2])
-        self.assertNotIn("random_map", " ".join(state.advice[2:]))
+        self.assertIn("到 近商 賣", state.advice[2])
+        self.assertNotIn("到 隨機商人", " ".join(state.advice))   # 随机商人不能是目的地
 
     def test_random_buy_with_matching_held_goods(self):
         self.session.held = ["cotton", "cotton", "cotton"]
@@ -274,8 +271,7 @@ class RandomMerchantSessionTest(unittest.TestCase):
         self.assertEqual(
             state.advice,
             ["在 隨機商人（random_map）",
-             "  賣 棉花 @22 × 3 個",
-             "  就地成交，不用跑圖"])
+             "  賣 棉花 @22 × 3 個"])
 
     def test_random_buy_without_matching_held_goods(self):
         self.session.held = ["pork"]
