@@ -46,7 +46,7 @@ NAME_TEXT_DIR = ROOT / "data" / "trade" / "map_name_text"
 BASELINE_PATH = ROOT / "data" / "trade" / "map_graph.json"
 EDGE_RAW_PATH = ROOT / "data" / "trade" / "edge_times_raw.jsonl"
 #: 单跳低于这个秒数基本是"连穿两张图"，不是真的走完一张图
-MIN_WALK_SEC = 2.0
+MIN_WALK_SEC = 1.0
 PORTAL_SHOP_PATH = ROOT / "data" / "trade" / "portal_shop_raw.jsonl"
 _CROP_NAMES = {}   # 裁剪像素哈希 -> 名字：同一画面不重复问视觉   # 固定裁剪尺寸：锚定小地图左上角，不随面板宽度变化
 NAMES_PATH = ROOT / "data" / "trade" / "map_names.json"
@@ -899,6 +899,20 @@ class MapWatcher:
         except Exception as exc:
             self._error(f"note_shop: {exc}")
 
+    def _is_bounce(self, event):
+        """这一跳是不是"进门就折返"：出发门和上一条的到达门是同一个。"""
+        try:
+            previous = self.events[-1] if self.events else None
+            if previous is None or previous.get("to_map") != event.get("from_map"):
+                return False
+            here, there = event.get("from_pos"), previous.get("to_pos")
+            if not here or not there:
+                return False
+            return (abs(here[0] - there[0]) <= 0.05
+                    and abs(here[1] - there[1]) <= 0.05)
+        except Exception:
+            return False
+
     def _record_time_sample(self, event, now):
         """记一条原始跑图耗时：上次到达这张图到现在（扣掉 loading）。
 
@@ -922,6 +936,9 @@ class MapWatcher:
             self._arrival_ts = now
             if not (MIN_WALK_SEC <= seconds <= 600.0):
                 return
+            if self._is_bounce(event):
+                return          # 从同一个门进去又立刻出来，没走图，别算
+
             import json as _json
 
             EDGE_RAW_PATH.parent.mkdir(parents=True, exist_ok=True)
