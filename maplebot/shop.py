@@ -197,13 +197,43 @@ CARGO_SHOP_ICON = 31
 CARGO_COUNT_SHOP = (896, 298, 46, 20)   # 行右侧的「N 個」
 
 
+# 货舱面板定位：标题模板找到后，图标原点相对它的偏移（实测）
+CARGO_HEADER_DX = -214
+CARGO_HEADER_DY = 117
+
+
+def _cargo_origin(frame):
+    """用货舱标题定位面板，返回图标原点（整窗坐标）；定位不到返回 None。
+
+    这样"商店右侧的货舱"和"单独打开的货舱"不用各写一套坐标——
+    面板挪到哪儿，原点就跟到哪儿。
+    """
+    try:
+        template = cv2.imdecode(np.fromfile(str(trade.CARGO_HEADER_PATH), dtype=np.uint8),
+                                cv2.IMREAD_COLOR)
+        if template is None:
+            return None
+        result = cv2.matchTemplate(frame, template, cv2.TM_CCOEFF_NORMED)
+        _, score, _, loc = cv2.minMaxLoc(result)
+        if score < 0.90:
+            return None
+        return (loc[0] + CARGO_HEADER_DX, loc[1] + CARGO_HEADER_DY)
+    except Exception:
+        return None
+
+
 def read_cargo_items(frame, templates=None, profile="only", with_counts=False):
     """读身上带着哪些货；只认商品，不读价格（最近購買金額不能当成本）。
 
     ``profile``：``only`` = 只开货舱（居中）；``shop`` = 商店开着时右侧的货舱面板。
     """
     templates = templates if templates is not None else load_icon_templates()
-    if profile == "shop":
+    origin = _cargo_origin(frame)
+    if origin is not None:
+        # 面板位置靠标题定位，行距/图标尺寸用商店那套（两种布局一致）
+        start_x, start_y = origin
+        row_h, rows, icon = CARGO_SHOP_ROW_H, CARGO_SHOP_ROWS, CARGO_SHOP_ICON
+    elif profile == "shop":
         start_x, start_y = CARGO_SHOP_ICON_X, CARGO_SHOP_ICON_Y
         row_h, rows, icon = CARGO_SHOP_ROW_H, CARGO_SHOP_ROWS, CARGO_SHOP_ICON
     else:
@@ -218,36 +248,39 @@ def read_cargo_items(frame, templates=None, profile="only", with_counts=False):
             continue
         good_id, score = match_icon_half(patch, templates)
         if good_id and score >= 0.80:
-            count = read_cargo_count(frame, profile=profile, index=index)
+            count = read_cargo_count(frame, origin=(start_x, start_y),
+                                     icon=icon, row_h=row_h, index=index)
             found.append((good_id, count) if with_counts else good_id)
     return found
 
 
-def read_cargo_count(frame, profile="shop", index=0):
+def read_cargo_count(frame, origin=None, icon=None, row_h=None, index=0):
     """读货舱第 index 行的数量（"135 個"）。
 
-    先扫整行、取「個」前面那个数字（位数多也不会被截断），
-    读不到再用原来的窄框（小数量的字形在窄框里更清楚）。
+    数量永远在最右边，所以优先只裁"右半段"再 OCR（只有数字，没有名字干扰）；
+    读不到再退回窄框。这样 3 位数不会被截成 2 位。
     """
-    if profile != "shop":
-        return None            # 只开货舱那套的坐标还没单独标定
+    if origin is None:
+        return None
+    start_x, start_y = origin
+    icon = icon or CARGO_SHOP_ICON
+    row_h = row_h or CARGO_SHOP_ROW_H
+    y = start_y + index * row_h - 4
 
-    x = CARGO_SHOP_ICON_X + CARGO_SHOP_ICON + 6
-    y = CARGO_SHOP_ICON_Y + index * CARGO_SHOP_ROW_H - 4
-    try:
-        band = trade.crop_box(frame, x, y, 260, CARGO_SHOP_ICON + 8)
-    except Exception:
-        band = None
-    for mode in ("light", "raw"):
-        if band is None or band.size == 0:
-            break
-        hits = re.findall(r"(\d+)\s*[個个]", trade._ocr_text(band, mode=mode) or "")
-        if hits:
-            return int(hits[-1])
+    # 1) 右半段（只含数量）
+    for dx, width in ((180, 120), (150, 150)):
+        try:
+            band = trade.crop_box(frame, start_x + dx, y, width, icon + 8)
+        except Exception:
+            continue
+        for mode in ("light", "raw"):
+            runs = re.findall(r"\d+", trade._ocr_text(band, mode=mode) or "")
+            if runs:
+                return int(max(runs, key=len))
 
-    bx, by, bw, bh = CARGO_COUNT_SHOP
+    # 2) 窄框兜底（数量少时字形更清楚）
     try:
-        crop = trade.crop_box(frame, bx, by + index * CARGO_SHOP_ROW_H, bw, bh)
+        crop = trade.crop_box(frame, start_x + 211, y + 13, 46, 20)
     except Exception:
         return None
     text = trade._ocr_text(crop, mode="light") or ""
