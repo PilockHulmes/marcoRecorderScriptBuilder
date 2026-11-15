@@ -293,53 +293,69 @@ class TradeSession:
         self.shop_read = True
         self.stats = {"coins": visit.coins, "weight": visit.weight,
                       "capacity": visit.capacity or 135}
+        self._advise(now, visit, frame=frame)
+
+    def _refresh_idle(self, now):
+        """没有商店界面时也走同一套建议逻辑，只是没有当前商店的报价。"""
+        if not self.state.map:
+            return
+        self._advise(now, keep_if_empty=True)
+
+    def _advise(self, now, visit=None, frame=None, keep_if_empty=False):
+        """购物建议只有一套：当前商店 → 卖身上的货 → 去买 → 去看看。
+
+        ``visit`` 只是"现在有没有商店报价"这个输入，不是另一套逻辑；
+        ``frame`` 只在需要临时读货舱时用（商店开着、买不了的情况）。
+        """
         blocks, total = [], 0
         try:
-            if getattr(visit, "kind", "") == "random":
-                # 随机商人只有一种类型（只卖/只收），而且离开地图就消失：
+            if visit is not None and getattr(visit, "kind", "") == "random":
+                # 随机商人只有一种类型（只卖/只收），离开地图就消失：
                 # 只给「买了去固定商人卖」或「就地卖给他」，绝不建议回头找他。
                 blocks = advice_module.random_advice(
                     visit, self.ledger, self.travel, held=self.held, now=now)
                 total = len(blocks)
             else:
-                # 三级建议：当前商店有生意 -> 去别处买便宜货 -> 去未知/过期的商人看看
-                items = advice_module.suggest(visit, self.ledger, self.travel, now=now)
+                items = (advice_module.suggest(visit, self.ledger, self.travel, now=now)
+                         if visit is not None else [])
                 if items:
                     blocks = advice_module.format_suggestions(items)
                     total = len(items)
-                else:
-                    # 买不起 / 没有可买的：改看"我身上的货该卖给谁"。
-                    # 商店开着时货舱面板在右边，用 shop 位置读。
-                    held = []
+                if not blocks and frame is not None:
+                    # 商店开着但没得买：读右边货舱，看看身上的货该卖给谁
                     try:
                         held_items = shop.read_cargo_items(
                             frame, profile="shop", with_counts=True)
                     except Exception:
                         held_items = []
                     self.held_items = _as_items(held_items)
+                    self.held = [good_id for good_id, _c in self.held_items]
+                if not blocks and self.held_items:
                     held = [good_id for good_id, _c in self.held_items]
-                    sell = (advice_module.sell_plan(held, self.ledger, self.travel,
-                                                    now=now, current_map=self.state.map)
-                            if held else [])
+                    sell = advice_module.sell_plan(held, self.ledger, self.travel,
+                                                   now=now, current_map=self.state.map)
                     if sell:
                         blocks = [[_sell_line(item)]
                                   for item in sell[:advice_module.COLUMNS]]
                         total = len(sell)
-                    else:
-                        trips = advice_module.buy_trip_plan(
-                            self.ledger, self.travel, now=now,
-                            current_map=self.state.map)
-                        if trips:
-                            blocks = advice_module.format_buy_trips(trips)
-                            total = len(trips)
-                        else:
-                            explore = advice_module.explore_plan(
-                                self.ledger, self.travel, now=now,
-                                current_map=self.state.map)
-                            blocks = advice_module.format_explore(explore)
-                            total = len(explore)
+                if not blocks:
+                    trips = advice_module.buy_trip_plan(
+                        self.ledger, self.travel, now=now,
+                        current_map=self.state.map)
+                    if trips:
+                        blocks = advice_module.format_buy_trips(trips)
+                        total = len(trips)
+                if not blocks:
+                    explore = advice_module.explore_plan(
+                        self.ledger, self.travel, now=now,
+                        current_map=self.state.map)
+                    if explore or not keep_if_empty:
+                        blocks = advice_module.format_explore(explore)
+                        total = len(explore)
         except Exception as exc:
             blocks, total = [[f"建议计算失败：{exc}"]], 1
+        if not blocks:
+            return
         if logger.isEnabledFor(logging.DEBUG):
             logger.debug("[建议] map=%s coins=%s weight=%s/%s blocks=%s",
                          self.state.map, self.stats.get("coins"),
@@ -347,29 +363,6 @@ class TradeSession:
                          len(blocks))
         self._apply_blocks(blocks, total)
 
-    def _refresh_idle(self, now):
-        """没有界面打开时的建议：有货就说卖给谁，没货就去附近商人看看。"""
-        if not self.state.map:
-            return                       # 地图名还没读出来，不猜
-        if self.held_items:
-            held = [good_id for good_id, _c in self.held_items]
-            try:
-                sell = advice_module.sell_plan(held, self.ledger, self.travel,
-                                               now=now, current_map=self.state.map)
-            except Exception:
-                sell = []
-            if sell:
-                blocks = [[_sell_line(item)] for item in sell[:advice_module.COLUMNS]]
-                self._apply_blocks(blocks, len(sell))
-                return
-        try:
-            explore = advice_module.explore_plan(self.ledger, self.travel, now=now,
-                                                 current_map=self.state.map)
-        except Exception:
-            explore = []
-        if not explore:
-            return                      # 没有可去的商人就别刷占位文字
-        self._apply_blocks(advice_module.format_explore(explore), len(explore))
 
     def _apply_blocks(self, blocks, total):
         """把「每条一段」的建议块写进 state：扁平文本给控制台，blocks 给 GUI 分列。"""
