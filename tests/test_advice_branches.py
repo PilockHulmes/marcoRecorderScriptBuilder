@@ -61,14 +61,18 @@ class AdviceBranchTest(unittest.TestCase):
 
     def test_branch_sell_held_goods(self):
         """有货、有买家：必须走卖货分支（这条以前完全没被覆盖）。"""
-        plan = [{"good": "矿石碎片", "merchant": "寇比", "price": None, "hops": 4}]
+        plan = [{"good": "矿石碎片", "merchant": "寇比",
+                 "map": "通往古代遺跡的路", "price": None, "hops": 4}]
         state = self._run(suggest=[], held=["ore_shard"], sell=plan)
-        self.assertEqual(state.advice, ["矿石碎片 → 寇比，距离 4 张图"])
+        self.assertEqual(state.advice,
+                         ["矿石碎片 → 寇比（通往古代遺跡的路），距离 4 张图"])
 
     def test_branch_sell_with_known_price(self):
-        plan = [{"good": "矿石碎片", "merchant": "寇比", "price": 22, "hops": 4}]
+        plan = [{"good": "矿石碎片", "merchant": "寇比",
+                 "map": "通往古代遺跡的路", "price": 22, "hops": 4}]
         state = self._run(suggest=[], held=["ore_shard"], sell=plan)
-        self.assertEqual(state.advice, ["矿石碎片 → 寇比 @22，距离 4 张图"])
+        self.assertEqual(state.advice,
+                         ["矿石碎片 → 寇比（通往古代遺跡的路） @22，距离 4 张图"])
 
     def test_branch_buy_trip(self):
         trips = [{"merchant": "石鉄", "map": "豐饒的沙漠-1", "good": "桔梗",

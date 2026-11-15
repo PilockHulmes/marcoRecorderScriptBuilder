@@ -142,10 +142,12 @@ def _fixed_merchant_entries(maps):
 
 
 def _sell_line(item):
-    """卖货建议的一行：有已知收购价就带上，没有就只说去哪。"""
+    """卖货建议的一行：去哪（带地图）、有没有已知价、多远。"""
     price = item.get("price")
     hops = item.get("hops")
-    text = f"{item['good']} → {item['merchant']}"
+    map_name = item.get("map") or ""
+    where = f"{item['merchant']}（{map_name}）" if map_name else f"{item['merchant']}"
+    text = f"{item['good']} → {where}"
     if price:
         text += f" @{price}"
     text += f"，距离 {'?' if hops is None else hops} 张图"
