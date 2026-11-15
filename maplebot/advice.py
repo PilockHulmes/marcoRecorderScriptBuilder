@@ -100,6 +100,13 @@ class MapTravel:
                     continue
                 if seconds < MIN_SAMPLE_SEC:
                     continue        # 1 秒走完一张图＝连穿两图，不是真的走
+                from_portal = item.get("from_portal")
+                to_portal = item.get("to_portal")
+                if not (from_portal and to_portal):
+                    continue        # 缺门坐标：无法确认有没有真的走图
+                if (abs(from_portal[0] - to_portal[0]) <= 0.05
+                        and abs(from_portal[1] - to_portal[1]) <= 0.05):
+                    continue        # 同一个门进、同一个门出：没走图
                 buckets[(item["from"], item["to"])].append(seconds)
                 from_portal = item.get("from_portal")
                 to_portal = item.get("to_portal")
@@ -269,7 +276,7 @@ def _price_limit(good):
         return TIER1_MAX
     if tier == "tier2":
         return TIER2_MAX
-    return VOLATILE_MAX
+    return None            # 波动货没有"无脑买"：只能靠已知买卖差价
 
 
 def _fixed_observation(observation):
@@ -327,8 +334,8 @@ def suggest(visit, ledger=None, travel=None, now=None, remaining=None, limit=5):
             if units <= 0:
                 continue
             hops = travel.hops(visit.map, buyer_map) or 0
-            threshold = TIER1_MAX if good.get("tier") == "tier1" else TIER2_MAX
-            cheap = row.price <= threshold
+            price_cap = _price_limit(good)
+            cheap = price_cap is not None and row.price <= price_cap
 
             if best:
                 profit = best - row.price
@@ -426,6 +433,32 @@ def buy_trip_plan(ledger=None, travel=None, now=None, current_map="",
     goods = _goods()
     names = _merchant_names()
 
+    # 先收集"谁的收购价还valid"，用来判断跑一趟能不能赚
+    best_buy = {}
+    for observation in ledger.load():
+        if not _fixed_observation(observation):
+            continue
+        expiry = ledger.valid_until(observation)
+        if expiry <= now:
+            continue
+        for row in observation.get("rows", []) or []:
+            if row.get("side") != "buy":
+                continue
+            price = int(row.get("price", 0) or 0)
+            good_id = row.get("good_id", "")
+            if price <= 0 or not good_id:
+                continue
+            previous = best_buy.get(good_id)
+            if previous is None or price > previous["price"]:
+                best_buy[good_id] = {
+                    "price": price,
+                    "merchant": (names.get(observation.get("merchant_id"))
+                                 or observation.get("merchant")
+                                 or observation.get("map", "")),
+                    "map": observation.get("map", ""),
+                    "until": expiry,
+                }
+
     best = {}
     for observation in ledger.load():
         if not _fixed_observation(observation):
@@ -457,7 +490,13 @@ def buy_trip_plan(ledger=None, travel=None, now=None, current_map="",
             if price <= 0 or not good_id:
                 continue
             good = goods.get(good_id, {})
-            if price > _price_limit(good):
+            price_cap = _price_limit(good)
+            buyer = best_buy.get(good_id)
+            # 能赚才推荐：收购价必须高于这里的卖价，而且到达时还没刷新
+            arbitrage = (buyer is not None and buyer["price"] > price
+                         and buyer["until"] > arrival)
+            cheap = price_cap is not None and price <= price_cap
+            if not cheap and not arbitrage:
                 continue
             if coins is not None and ledger_module.max_units(
                     price, coins, weight or 0, capacity or 135) <= 0:
@@ -472,6 +511,10 @@ def buy_trip_plan(ledger=None, travel=None, now=None, current_map="",
                 "hops": hops,
                 "seconds": round(seconds, 1),
                 "left": round(left, 1),
+                "sell_price": buyer["price"] if arbitrage else None,
+                "sell_at": buyer["merchant"] if arbitrage else "",
+                "sell_map": buyer["map"] if arbitrage else "",
+                "profit": (buyer["price"] - price) if arbitrage else 0,
             }
             # 同一商人同一件货可能有多条仍然有效的观察：留最便宜的；
             # 同价留到得最晚的（窗口更宽）。
@@ -632,8 +675,12 @@ def format_buy_trips(items):
                 tail = f"　到了还剩 {_clock(left)}"
             else:
                 tail = ""
-            block.append(f"  買 {item['good']} @{item['price']} "
-                         f"距离 {item.get('hops', 0)} 张图{tail}")
+            line = (f"  買 {item['good']} @{item['price']} "
+                    f"距离 {item.get('hops', 0)} 张图")
+            if item.get("sell_price"):
+                line += (f"　→ 賣 {item['sell_at']} @{item['sell_price']}"
+                         f" 赚 {item['profit']}")
+            block.append(line + tail)
         blocks.append(block)
     return blocks
 

@@ -311,7 +311,7 @@
     {
       "id": "emerald_shard",
       "name": "祖母绿碎片",
-      "tier": "tier1",
+      "tier": "tier2",
       "seller": "ore_5",
       "buyers": [
         "ore_7",
@@ -359,7 +359,7 @@
     {
       "id": "diamond_shard",
       "name": "钻石碎片",
-      "tier": "tier1",
+      "tier": "tier2",
       "seller": "ore_7",
       "buyers": [
         "ore_4",
@@ -383,7 +383,7 @@
     {
       "id": "shining_steel_shard",
       "name": "闪耀的钢铁碎片",
-      "tier": "tier2",
+      "tier": "tier1",
       "seller": "ore_5",
       "buyers": [
         "dour_7",
@@ -527,7 +527,7 @@
     {
       "id": "gold_ore",
       "name": "金原石",
-      "tier": "tier2",
+      "tier": "tier1",
       "seller": "ore_7",
       "buyers": [
         "kobi_4",
@@ -539,7 +539,7 @@
     {
       "id": "citrine_shard",
       "name": "黄晶碎片",
-      "tier": "tier1",
+      "tier": "tier2",
       "seller": "ore_4",
       "buyers": [
         "ore_6",
@@ -599,7 +599,7 @@
     {
       "id": "steel_shard",
       "name": "钢铁碎片",
-      "tier": "tier2",
+      "tier": "tier1",
       "seller": "ore_4",
       "buyers": [
         "kobi_6",

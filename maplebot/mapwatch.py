@@ -940,6 +940,8 @@ class MapWatcher:
                 return
             if self._is_bounce(event):
                 return          # 从同一个门进去又立刻出来，没走图，别算
+            if not (event.get("from_pos") and event.get("to_pos")):
+                return          # 没有门坐标的样本没法验证，不收
 
             import json as _json
 

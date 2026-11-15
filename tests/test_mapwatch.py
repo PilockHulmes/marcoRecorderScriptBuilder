@@ -610,7 +610,7 @@ class ShopDwellTest(unittest.TestCase):
             watcher.note_shop(110.0, True)      # 开商店
             watcher.note_shop(130.0, False)     # 关：逛了 20 秒
             event = {"from_map": "A", "to_map": "B", "load_ms": 0,
-                     "from_pos": None, "to_pos": None}
+                     "from_pos": [0.1, 0.2], "to_pos": [0.8, 0.9]}
             watcher._record_time_sample(event, now=140.0)
         finally:
             mapwatch.EDGE_RAW_PATH = orig

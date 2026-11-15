@@ -60,8 +60,10 @@ class TravelTest(unittest.TestCase):
         from pathlib import Path
         with tempfile.TemporaryDirectory() as tmp:
             raw = Path(tmp) / "raw.jsonl"
-            rows = ([{"from": "A", "to": "B", "seconds": 10.0}] * 3
-                    + [{"from": "B", "to": "A", "seconds": 90.0}] * 3)
+            rows = ([{"from": "A", "to": "B", "seconds": 10.0,
+                      "from_portal": [0.1, 0.1], "to_portal": [0.9, 0.9]}] * 3
+                    + [{"from": "B", "to": "A", "seconds": 90.0,
+                        "from_portal": [0.9, 0.9], "to_portal": [0.1, 0.1]}] * 3)
             raw.write_text("\n".join(json.dumps(row) for row in rows),
                            encoding="utf-8")
             with mock.patch.object(advice, "EDGE_RAW_PATH", raw):
@@ -172,12 +174,29 @@ class BuyTripPlanTest(unittest.TestCase):
                           self.plan(now=BASE, current_map="here")},
                          {"balloon_flower", "cotton"})
 
-    def test_volatile_cap(self):
-        self.record("one", "kobi_1", [("potion", "sell", 300),
-                                      ("balloon_flower", "sell", 301)],
+    def test_volatile_is_never_a_blind_buy(self):
+        """波动货没有"无脑买"：价格再便宜，没人收也不推荐。"""
+        self.record("one", "kobi_1", [("potion", "sell", 100)],
                     refresh=600)
+        self.assertEqual(self.plan(now=BASE, current_map="here"), [])
+
+    def test_volatile_is_kept_when_someone_pays_more(self):
+        """有人出更高价 -> 波动货也可以跑一趟，并把买卖价写出来。"""
+        self.record("one", "kobi_1", [("potion", "sell", 100)], refresh=600)
+        self.record("far", "kobi_3", [("potion", "buy", 150)], refresh=600)
         items = self.plan(now=BASE, current_map="here")
         self.assertEqual([item["good_id"] for item in items], ["potion"])
+        self.assertEqual(items[0]["sell_price"], 150)
+        self.assertEqual(items[0]["profit"], 50)
+
+    def test_above_threshold_is_kept_when_profitable(self):
+        """高于档位阈值但有确定的买卖差价 -> 也要推荐。"""
+        self.record("one", "kobi_1", [("cotton", "sell", 47)], refresh=600)
+        self.record("far", "kobi_3", [("cotton", "buy", 66)], refresh=600)
+        items = self.plan(now=BASE, current_map="here")
+        self.assertEqual([item["good_id"] for item in items], ["cotton"])
+        self.assertEqual(items[0]["sell_price"], 66)
+        self.assertEqual(items[0]["profit"], 19)
 
     def test_quotes_on_current_map_are_excluded(self):
         self.record("here", "kobi_1", [("balloon_flower", "sell", 10)])

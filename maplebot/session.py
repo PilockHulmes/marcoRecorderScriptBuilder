@@ -123,23 +123,26 @@ def _row_merge_key(row, index):
     return ("raw", index)
 
 
-def _merge_merchant_observations(observations, now, valid_until):
-    """把同一个商人的多条观察合并成一份 (until, rows)。
+def _merge_merchant_observations(observations, now=0.0, valid_until=None):
+    """把同一商人的多次观察合成一条。
 
-    一次滚动只看得见当时那几行，所以每条观察都是**部分**数据；只取最新一条
-    会把之前的行丢掉（先看到"卖"、往下滚看到"收"，卖价就变成「—」）。
+    规则：
 
-    - 过期的观察整条丢掉，不贡献任何行；
-    - 未过期的观察按 ``t`` 从旧到新合并，``(good_id, side)`` 相同就取 ``t`` 更大的价格；
-    - ``until`` 取该商人所有观察里最大的 ``valid_until``：同一个商人的刷新
-      倒计时相同，所以它就是最新那条有效观察的 until；并且只要有一条没过期
-      就 ``until > now``，全都过期才 ``until <= now``（界面显示「已過期」）。
+    - 过期的观察整条丢掉；
+    - 同一个"刷新周期"（``valid_until`` 相同）内的多次观察要合并——
+      商店列表超过一屏时会滚动读取，一次只看到一部分，必须拼起来；
+    - 跨周期只认最新那个周期：新周期一到，旧周期里有、新周期里没有的商品立即消失
+      （否则看板会出现商店里根本不卖的货）。
+
+    ``until`` 取该商人所有观察里最大的 ``valid_until``（界面显示倒计时）。
     """
+    valid_until = valid_until or (lambda item: float(item.get("t", 0))
+                                  + float(item.get("refresh_in", 0)))
     until = 0.0
-    merged = {}
-    ordered = sorted((item for item in observations if isinstance(item, dict)),
-                     key=_observed_at)
-    for observation in ordered:
+    cycles = {}
+    for observation in observations:
+        if not isinstance(observation, dict):
+            continue
         try:
             expiry = float(valid_until(observation))
         except Exception:
@@ -147,13 +150,29 @@ def _merge_merchant_observations(observations, now, valid_until):
         until = max(until, expiry)
         if expiry <= now:
             continue                       # 过期的整条丢掉
+        cycles.setdefault(expiry, []).append(observation)
+    if not cycles:
+        return until, []
+    # 按到期时间聚成"周期"：相差 15 秒以内算同一轮（读数误差）
+    CYCLE_TOL = 15.0
+    ordered = sorted(cycles)
+    clusters = [[ordered[0]]]
+    for expiry in ordered[1:]:
+        if expiry - clusters[-1][-1] <= CYCLE_TOL:
+            clusters[-1].append(expiry)
+        else:
+            clusters.append([expiry])
+    newest_key = clusters[-1]              # 周期越晚越新
+    merged = {}
+    newest_observations = [obs for expiry in newest_key for obs in cycles[expiry]]
+    for observation in sorted(newest_observations, key=_observed_at):
         observed_at = _observed_at(observation)
         for index, row in enumerate(observation.get("rows", []) or []):
             if not isinstance(row, dict):
                 continue
             key = _row_merge_key(row, index)
             previous = merged.get(key)
-            if previous is None or observed_at > previous[0]:
+            if previous is None or observed_at >= previous[0]:
                 merged[key] = (observed_at, dict(row))
     return until, [row for _, row in merged.values()]
 
