@@ -252,6 +252,11 @@ class TradeSession:
             self._refresh_idle(now)          # 过图后距离全变了，重算一次
 
         opened = self._shop_open(frame)
+        try:
+            # 告诉观察器"商店开着没有"：它要扣掉逛店时间，并记"门→商人"样本
+            self.watcher.note_shop(clock, opened)
+        except Exception:
+            pass
         if opened:
             if not self._open or clock - self._shop_at >= self.shop_every:
                 self._read_shop(frame, now)

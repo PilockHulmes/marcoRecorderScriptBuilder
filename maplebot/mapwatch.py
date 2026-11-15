@@ -45,6 +45,7 @@ NAME_TEXT_BOX = (38, 20, 162, 21)
 NAME_TEXT_DIR = ROOT / "data" / "trade" / "map_name_text"
 BASELINE_PATH = ROOT / "data" / "trade" / "map_graph.json"
 EDGE_RAW_PATH = ROOT / "data" / "trade" / "edge_times_raw.jsonl"
+PORTAL_SHOP_PATH = ROOT / "data" / "trade" / "portal_shop_raw.jsonl"
 _CROP_NAMES = {}   # 裁剪像素哈希 -> 名字：同一画面不重复问视觉   # 固定裁剪尺寸：锚定小地图左上角，不随面板宽度变化
 NAMES_PATH = ROOT / "data" / "trade" / "map_names.json"
 
@@ -460,6 +461,9 @@ class MapWatcher:
         self._last_map = None
         self._arrival_ts = None
         self._first_frame_ts = None
+        self._shop_opened_at = None      # 当前这次开商店的时刻
+        self._shop_dwell = 0.0           # 本张图里逛商店累计秒数
+        self._first_shop_done = False    # 本张图是否已经记过"门→商人"样本
         self.names_cache = self.names()
         self.portal_points = {}    # map_id -> [{"key", "x", "y", "n"}]：稳定簇
         self.map_sizes = {}        # map_id -> (w, h)：像素半径聚类用
@@ -862,6 +866,37 @@ class MapWatcher:
             self._alarm("blank_name",
                         f"已连续 {now - self._blank_since:.1f} 秒解析不出地图名", now)
 
+    def note_shop(self, now, opened):
+        """会话每帧告诉这里"商店界面开着没有"。
+
+        两件事：
+
+        1. 累计逛商店的时间，过图时从样本里扣掉——否则"边走边逛"会被算成走路慢；
+        2. 本图第一次开商店时，记一条"落地门 → 商人"的样本（门到门的最后一段）。
+        """
+        try:
+            if opened:
+                if self._shop_opened_at is None:
+                    self._shop_opened_at = now
+                    if not self._first_shop_done and self._arrival_ts is not None:
+                        latency = now - self._arrival_ts
+                        if 0.5 <= latency <= 300.0:
+                            import json as _json
+                            PORTAL_SHOP_PATH.parent.mkdir(parents=True, exist_ok=True)
+                            with PORTAL_SHOP_PATH.open("a", encoding="utf-8") as handle:
+                                handle.write(_json.dumps({
+                                    "map": getattr(getattr(self, "last_map_obs", None),
+                                                   "map_id", ""),
+                                    "seconds": round(latency, 2),
+                                    "t": time.strftime("%Y-%m-%dT%H:%M:%S"),
+                                }, ensure_ascii=False) + "\n")
+                        self._first_shop_done = True
+            elif self._shop_opened_at is not None:
+                self._shop_dwell += max(0.0, now - self._shop_opened_at)
+                self._shop_opened_at = None
+        except Exception as exc:
+            self._error(f"note_shop: {exc}")
+
     def _record_time_sample(self, event, now):
         """记一条原始跑图耗时：上次到达这张图到现在（扣掉 loading）。
 
@@ -875,7 +910,13 @@ class MapWatcher:
             if self._arrival_ts is None:
                 self._arrival_ts = now
                 return
-            seconds = now - self._arrival_ts - (event.get("load_ms") or 0) / 1000.0
+            if self._shop_opened_at is not None:      # 过图时商店还开着：先结账
+                self._shop_dwell += max(0.0, now - self._shop_opened_at)
+                self._shop_opened_at = None
+            seconds = (now - self._arrival_ts - self._shop_dwell
+                       - (event.get("load_ms") or 0) / 1000.0)
+            self._shop_dwell = 0.0
+            self._first_shop_done = False
             self._arrival_ts = now
             if not (1.0 <= seconds <= 600.0):
                 return

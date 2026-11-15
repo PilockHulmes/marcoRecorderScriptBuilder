@@ -594,3 +594,36 @@ class ToleranceTest(MapWatchTestBase):
 
 if __name__ == "__main__":
     unittest.main()
+
+class ShopDwellTest(unittest.TestCase):
+    """逛商店的时间不该算进跑图耗时；首次开商店要记"门→商人"样本。"""
+
+    def test_dwell_is_excluded_from_sample(self):
+        import json, tempfile
+        from maplebot import mapwatch
+        watcher = mapwatch.MapWatcher()
+        watcher._arrival_ts = 100.0
+        tmp = Path(tempfile.mkdtemp()) / "raw.jsonl"
+        orig = mapwatch.EDGE_RAW_PATH
+        mapwatch.EDGE_RAW_PATH = tmp
+        try:
+            watcher.note_shop(110.0, True)      # 开商店
+            watcher.note_shop(130.0, False)     # 关：逛了 20 秒
+            event = {"from_map": "A", "to_map": "B", "load_ms": 0,
+                     "from_pos": None, "to_pos": None}
+            watcher._record_time_sample(event, now=140.0)
+        finally:
+            mapwatch.EDGE_RAW_PATH = orig
+        rows = [json.loads(l) for l in tmp.read_text(encoding="utf-8").splitlines()]
+        self.assertEqual(len(rows), 1)
+        # 140 - 100 - 20(逛店) = 20
+        self.assertAlmostEqual(rows[0]["seconds"], 20.0, places=2)
+
+    def test_note_shop_tracks_dwell(self):
+        from maplebot import mapwatch
+        watcher = mapwatch.MapWatcher.__new__(mapwatch.MapWatcher)
+        mapwatch.MapWatcher.__init__(watcher)
+        watcher._arrival_ts = 100.0
+        watcher.note_shop(110.0, True)
+        watcher.note_shop(135.0, False)
+        self.assertAlmostEqual(watcher._shop_dwell, 25.0, places=3)
