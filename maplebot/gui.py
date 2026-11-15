@@ -702,6 +702,9 @@ def run_gui(interval=0.1):
             columns[index] = list(block)
         if len(blocks) > 2:
             columns[0].append(advice_module.fold_text(len(blocks), 2))
+        # 同一家店的第二列不再重复店名，留空行保持行对齐
+        if len(columns) > 1 and columns[1] and columns[1][0] == columns[0][0]:
+            columns[1] = [""] + columns[1][1:]
         for box, lines in zip(advice_boxes, columns):
             text = "\n".join(lines)
             if box.get("1.0", "end-1c") != text:   # 内容没变就别重写，否则选中会被清掉

@@ -454,19 +454,31 @@ def fold_text(total, shown):
 
 
 def format_suggestions(items):
-    """当前商店的建议：每条是 3 行的一段（第一行 / 買 / 到…賣）。"""
+    """当前商店的建议：**按商品分组**，一组一列。
+
+    每组第一行是商店，之后每条是「買 … 個到 … 賣，距离 N 张图」——
+    同一件货有几个卖点就列几行，信息密度比一条建议占三行高。
+    """
     if not items:
         return [["（暫無值得跑的建議）"]]
+
+    groups = {}
+    for s in items:
+        groups.setdefault((s.buy_at, s.good, s.buy_price, s.units), []).append(s)
+
     blocks = []
-    for s in items[:COLUMNS]:
-        sell_at = s.sell_at or s.sell_map or "?"
-        block = [f"在 {_place(s.buy_at, s.buy_map)}",
-                 f"  買 {s.good} @{s.buy_price} × {s.units} 個"]
-        if s.price_known and s.sell_price is not None:
-            block.append(f"  到 {sell_at} 賣 @{s.sell_price}，"
-                         f"距离 {s.hops} 张图 赚 {s.profit_total}")
-        else:
-            block.append(f"  到 {sell_at} 賣，距离 {s.hops} 张图")
+    for _key, group in list(groups.items())[:COLUMNS]:
+        first = group[0]
+        block = [f"在 {_place(first.buy_at, first.buy_map)}"]
+        for s in group[:3]:
+            sell_at = s.sell_at or s.sell_map or "?"
+            if s.price_known and s.sell_price is not None:
+                block.append(f"  買 {s.good} @{s.buy_price} × {s.units} 個"
+                             f"到 {sell_at} 賣 @{s.sell_price}，"
+                             f"距离 {s.hops} 张图 賺 {s.profit_total}")
+            else:
+                block.append(f"  買 {s.good} @{s.buy_price} × {s.units} 個"
+                             f"到 {sell_at} 賣，距离 {s.hops} 张图")
         blocks.append(block)
     return blocks
 
