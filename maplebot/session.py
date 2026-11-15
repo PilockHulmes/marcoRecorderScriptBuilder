@@ -244,24 +244,30 @@ class TradeSession:
         self.shop_read = True
         lines = []
         try:
-            # 三级建议：当前商店有生意 -> 去别处买便宜货 -> 去未知/过期的商人看看
-            items = advice_module.suggest(visit, self.ledger, self.travel, now=now)
-            if items:
-                lines = advice_module.format_suggestions(items)
+            if getattr(visit, "kind", "") == "random":
+                # 随机商人只有一种类型（只卖/只收），而且离开地图就消失：
+                # 只给「买了去固定商人卖」或「就地卖给他」，绝不建议回头找他。
+                lines = advice_module.random_advice(
+                    visit, self.ledger, self.travel, held=self.held, now=now)
             else:
-                trips = advice_module.buy_trip_plan(self.ledger, self.travel,
-                                                    now=now, current_map=self.state.map)
-                if trips:
-                    lines = advice_module.format_buy_trips(trips)
+                # 三级建议：当前商店有生意 -> 去别处买便宜货 -> 去未知/过期的商人看看
+                items = advice_module.suggest(visit, self.ledger, self.travel, now=now)
+                if items:
+                    lines = advice_module.format_suggestions(items)
                 else:
-                    explore = advice_module.explore_plan(
-                        self.ledger, self.travel, now=now,
-                        current_map=self.state.map)
-                    for item in explore:
-                        lines.append(f"去看看 {item['merchant']}({item['map']}) "
-                                     f"{item['hops']} 张图")
-                    if not lines:
-                        lines = advice_module.format_suggestions([])
+                    trips = advice_module.buy_trip_plan(self.ledger, self.travel,
+                                                        now=now, current_map=self.state.map)
+                    if trips:
+                        lines = advice_module.format_buy_trips(trips)
+                    else:
+                        explore = advice_module.explore_plan(
+                            self.ledger, self.travel, now=now,
+                            current_map=self.state.map)
+                        for item in explore:
+                            lines.append(f"去看看 {item['merchant']}({item['map']}) "
+                                         f"{item['hops']} 张图")
+                        if not lines:
+                            lines = advice_module.format_suggestions([])
         except Exception as exc:
             lines = [f"建议计算失败：{exc}"]
         self.state.advice = lines

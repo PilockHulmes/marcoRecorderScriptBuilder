@@ -852,7 +852,7 @@ class MapWatcher:
                     if value is None]
             # 角色刚过图时正站在传送门上，黄点被挡是常态，不是故障。
             # 只降级提示：边照记，坐标等绿圈露出来再补。不占用 ！！！！！ 告警。
-            print(f"[mapwatch] ⚠️ 换图 {before.map_id} -> {obs.map_id} 时"
+            print(f"[mapwatch] [WARN] 换图 {before.map_id} -> {obs.map_id} 时"
                   f"{'/'.join(lost)}暂时不可用，已降级记录（角色挡住传送门属正常）", flush=True)
         event = {
             "t": time.strftime("%Y-%m-%dT%H:%M:%S"),

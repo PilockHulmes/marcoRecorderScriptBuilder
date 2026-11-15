@@ -6,6 +6,10 @@
 - :func:`buy_trip_plan`：别处有便宜货、现在跑过去还来得及 → 专程去买；
 - :func:`explore_plan`：没有生意时，去找价格未知或已过期的商人看看。
 
+另有 :func:`random_advice`：随机商人（没有固定商人的地图）只卖 / 只收的
+一次性建议。随机商人的记录没有 ``merchant_id``，任何计划都不会把它当成
+目的地（见 :func:`_fixed_observation`）。
+
 规则（TRADE_DESIGN.md 13.7）：
 
 - 只看 A **卖给我** 的行
@@ -176,6 +180,16 @@ def _price_limit(good):
     return VOLATILE_MAX
 
 
+def _fixed_observation(observation):
+    """只有固定商人的观察才有 ``merchant_id``。
+
+    随机商人没有 ``merchant_id``（见 :func:`maplebot.shop.identify`），玩家
+    一离开地图他就消失，所以这种记录只能说明“这里有什么货”，**绝不能当成
+    建议的目的地**（不能“买了再回来卖给他”）。
+    """
+    return isinstance(observation, dict) and bool(observation.get("merchant_id"))
+
+
 def suggest(visit, ledger=None, travel=None, now=0.0, remaining=None, limit=5):
     """visit = shop.Visit（当前打开的商店）；返回按距离排序的建议列表。"""
     ledger = ledger if ledger is not None else ledger_module.Ledger()
@@ -266,6 +280,8 @@ def sell_plan(held_goods, ledger=None, travel=None, now=0.0, current_map="", lim
             arrival = now + (seconds or 0)
             best = None
             for observation in ledger.load():
+                if not _fixed_observation(observation):
+                    continue
                 if observation.get("map") != buyer_map:
                     continue
                 if ledger.valid_until(observation) <= arrival:
@@ -306,6 +322,8 @@ def buy_trip_plan(ledger=None, travel=None, now=0.0, current_map="",
 
     best = {}
     for observation in ledger.load():
+        if not _fixed_observation(observation):
+            continue                       # 随机商人记录不能当目的地
         map_name = observation.get("map", "")
         if not map_name or map_name == current_map:
             continue
@@ -369,9 +387,9 @@ def explore_plan(ledger=None, travel=None, now=0.0, current_map="",
     names = _merchant_names()
     last_seen = {}
     for observation in ledger.load():
+        if not _fixed_observation(observation):
+            continue                       # 随机商人记录不能当目的地
         merchant_id = observation.get("merchant_id")
-        if not merchant_id:
-            continue
         last_seen[merchant_id] = max(last_seen.get(merchant_id, 0),
                                      ledger.valid_until(observation))
     out = []
@@ -422,3 +440,166 @@ def format_buy_trips(items):
     return [f"去 {item['merchant']} 买 {item['good']} @{item['price']}，"
             f"{item['hops']} 张图，到了还剩 {_clock(item['left'])}"
             for item in items]
+
+
+# ---------------------------------------------------------------------------
+# 随机商人：没有固定商人的地图上遇到的那种。玩家一离开地图他就消失，
+# 而且只有一种类型（只卖 或 只收），所以建议也分成两个完全独立的分支。
+# ---------------------------------------------------------------------------
+
+def _observed_buy_price(observations, ledger, merchant_id, map_name, good_id, at):
+    """固定买家在 ``at`` 时刻仍然有效的收购价；没记录就返回 None。
+
+    这里只用来**显示**「賣 @22」，不是推荐的前提：没有报价也照样建议去
+    他的地图（价格到那儿再看）。随机商人的记录不能提供任何目的地的价格。
+    """
+    best = None
+    for observation in observations or []:
+        if not isinstance(observation, dict) or observation.get("map") != map_name:
+            continue
+        known_id = observation.get("merchant_id") or ""
+        if known_id and known_id != merchant_id:
+            continue
+        try:
+            valid_until = ledger.valid_until(observation)
+        except Exception:
+            valid_until = 0.0
+        if valid_until <= at:
+            continue
+        for other in observation.get("rows", []) or []:
+            if not isinstance(other, dict):
+                continue
+            if other.get("good_id") != good_id or other.get("side") != "buy":
+                continue
+            try:
+                price = int(other.get("price", 0))
+            except (TypeError, ValueError):
+                continue
+            if price > 0 and (best is None or price > best):
+                best = price
+    return best
+
+
+def random_sell_plan(visit, ledger=None, travel=None, now=0.0, limit=2):
+    """随机商人只卖货：挑二类（≤40）且买得起的，按到固定买家的距离排序。
+
+    返回 1~2 条候选（``limit``）；随机商人所在地图只作为**起点**，``map``
+    永远是 ``merchant_maps.json`` 里的固定商人地图。
+    """
+    ledger = ledger if ledger is not None else ledger_module.Ledger()
+    travel = travel if travel is not None else MapTravel()
+    goods = _goods()
+    where = _merchant_maps()
+    names = _merchant_names()
+    observations = ledger.load()
+    current = getattr(visit, "map", "") or ""
+    coins = int(getattr(visit, "coins", 0) or 0)
+    weight = int(getattr(visit, "weight", 0) or 0)
+    capacity = int(getattr(visit, "capacity", 0) or 0) or 135
+
+    candidates = []
+    for row in getattr(visit, "rows", None) or []:
+        if getattr(row, "side", "") != "sell":
+            continue
+        good_id = getattr(row, "good_id", "") or ""
+        good = goods.get(good_id, {})
+        if good.get("tier") != "tier2":
+            continue                       # 随机商人只碰二类货
+        price = int(getattr(row, "price", 0) or 0)
+        if price <= 0 or price > TIER2_MAX:
+            continue
+        units = ledger_module.max_units(price, coins, weight, capacity)
+        if units <= 0:
+            continue                       # 连 1 件都买不起/装不下，不推荐
+        for buyer_id in good.get("buyers", []) or []:
+            buyer_map = where.get(buyer_id, "")
+            if not buyer_map or buyer_map == current:
+                continue                   # 只考虑固定商人；不留在他自己地图
+            seconds = travel.seconds(current, buyer_map)
+            if seconds is None:
+                continue
+            candidates.append({
+                "good_id": good_id,
+                "good": good.get("name") or getattr(row, "good_name", "") or good_id,
+                "price": price,
+                "units": units,
+                "merchant_id": buyer_id,
+                "merchant": names.get(buyer_id) or buyer_id,
+                "map": buyer_map,
+                "hops": travel.hops(current, buyer_map) or 0,
+                "seconds": round(seconds, 1),
+                "sell_price": _observed_buy_price(
+                    observations, ledger, buyer_id, buyer_map, good_id, now + seconds),
+            })
+    candidates.sort(key=lambda item: (item["seconds"], item["hops"],
+                                      item["good_id"], item["merchant_id"]))
+    return candidates[:limit]
+
+
+def random_buy_plan(visit, held=()):
+    """随机商人只收货：拿身上带着的货去匹配他收的商品。"""
+    goods = _goods()
+    counts = {}
+    for good_id in held or []:
+        if good_id:
+            counts[good_id] = counts.get(good_id, 0) + 1
+    out = []
+    seen = set()
+    for row in getattr(visit, "rows", None) or []:
+        if getattr(row, "side", "") != "buy":
+            continue
+        good_id = getattr(row, "good_id", "") or ""
+        price = int(getattr(row, "price", 0) or 0)
+        if not good_id or price <= 0 or good_id in seen:
+            continue
+        units = counts.get(good_id, 0)
+        if units <= 0:
+            continue
+        seen.add(good_id)
+        out.append({
+            "good_id": good_id,
+            "good": goods.get(good_id, {}).get("name")
+                    or getattr(row, "good_name", "") or good_id,
+            "price": price,
+            "units": units,
+        })
+    out.sort(key=lambda item: (-item["price"], item["good_id"]))
+    return out
+
+
+def format_random_sell(items):
+    """随机商人（卖货型）的界面文字；随机商人本人不会出现在目的地。"""
+    if not items:
+        return format_suggestions([])
+    lines = []
+    for item in items:
+        tail = (f"賣 @{item['sell_price']}" if item.get("sell_price") else "賣")
+        lines.append(
+            f"随机商人：買 {item['good']} @{item['price']} × {item['units']} 個"
+            f" → 去 {item['merchant']}({item['map']}) {tail}"
+            f"（{item['hops']} 張圖）")
+    return lines
+
+
+def format_random_buy(items):
+    """随机商人（收货型）的界面文字；没有匹配时明确说没货可卖。"""
+    if not items:
+        return ["随机商人只收货，你身上没有他要的"]
+    return [f"随机商人：把 {item['good']} 賣給他 @{item['price']} × {item['units']} 個（就地）"
+            for item in items]
+
+
+def random_advice(visit, ledger=None, travel=None, held=(), now=0.0, limit=2):
+    """``visit.kind == "random"`` 时给视图的建议行。
+
+    随机商人只有一种类型（要么只卖、要么只收），所以这里只走一个分支：
+    卖货型 -> 买了去固定商人卖；收货型 -> 有货就地卖、没货就明说。
+    任何情况下都**不**建议玩家再回来找这个商人。
+    """
+    rows = list(getattr(visit, "rows", None) or [])
+    if any(getattr(row, "side", "") == "sell" for row in rows):
+        return format_random_sell(
+            random_sell_plan(visit, ledger, travel, now=now, limit=limit))
+    if any(getattr(row, "side", "") == "buy" for row in rows):
+        return format_random_buy(random_buy_plan(visit, held))
+    return format_suggestions([])
