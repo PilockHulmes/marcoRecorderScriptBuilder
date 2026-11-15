@@ -56,6 +56,25 @@ def _wall_now(now):
     return time.time() if now is None else float(now)
 
 
+def _fastest_mean(values):
+    """取"最快 3 次"的均值，但先剔掉离群值。
+
+    离群值 = 低于中位数三分之一的样本。这种样本几乎都是"进了同一张图没走几步
+    又出去"的情况（门坐标差了一点点、没被同门判断拦住）。
+    不剔掉的话，一个 1.75 秒会把一条 9 秒的边拉成 6.5 秒。
+    """
+    values = sorted(float(v) for v in values)
+    if not values:
+        return None
+    if len(values) >= 3:
+        middle = values[len(values) // 2]
+        kept = [v for v in values if v >= middle / 3.0]
+        if kept:
+            values = kept
+    fastest = values[:3]
+    return sum(fastest) / len(fastest)
+
+
 class MapTravel:
     """地图之间的距离（秒）。实测优先，否则按跳数估。
 
@@ -116,12 +135,10 @@ class MapTravel:
                     portal_buckets[key].append(seconds)
             for pair, values in buckets.items():
                 if len(values) >= MIN_SAMPLES:
-                    fastest = sorted(values)[:3]
-                    self.times[pair] = sum(fastest) / len(fastest)
+                    self.times[pair] = _fastest_mean(values)
             for key, values in portal_buckets.items():
                 if len(values) >= MIN_SAMPLES:
-                    fastest = sorted(values)[:3]
-                    self.portal_times[key] = sum(fastest) / len(fastest)
+                    self.portal_times[key] = _fastest_mean(values)
             self._load_merchant_times()
             return
         for row in (edge_times if edge_times is not None else _read_json(EDGE_TIMES_PATH, [])):
@@ -165,8 +182,7 @@ class MapTravel:
         for key in keys:
             values = self.merchant_times.get(key)
             if values:
-                fastest = sorted(values)[:3]
-                return sum(fastest) / len(fastest)
+                return _fastest_mean(values)
         return None
 
     def path(self, a, b):
