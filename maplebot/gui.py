@@ -837,6 +837,7 @@ def run_gui(interval=0.1):
             root.after(int(interval * 1000), tick)
             return
         if state is None:
+            view.status.config(text="未找到游戏窗口，等待启动…")
             root.after(int(interval * 1000), tick)
             return
         # 数据变了立刻画；否则每 REPAINT_EVERY 秒重画一次，让倒计时走字
@@ -862,6 +863,7 @@ class _Worker:
         self._interval = interval
         self._lock = threading.Lock()
         self._state = None
+        self._waiting = True
         self._stop = threading.Event()
         self._thread = threading.Thread(target=self._run, daemon=True)
         self._thread.start()
@@ -870,10 +872,14 @@ class _Worker:
         while not self._stop.is_set():
             try:
                 frame = self._grab()
-                if frame is not None:
+                if frame is None:
+                    with self._lock:
+                        self._waiting = True
+                else:
                     state = self._controller.update(frame)
                     with self._lock:
                         self._state = state
+                        self._waiting = False
             except Exception:
                 pass
             self._stop.wait(self._interval)
@@ -927,34 +933,79 @@ class _Capture:
         self._stop.set()
 
 
-def _grabber():
-    import mss
-    import win32gui
+class GameGrabber:
+    """抓游戏客户区；窗口没开就返回 None，过一会儿再找。"""
 
-    best = None
+    def __init__(self, retry_every=2.0):
+        self.retry_every = float(retry_every)
+        self._hwnd = None
+        self._box = None
+        self._last_lookup = -1e9
 
-    def callback(hwnd, _):
-        nonlocal best
-        if not win32gui.IsWindowVisible(hwnd) or win32gui.GetWindowText(hwnd) != "MapleStory":
+    def _lookup(self, now):
+        import win32gui
+
+        best = None
+
+        def callback(hwnd, _):
+            nonlocal best
+            if not win32gui.IsWindowVisible(hwnd):
+                return
+            if win32gui.GetWindowText(hwnd) != "MapleStory":
+                return
+            rect = win32gui.GetWindowRect(hwnd)
+            area = (rect[2] - rect[0]) * (rect[3] - rect[1])
+            if best is None or area > best[0]:
+                best = (area, hwnd)
+
+        win32gui.EnumWindows(callback, None)
+        if best is None:
+            self._hwnd = None
+            self._box = None
             return
-        rect = win32gui.GetWindowRect(hwnd)
-        area = (rect[2] - rect[0]) * (rect[3] - rect[1])
-        if best is None or area > best[0]:
-            best = (area, hwnd)
+        hwnd = best[1]
+        left, top = win32gui.ClientToScreen(hwnd, (0, 0))
+        width, height = win32gui.GetClientRect(hwnd)[2:]
+        self._hwnd = hwnd
+        self._box = {"left": left, "top": top, "width": width, "height": height}
 
-    win32gui.EnumWindows(callback, None)
-    if best is None:
-        raise SystemExit("找不到 MapleStory 窗口")
-    hwnd = best[1]
-    ox, oy = win32gui.ClientToScreen(hwnd, (0, 0))
-    cw, ch = win32gui.GetClientRect(hwnd)[2:]
+    def _window_alive(self):
+        if self._hwnd is None:
+            return False
+        try:
+            import win32gui
+            return bool(win32gui.IsWindow(self._hwnd))
+        except Exception:
+            return False
 
-    def grab():
-        with mss.mss() as sct:
-            return __import__("numpy").array(
-                sct.grab({"left": ox, "top": oy, "width": cw, "height": ch}))[:, :, :3].copy()
+    def grab(self, now=None):
+        import time as _time
+        now = _time.monotonic() if now is None else now
+        if not self._window_alive():
+            self._hwnd = None
+            if now - self._last_lookup < self.retry_every:
+                return None
+            self._last_lookup = now
+            try:
+                self._lookup(now)
+            except Exception:
+                return None
+            if self._box is None:
+                return None
+        import mss
+        import numpy as np
+        try:
+            with mss.mss() as sct:
+                return np.array(sct.grab(self._box))[:, :, :3].copy()
+        except Exception:
+            self._hwnd = None
+            self._box = None
+            return None
 
-    return grab
+
+def _grabber(retry_every=2.0):
+    """兼容旧调用：返回一个"抓不到就返回 None"的函数。"""
+    return GameGrabber(retry_every=retry_every).grab
 
 
 if __name__ == "__main__":

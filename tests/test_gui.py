@@ -871,3 +871,18 @@ class IconKeyTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+class GameGrabberTest(unittest.TestCase):
+    """没开游戏时抓帧返回 None，不能抛异常退出。"""
+
+    def test_returns_none_when_window_missing(self):
+        grabber = gui.GameGrabber(retry_every=0.0)
+        with mock.patch("win32gui.EnumWindows", return_value=None):
+            self.assertIsNone(grabber.grab())
+            self.assertIsNone(grabber.grab())
+
+    def test_no_window_does_not_exit(self):
+        grabber = gui.GameGrabber(retry_every=100.0)
+        with mock.patch("win32gui.EnumWindows", return_value=None):
+            for _ in range(3):
+                self.assertIsNone(grabber.grab())
