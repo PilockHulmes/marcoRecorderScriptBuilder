@@ -29,7 +29,9 @@ from . import shop
 logger = logging.getLogger(__name__)
 from . import trade
 
-SHOP_EVERY = 0.4
+#: 商店读取间隔。数字改模板后一次读取只要 7 ms（未命中 45 ms），
+#: 所以从 0.4 秒缩到 0.2 秒，滚动/刷新时反应更快。
+SHOP_EVERY = 0.2
 CARGO_EVERY = 1.0
 BOARD_EVERY = 2.0
 
