@@ -830,21 +830,27 @@ def read_cargo(frame, profile="shop", cache=None) -> Cargo:
     if coins is None:
         # 数字是描边字体，二值化常把 0 认成"口"；原图再试一次
         coins = _longest_int(_ocr_text(coins_crop, mode="raw"))
-    # 负重是**白色**细字，和金币的金色粗字位图不同；实测模板在部分画面上会把
-    # 最后一位和「個」粘连读错，所以这里仍然用 OCR（约 40 ms），只保留金币模板。
-    weight_text = _ocr_text(weight_crop, mode="light")
-    match = re.search(r"(\d+)\s*/\s*(\d+)", weight_text)
-    if match is None:
-        # 二值化可能把斜杠吃掉；原图再试一次。
-        weight_text = _ocr_text(weight_crop, mode="raw")
+    # 当前负重是**金色**数字，和金币同一套模板；"/135" 那部分才是白色，不读。
+    weight_value = None
+    weight_groups = digits_module.read_groups(weight_crop, family="fat", kind="gold")
+    if weight_groups and weight_groups[0].isdigit():
+        weight_value = int(weight_groups[0])
+
+    if weight_value is None:
+        # 兜底：白色字 / 被特效遮挡时退回 OCR
+        weight_text = _ocr_text(weight_crop, mode="light")
         match = re.search(r"(\d+)\s*/\s*(\d+)", weight_text)
-    if coins is None or match is None:
-        raise TradeParseError(f"CARGO 读不出来：coins={coins!r} weight={weight_text!r}")
+        if match is None:
+            weight_text = _ocr_text(weight_crop, mode="raw")
+            match = re.search(r"(\d+)\s*/\s*(\d+)", weight_text)
+        if match is not None:
+            weight_value = int(match.group(1))
+
+    if coins is None or weight_value is None:
+        raise TradeParseError(f"CARGO 读不出来：coins={coins!r} weight={weight_value!r}")
     # 容量是游戏的固定值 135（只有极新手的角色更低，不在考虑范围）。
-    # 白字经常被武器特效盖住，不去读它，直接写死。
-    capacity_value = CAPACITY
-    result = Cargo(coins=coins, weight=int(match.group(1)),
-                   capacity=capacity_value)
+    # 那一半是白字、经常被武器特效盖住，不去读它，直接写死。
+    result = Cargo(coins=coins, weight=int(weight_value), capacity=CAPACITY)
     if cargo_key is not None:
         cache.put(cargo_key, result)
     return result
