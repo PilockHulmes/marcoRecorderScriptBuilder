@@ -127,7 +127,7 @@ class ControllerTest(unittest.TestCase):
         calls = []
         with mock.patch.object(gui.trade, "find_shop_window", return_value=True), \
                 mock.patch.object(shop, "read_visit",
-                                  side_effect=lambda f, m: calls.append(1) or visit), \
+                                  side_effect=lambda f, m, **kw: calls.append(1) or visit), \
                 mock.patch.object(advice_module, "suggest", return_value=[]), \
                 mock.patch.object(advice_module, "explore_plan", return_value=[]):
             self.controller.update(self.frame, now=1.0)     # 打开：立刻读

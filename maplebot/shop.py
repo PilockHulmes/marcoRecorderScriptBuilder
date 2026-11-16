@@ -398,7 +398,7 @@ def _icon_key(patch):
     return "icon:%08x" % (zlib.crc32(patch.tobytes()) & 0xFFFFFFFF)
 
 
-def read_visit(frame, map_name="", templates=None, *, learn_names=None,
+def read_visit(frame, map_name="", templates=None, *, cache=None, now=None, learn_names=None,
                learn_icons=None, vision=None, names_path=None,
                icon_dir=None, unknown_dir=None, index_path=None):
     """解析一帧画面 -> Visit（不滚动，只读当前可见的行）。
@@ -428,7 +428,7 @@ def read_visit(frame, map_name="", templates=None, *, learn_names=None,
     except Exception:
         pass
     try:
-        cargo = trade.read_cargo(frame)
+        cargo = trade.read_cargo(frame, cache=cache)
         coins = getattr(cargo, "coins", None)
         visit.coins = int(coins) if coins is not None else None
         visit.weight = int(getattr(cargo, "weight", 0) or 0)
@@ -451,8 +451,14 @@ def read_visit(frame, map_name="", templates=None, *, learn_names=None,
     if visit.capacity <= 0:
         visit.capacity = 135
 
+    # 商店刷新是"到期时刻"跳变：用它判断缓存里的价格还能不能用
+    deadline = None
+    if now is not None:
+        deadline = float(now) + float(getattr(visit, "refresh_in", 0) or 0)
     try:
-        rows = trade.read_rows(frame)
+        rows = trade.read_rows(frame, cache=cache,
+                               cache_tag=getattr(visit, "merchant_id", ""),
+                               deadline=deadline)
     except Exception:
         rows = []
 

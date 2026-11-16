@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import hashlib
 import logging
 import re
 import sys
@@ -453,7 +454,65 @@ def _read_price(frame, top, dy):
     return _first_int(_ocr_text(crop, mode="raw"))
 
 
-def read_rows(frame) -> list[Row]:
+#: 倒计时到期时刻允许的抖动（秒）。超过这个变化就认为商店刷新过。
+CACHE_DEADLINE_TOLERANCE = 5.0
+
+
+class FrameCache:
+    """按"像素摘要"复用上一次的解析结果（LRU）。
+
+    只存解析后的结果（几十字节），不存原图。默认 8 条，
+    因为列表滚动就那几种状态，来回滚也能命中。
+    """
+
+    def __init__(self, max_entries=8):
+        self.max_entries = max_entries
+        self._items = {}
+        self._order = []
+
+    def get(self, key):
+        if key in self._items:
+            self._order.remove(key)
+            self._order.append(key)
+            return self._items[key]
+        return None
+
+    def put(self, key, value):
+        if key in self._items:
+            self._order.remove(key)
+        self._items[key] = value
+        self._order.append(key)
+        while len(self._order) > self.max_entries:
+            oldest = self._order.pop(0)
+            self._items.pop(oldest, None)
+
+    def clear(self):
+        self._items.clear()
+        self._order.clear()
+
+    def __len__(self):
+        return len(self._items)
+
+
+def _region_digest(frame, boxes):
+    """把几个区域拼起来算一个短摘要。"""
+    digest = hashlib.blake2b(digest_size=8)
+    for box in boxes:
+        crop = _crop(frame, box)
+        if crop is not None:
+            digest.update(crop.tobytes())
+    return digest.digest()
+
+
+def _icon_boxes(frame):
+    """三行图标的框（用来判断有没有滚动 / 换货）。"""
+    boxes = []
+    for top in ROW_TOPS[:3]:
+        boxes.append((ICON_BOX[0], top, ICON_BOX[2], ICON_BOX[3]))
+    return boxes
+
+
+def read_rows(frame, cache=None, cache_tag="", deadline=None) -> list[Row]:
     """读商品列表，最多 4 条；SHOP 不在时返回空列表。
 
     第 4 行通常被视口底边裁掉，这时 ``partial=True``，也读不到价格。
@@ -461,6 +520,21 @@ def read_rows(frame) -> list[Row]:
     if _empty(frame) or not find_shop_window(frame):
         return []
 
+    cache_key = None
+    if cache is not None:
+        digest = _region_digest(frame, _icon_boxes(frame))
+        cache_key = ("rows", cache_tag, digest)
+        entry = cache.get(cache_key)
+        if entry is not None:
+            same_cycle = (deadline is None or entry.get("deadline") is None
+                          or abs(entry["deadline"] - deadline) <= CACHE_DEADLINE_TOLERANCE)
+            if same_cycle:
+                print(f"[cache] hit  复用 {len(entry['rows'])} 行价格（省一次 OCR）",
+                      flush=True)
+                return list(entry["rows"])
+            reason = "倒计时跳变（商店刷新过）"
+        else:
+            reason = "第一次读到这个列表状态"
     rows = []
     list_box = _box(frame, LIST_BOX)
     list_bottom = list_box[1] + list_box[3]
@@ -483,6 +557,9 @@ def read_rows(frame) -> list[Row]:
             sell = _read_price(frame, top, SELL_DY)
         rows.append(Row(icon_box=icon_box, name_ocr=name,
                         buy_price=buy, sell_price=sell, partial=partial))
+    if cache_key is not None and rows:
+        cache.put(cache_key, {"rows": list(rows), "deadline": deadline})
+        print(f"[cache] miss {reason} -> 重读价格（{len(rows)} 行）", flush=True)
     return rows
 
 
@@ -680,7 +757,7 @@ def _digits_of_run(strip):
     return None
 
 
-def read_cargo(frame, profile="shop") -> Cargo:
+def read_cargo(frame, profile="shop", cache=None) -> Cargo:
     """读 CARGO 顶部的金币 / 当前重量 / 容量。
 
     ``profile``：``shop`` = 商店开着（货舱在右边）；``only`` = 只开货舱（居中）。
@@ -695,6 +772,14 @@ def read_cargo(frame, profile="shop") -> Cargo:
         coins_box, weight_box = CARGO_COINS_ONLY, CARGO_WEIGHT_ONLY
     else:
         coins_box, weight_box = CARGO_COINS_SHOP, CARGO_WEIGHT_SHOP
+
+    cargo_key = None
+    if cache is not None:
+        digest = _region_digest(frame, (coins_box, weight_box))
+        cargo_key = ("cargo", profile, digest)
+        entry = cache.get(cargo_key)
+        if entry is not None:
+            return entry
     coins_crop = _crop(frame, coins_box)
     weight_crop = _crop(frame, weight_box)
     if coins_crop is None or weight_crop is None:
@@ -728,7 +813,11 @@ def read_cargo(frame, profile="shop") -> Cargo:
         match = re.search(r"(\d+)\s*/\s*(\d+)", weight_text)
     if coins is None or match is None:
         raise TradeParseError(f"CARGO 读不出来：coins={coins!r} weight={weight_text!r}")
-    return Cargo(coins=coins, weight=int(match.group(1)), capacity=int(match.group(2)))
+    result = Cargo(coins=coins, weight=int(match.group(1)),
+                   capacity=int(match.group(2)))
+    if cargo_key is not None:
+        cache.put(cargo_key, result)
+    return result
 
 
 # ---------------------------------------------------------------- 汇总 / CLI

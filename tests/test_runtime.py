@@ -42,7 +42,7 @@ class RuntimeTest(unittest.TestCase):
         visit = make_visit(rows=[_Row("g", "货", "sell", 10)])
         calls = []
         with mock.patch.object(runtime_module, "shop_open", return_value=True), \
-                mock.patch.object(shop, "read_visit", side_effect=lambda f, m: visit), \
+                mock.patch.object(shop, "read_visit", side_effect=lambda f, m, **kw: visit), \
                 mock.patch.object(advice_module, "suggest", return_value=[]), \
                 mock.patch.object(self.ledger, "record",
                                   side_effect=lambda v, now=None: calls.append(v)):
@@ -55,7 +55,7 @@ class RuntimeTest(unittest.TestCase):
         visit = make_visit()
         calls = []
         with mock.patch.object(runtime_module, "shop_open", return_value=True), \
-                mock.patch.object(shop, "read_visit", side_effect=lambda f, m: visit), \
+                mock.patch.object(shop, "read_visit", side_effect=lambda f, m, **kw: visit), \
                 mock.patch.object(advice_module, "suggest", return_value=[]), \
                 mock.patch.object(self.ledger, "record",
                                   side_effect=lambda v, now=None: calls.append(v)):
@@ -63,7 +63,7 @@ class RuntimeTest(unittest.TestCase):
         with mock.patch.object(runtime_module, "shop_open", return_value=False):
             self.runtime.step(self.frame, now=1.0)
         with mock.patch.object(runtime_module, "shop_open", return_value=True), \
-                mock.patch.object(shop, "read_visit", side_effect=lambda f, m: visit), \
+                mock.patch.object(shop, "read_visit", side_effect=lambda f, m, **kw: visit), \
                 mock.patch.object(advice_module, "suggest", return_value=[]), \
                 mock.patch.object(self.ledger, "record",
                                   side_effect=lambda v, now=None: calls.append(v)):

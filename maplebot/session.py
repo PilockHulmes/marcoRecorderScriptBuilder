@@ -245,6 +245,8 @@ class TradeSession:
     board_every = BOARD_EVERY
 
     def __init__(self, watcher=None, ledger=None, travel=None):
+        #: 按像素摘要复用上一次的读取结果（滚动/刷新会自动失效）
+        self.frame_cache = trade.FrameCache()
         self.watcher = watcher or mapwatch.MapWatcher()
         self.ledger = ledger or ledger_module.Ledger()
         self.travel = travel or advice_module.MapTravel()
@@ -343,7 +345,7 @@ class TradeSession:
     # ------------------------------------------------------------------
     def _read_shop(self, frame, now):
         try:
-            visit = shop.read_visit(frame, self.state.map)
+            visit = shop.read_visit(frame, self.state.map, cache=self.frame_cache, now=now)
         except Exception as exc:
             self.state.note = f"读商店失败：{exc}"
             self.shop_error = str(exc)
@@ -534,7 +536,7 @@ class TradeSession:
             self.cargo_error = str(exc)
             return
         try:
-            cargo = trade.read_cargo(frame, profile="only")
+            cargo = trade.read_cargo(frame, profile="only", cache=self.frame_cache)
             self.state.stats = {"coins": cargo.coins, "weight": cargo.weight,
                                 "capacity": cargo.capacity or 135}
         except Exception:
