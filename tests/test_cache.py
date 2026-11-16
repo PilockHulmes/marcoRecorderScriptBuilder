@@ -34,15 +34,15 @@ class RowsCacheTest(unittest.TestCase):
         trade.read_rows(self.frame)          # 预热 OCR 模型
 
     def counting(self, frame, **kwargs):
-        """数一数 read_rows 内部到底做了几次 OCR。"""
+        """数一数 read_rows 内部读了几次价格（缓存命中时应当为 0）。"""
         calls = []
-        original = trade._ocr_text
+        original = trade._read_price
 
         def wrapper(*args, **kw):
             calls.append(1)
             return original(*args, **kw)
 
-        with mock.patch.object(trade, "_ocr_text", side_effect=wrapper):
+        with mock.patch.object(trade, "_read_price", side_effect=wrapper):
             rows = trade.read_rows(frame, **kwargs)
         return rows, len(calls)
 

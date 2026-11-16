@@ -40,6 +40,8 @@ from pathlib import Path
 import cv2
 import numpy as np
 
+from . import digits as digits_module
+
 # ---------------------------------------------------------------- 几何常量
 #: 标定用的窗口尺寸。三张截图都是 1368×800（任务书里的 1382×807 是含边框的
 #: 窗口外尺寸，截图画布是客户区）。
@@ -418,6 +420,14 @@ def read_row_countdown(frame) -> str:
     crop = _crop(frame, COUNTDOWN_BOX)
     if crop is None:
         return ""
+    groups = digits_module.read_groups(crop, family="fat", kind="gold")
+    if len(groups) == 2:
+        try:
+            minutes, seconds = int(groups[0]), int(groups[1])
+            if 0 <= minutes <= 99 and 0 <= seconds < 60:
+                return f"{minutes:02d}:{seconds:02d}"
+        except Exception:
+            pass
     text = _ocr_text(crop, mode="light")
     countdown = _parse_countdown(text)
     if countdown:
@@ -448,6 +458,10 @@ def _read_price(frame, top, dy):
     crop = _crop(frame, (PRICE_BOX[0], top + dy, PRICE_BOX[2], PRICE_BOX[3]))
     if crop is None:
         return None
+    value = digits_module.read_number(crop, family="thin", kind="gold")
+    if value is not None:
+        return value
+    # 模板认不出（新数字 / 渲染变化）才退回 OCR
     value = _first_int(_ocr_text(crop, mode="yellow"))
     if value is not None:
         return value
@@ -795,7 +809,9 @@ def read_cargo(frame, profile="shop", cache=None) -> Cargo:
             interpolation=cv2.INTER_CUBIC)
     else:
         coins_crop = _gold_only(coins_crop)
-    coins = _digits_of_run(coins_crop)
+    coins = digits_module.read_number(coins_crop, family="fat", kind="gold")
+    if coins is None:
+        coins = _digits_of_run(coins_crop)
     if coins is None:
         coins = _longest_int(_ocr_text(coins_crop, mode="light"))
     if coins is None:

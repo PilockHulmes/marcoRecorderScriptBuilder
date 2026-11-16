@@ -28,6 +28,7 @@ ROOT = Path(__file__).resolve().parents[1]
 GOODS_PATH = ROOT / "data" / "trade" / "goods.json"
 MERCHANT_MAPS_PATH = ROOT / "data" / "trade" / "merchant_maps.json"
 ICON_INDEX_PATH = ROOT / "data" / "trade" / "merchant_index.json"
+_TEMPLATE_CACHE = {}
 ICON_DIR = ROOT / "data" / "trade" / "icons"
 UNKNOWN_ICON_DIR = ROOT / "data" / "trade" / "icons_unknown"
 GOOD_NAMES_PATH = ROOT / "data" / "trade" / "good_names.json"
@@ -85,6 +86,13 @@ def load_icon_templates(icon_dir=None, index_path=None):
     先按 ``merchant_index.json`` 登记的顺序读，再扫一遍 ``icon_dir`` 里
     ``<good_id>.png``：运行期学到的图标只要落了盘，下一次重新加载就能用。
     """
+    # 图标模板不再每次读盘（45 个 PNG ≈ 9 ms）：按路径缓存一份
+    global _TEMPLATE_CACHE
+    key = (str(icon_dir or ICON_DIR), str(index_path or ICON_INDEX_PATH))
+    cached = _TEMPLATE_CACHE.get(key)
+    if cached is not None:
+        return cached
+
     icon_dir = Path(icon_dir) if icon_dir is not None else ICON_DIR
     index_path = Path(index_path) if index_path is not None else ICON_INDEX_PATH
     index = _read_json(index_path, {})
@@ -115,6 +123,7 @@ def load_icon_templates(icon_dir=None, index_path=None):
         image = _load_image(path)
         if image is not None:
             templates[good_id] = image
+    _TEMPLATE_CACHE[key] = templates
     return templates
 
 
