@@ -144,3 +144,6 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+
+# PyInstaller 打包产物（会到几百 MB，不进版本库）
+build_exe/
