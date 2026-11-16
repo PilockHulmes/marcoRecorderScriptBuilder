@@ -13,6 +13,8 @@
 
 from __future__ import annotations
 
+from . import paths as paths_module
+
 import json
 from pathlib import Path
 
@@ -20,7 +22,7 @@ import cv2
 import numpy as np
 
 ROOT = Path(__file__).resolve().parents[1]
-DIGITS_PATH = ROOT / "data" / "trade" / "digits.json"
+DIGITS_PATH = paths_module.trade_dir() / "digits.json"
 
 #: 判定"最像"的最低相似度（IoU）。低于这个数就当认不出。
 MATCH_THRESHOLD = 0.85

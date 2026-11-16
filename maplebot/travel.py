@@ -54,6 +54,8 @@ n 为 1~4 时个人数据太少，直接用中位数容易被一次偶然的慢/
 
 from __future__ import annotations
 
+from . import paths as paths_module
+
 import json
 import logging
 import math
@@ -68,10 +70,10 @@ _LOG = logging.getLogger(__name__)
 ROOT = Path(__file__).resolve().parents[1]
 
 #: 个人走图数据的默认路径
-DEFAULT_STORE_PATH = ROOT / "data" / "travel_times.json"
+DEFAULT_STORE_PATH = paths_module.data_root() / "travel_times.json"
 
 #: 随程序附带的基准值路径
-DEFAULT_BASELINE_PATH = ROOT / "data" / "travel_baseline.json"
+DEFAULT_BASELINE_PATH = paths_module.data_root() / "travel_baseline.json"
 
 #: 既无个人样本、也无基准值时的保守默认值（秒）
 DEFAULT_SECONDS = 25.0

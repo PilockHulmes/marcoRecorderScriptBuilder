@@ -27,6 +27,8 @@ BGR ``numpy`` 画面递进来（例如 ``config.capture.frame``），本模块�
 
 from __future__ import annotations
 
+from . import paths as paths_module
+
 import argparse
 import json
 import hashlib
@@ -395,7 +397,7 @@ def scroll_handle(frame) -> float | None:
 
 
 # ---------------------------------------------------------------- 倒计时 / 行
-CARGO_HEADER_PATH = Path(__file__).resolve().parents[1] / "data" / "trade" / "icons" / "cargo_header.png"
+CARGO_HEADER_PATH = paths_module.trade_dir() / "icons" / "cargo_header.png"
 
 
 def find_cargo_window(frame) -> bool:

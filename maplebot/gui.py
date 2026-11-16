@@ -32,6 +32,7 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from . import paths as paths_module
 from . import shop
 from . import trade
 from .session import (BOARD_EVERY, CARGO_EVERY, LINE_ORDER, SHOP_EVERY, State,
@@ -42,11 +43,11 @@ from .session import (BOARD_EVERY, CARGO_EVERY, LINE_ORDER, SHOP_EVERY, State,
 REPAINT_EVERY = 0.25
 
 ROOT = Path(__file__).resolve().parents[1]
-ICON_DIR = ROOT / "data" / "trade" / "icons"
-PORTRAIT_DIR = ROOT / "data" / "trade" / "merchants"
+ICON_DIR = paths_module.trade_dir() / "icons"
+PORTRAIT_DIR = paths_module.trade_dir() / "merchants"
 #: 裁好的脸（``tools/build_faces.py`` 生成，尺寸不一但都只含头 + 少量肩）；
 #: 显示层仍缩到 ICON_SIZE（16×16），优先用它，没有才退回整张立绘。
-FACE_DIR = ROOT / "data" / "trade" / "merchants_face"
+FACE_DIR = paths_module.trade_dir() / "merchants_face"
 
 #: 窗口尺寸：宽度 380 -> 760（加倍），高度 620 -> 930（×1.5）。
 #: 多出来的高度全部给商人看板，当前建议仍是固定 8 行。
@@ -817,6 +818,7 @@ class View:
 def run_gui(interval=0.1):
     import tkinter as tk
 
+    print(f"[啟動] {paths_module.describe()}", flush=True)
     controller = Controller()
     root = tk.Tk()
     root.title("小助手")

@@ -25,9 +25,10 @@ from pathlib import Path
 import cv2
 
 from . import trade
+from . import paths as paths_module
 
 ROOT = Path(__file__).resolve().parents[1]
-DATA_DIR = ROOT / "data" / "trade"
+DATA_DIR = paths_module.trade_dir()
 GOOD_NAMES_PATH = DATA_DIR / "good_names.json"
 ICONS_DIR = DATA_DIR / "icons"
 UNKNOWN_DIR = DATA_DIR / "icons_unknown"

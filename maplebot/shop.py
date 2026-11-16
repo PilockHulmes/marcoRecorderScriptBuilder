@@ -23,15 +23,16 @@ import cv2
 import numpy as np
 
 from . import icon_learn, trade
+from . import paths as paths_module
 
 ROOT = Path(__file__).resolve().parents[1]
-GOODS_PATH = ROOT / "data" / "trade" / "goods.json"
-MERCHANT_MAPS_PATH = ROOT / "data" / "trade" / "merchant_maps.json"
-ICON_INDEX_PATH = ROOT / "data" / "trade" / "merchant_index.json"
+GOODS_PATH = paths_module.trade_dir() / "goods.json"
+MERCHANT_MAPS_PATH = paths_module.trade_dir() / "merchant_maps.json"
+ICON_INDEX_PATH = paths_module.trade_dir() / "merchant_index.json"
 _TEMPLATE_CACHE = {}
-ICON_DIR = ROOT / "data" / "trade" / "icons"
-UNKNOWN_ICON_DIR = ROOT / "data" / "trade" / "icons_unknown"
-GOOD_NAMES_PATH = ROOT / "data" / "trade" / "good_names.json"
+ICON_DIR = paths_module.trade_dir() / "icons"
+UNKNOWN_ICON_DIR = paths_module.trade_dir() / "icons_unknown"
+GOOD_NAMES_PATH = paths_module.trade_dir() / "good_names.json"
 
 #: 学习开关（默认开启；测试/离线解析可显式关掉）
 #: 学商品名 / 学未知图标：45 个商品已经齐了，默认关闭。
@@ -109,7 +110,7 @@ def load_icon_templates(icon_dir=None, index_path=None):
             continue
         good_id = item.get("good_id")
         rel = item.get("file", "")
-        path = ROOT / "data" / "trade" / rel
+        path = paths_module.trade_dir() / rel
         if not good_id or not path.exists():
             continue
         image = _load_image(path)

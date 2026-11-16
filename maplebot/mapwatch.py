@@ -31,29 +31,30 @@ import numpy as np
 import difflib
 
 from . import minimap, player
+from . import paths as paths_module
 
 ROOT = Path(__file__).resolve().parents[1]
-VISITS_PATH = ROOT / "data" / "trade" / "map_visits.jsonl"
-PORTALS_PATH = ROOT / "data" / "trade" / "seen_portals.json"
-NAMES_DIR = ROOT / "data" / "trade" / "map_names"
+VISITS_PATH = paths_module.trade_dir() / "map_visits.jsonl"
+PORTALS_PATH = paths_module.trade_dir() / "seen_portals.json"
+NAMES_DIR = paths_module.trade_dir() / "map_names"
 NAME_THRESHOLD = 0.99
 TEMPLATE_MAX_DIFF = 4   # 同一画面与自己的模板差异 0，别的名字 >= 9
 NAME_MARGIN = 0.02
 NAME_SIZE = (240, 44)
 # 名字裁剪里"第二行文字"的精确区域：不含地区名、不含图标，只留 仙人掌沙漠-1 这一条
 NAME_TEXT_BOX = (38, 20, 162, 21)
-NAME_TEXT_DIR = ROOT / "data" / "trade" / "map_name_text"
-BASELINE_PATH = ROOT / "data" / "trade" / "map_graph.json"
-EDGE_RAW_PATH = ROOT / "data" / "trade" / "edge_times_raw.jsonl"
+NAME_TEXT_DIR = paths_module.trade_dir() / "map_name_text"
+BASELINE_PATH = paths_module.trade_dir() / "map_graph.json"
+EDGE_RAW_PATH = paths_module.trade_dir() / "edge_times_raw.jsonl"
 #: 单跳低于这个秒数基本是"连穿两张图"，不是真的走完一张图
 MIN_WALK_SEC = 1.0
-PORTAL_SHOP_PATH = ROOT / "data" / "trade" / "portal_shop_raw.jsonl"
+PORTAL_SHOP_PATH = paths_module.trade_dir() / "portal_shop_raw.jsonl"
 _CROP_NAMES = {}   # 裁剪像素哈希 -> 名字：同一画面不重复问视觉   # 固定裁剪尺寸：锚定小地图左上角，不随面板宽度变化
-NAMES_PATH = ROOT / "data" / "trade" / "map_names.json"
+NAMES_PATH = paths_module.trade_dir() / "map_names.json"
 
 #: 小地图图标颜色（实测：NPC 蓝点 H 85~110，传送门绿圈 H 40~80）
 NPC_RANGE = ((85, 120, 120), (110, 255, 255))
-PORTAL_TEMPLATE = ROOT / "data" / "trade" / "icons" / "portal.png"
+PORTAL_TEMPLATE = paths_module.trade_dir() / "icons" / "portal.png"
 PORTAL_THRESHOLD = 0.80
 #: 全屏变黑判定：平均亮度低于这个值算 loading
 DARK_MEAN = 40

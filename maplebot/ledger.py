@@ -10,9 +10,10 @@
 import json
 import time
 from pathlib import Path
+from . import paths as paths_module
 
 ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_PATH = ROOT / "data" / "trade" / "observations.jsonl"
+DEFAULT_PATH = paths_module.trade_dir() / "observations.jsonl"
 
 #: 墙钟下界（约 2001-09-09）。``time.monotonic()`` 是"开机以来秒数"，正常远小于
 #: 这个值；低于它的 ``t`` 只可能是旧版本用 monotonic 落盘的遗留。

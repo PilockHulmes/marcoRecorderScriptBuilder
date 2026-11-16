@@ -31,6 +31,8 @@
 
 from __future__ import annotations
 
+from . import paths as paths_module
+
 import argparse
 import json
 import sys
@@ -38,7 +40,7 @@ from collections import Counter
 from pathlib import Path
 
 #: 知识库默认路径（相对仓库根，不依赖当前工作目录）。
-DEFAULT_PATH = Path(__file__).resolve().parents[1] / "data" / "trade" / "goods.json"
+DEFAULT_PATH = paths_module.trade_dir() / "goods.json"
 
 #: ``line`` 字段的合法取值。
 VALID_LINES = ("kobi", "dour", "ore")

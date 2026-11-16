@@ -25,14 +25,15 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from . import ledger as ledger_module
+from . import paths as paths_module
 
 ROOT = Path(__file__).resolve().parents[1]
-GOODS_PATH = ROOT / "data" / "trade" / "goods.json"
-MERCHANT_MAPS_PATH = ROOT / "data" / "trade" / "merchant_maps.json"
-GRAPH_PATH = ROOT / "data" / "trade" / "map_graph.json"
-EDGE_TIMES_PATH = ROOT / "data" / "trade" / "edge_times.json"
-PORTAL_SHOP_PATH = ROOT / "data" / "trade" / "portal_shop_raw.jsonl"
-EDGE_RAW_PATH = ROOT / "data" / "trade" / "edge_times_raw.jsonl"
+GOODS_PATH = paths_module.trade_dir() / "goods.json"
+MERCHANT_MAPS_PATH = paths_module.trade_dir() / "merchant_maps.json"
+GRAPH_PATH = paths_module.trade_dir() / "map_graph.json"
+EDGE_TIMES_PATH = paths_module.trade_dir() / "edge_times.json"
+PORTAL_SHOP_PATH = paths_module.trade_dir() / "portal_shop_raw.jsonl"
+EDGE_RAW_PATH = paths_module.trade_dir() / "edge_times_raw.jsonl"
 
 #: 还没有实测数据时，每一跳按这个秒数估（刻意保守：玩家不熟练）
 DEFAULT_SECONDS_PER_HOP = 60.0
