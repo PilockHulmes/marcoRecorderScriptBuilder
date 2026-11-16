@@ -546,8 +546,7 @@ def read_rows(frame, cache=None, cache_tag="", deadline=None) -> list[Row]:
             same_cycle = (deadline is None or entry.get("deadline") is None
                           or abs(entry["deadline"] - deadline) <= CACHE_DEADLINE_TOLERANCE)
             if same_cycle:
-                print(f"[cache] hit  复用 {len(entry['rows'])} 行价格（省一次 OCR）",
-                      flush=True)
+                # 命中是常态（每 0.2 秒一次），不打印，免得刷屏
                 return list(entry["rows"])
             reason = "倒计时跳变（商店刷新过）"
         else:
