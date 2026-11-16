@@ -420,7 +420,7 @@ def read_row_countdown(frame) -> str:
     crop = _crop(frame, COUNTDOWN_BOX)
     if crop is None:
         return ""
-    groups = digits_module.read_groups(crop, family="fat", kind="gold")
+    groups = digits_module.read_groups(crop, family="fat", kind="gold", mode="gap")
     if len(groups) == 2:
         try:
             minutes, seconds = int(groups[0]), int(groups[1])
@@ -771,6 +771,16 @@ def _digits_of_run(strip):
     return None
 
 
+def _finish_cargo(coins, weight, capacity, cache=None, cargo_key=None):
+    capacity = int(capacity)
+    if 130 <= capacity <= 140:      # 固定值 135；缩放后 5 易认成 3
+        capacity = 135
+    result = Cargo(coins=coins, weight=int(weight), capacity=capacity)
+    if cache is not None and cargo_key is not None:
+        cache.put(cargo_key, result)
+    return result
+
+
 def read_cargo(frame, profile="shop", cache=None) -> Cargo:
     """读 CARGO 顶部的金币 / 当前重量 / 容量。
 
@@ -821,6 +831,8 @@ def read_cargo(frame, profile="shop", cache=None) -> Cargo:
     if coins is None:
         # 数字是描边字体，二值化常把 0 认成"口"；原图再试一次
         coins = _longest_int(_ocr_text(coins_crop, mode="raw"))
+    # 负重是**白色**细字，和金币的金色粗字位图不同；实测模板在部分画面上会把
+    # 最后一位和「個」粘连读错，所以这里仍然用 OCR（约 40 ms），只保留金币模板。
     weight_text = _ocr_text(weight_crop, mode="light")
     match = re.search(r"(\d+)\s*/\s*(\d+)", weight_text)
     if match is None:
@@ -829,8 +841,13 @@ def read_cargo(frame, profile="shop", cache=None) -> Cargo:
         match = re.search(r"(\d+)\s*/\s*(\d+)", weight_text)
     if coins is None or match is None:
         raise TradeParseError(f"CARGO 读不出来：coins={coins!r} weight={weight_text!r}")
+    capacity_value = int(match.group(2))
+    # 容量是游戏的固定值 135（见 TRADE_DESIGN.md §2）；缩放后 5 容易被认成 3，
+    # 读到 130~140 之间就当 135，避免"容量 133"这种假数据让负重判断失真
+    if 130 <= capacity_value <= 140:
+        capacity_value = 135
     result = Cargo(coins=coins, weight=int(match.group(1)),
-                   capacity=int(match.group(2)))
+                   capacity=capacity_value)
     if cargo_key is not None:
         cache.put(cargo_key, result)
     return result

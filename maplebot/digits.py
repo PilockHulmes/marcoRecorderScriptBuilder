@@ -23,7 +23,10 @@ ROOT = Path(__file__).resolve().parents[1]
 DIGITS_PATH = ROOT / "data" / "trade" / "digits.json"
 
 #: 判定"最像"的最低相似度（IoU）。低于这个数就当认不出。
-MATCH_THRESHOLD = 0.62
+MATCH_THRESHOLD = 0.85
+
+#: 第一名要比第二名高出这么多才算可信
+MARGIN = 0.06
 
 #: 两个字形之间至少要有这么多列空白才算分开
 GLYPH_MIN_GAP = 1
@@ -128,12 +131,15 @@ def identify(glyph, family="fat", templates=None):
     table = (templates or load()).get(family) or {}
     if not table or glyph is None or glyph.size == 0:
         return "", 0.0
-    best, best_score = "", 0.0
+    best, best_score, second_score = "", 0.0, 0.0
     for digit, bitmaps in table.items():
         for bitmap in bitmaps:
             score = _similarity(glyph, bitmap)
             if score > best_score:
+                second_score = best_score
                 best, best_score = digit, score
+            elif score > second_score:
+                second_score = score
     if best_score < MATCH_THRESHOLD:
         return "", best_score
     return best, best_score
@@ -158,17 +164,8 @@ def read_number(crop, family="fat", kind="gold", templates=None,
     return int("".join(digits))
 
 
-def read_groups(crop, family="fat", kind="gold", templates=None, max_groups=2,
-                max_height=None):
-    """按"最大空隙"把数字分成几组：``0/135`` -> ["0","135"]，``03:48`` -> ["03","48"]。
-
-    斜杠和冒号都不是金色，所以它们的位置就是字形之间最大的空隙。
-    """
-    mask = _mask(crop, kind=kind)
-    glyphs = split_glyphs(mask, max_height=max_height)
-    if not glyphs:
-        return []
-    # 找到每个字形在原图里的列位置，用间距切组
+def _groups_by_gap(mask, family, templates, max_groups, max_height):
+    """按"最大空隙"切组（倒计时的冒号不是字形，只能靠空隙）。"""
     cols = (mask > 0).any(axis=0)
     runs, start = [], None
     for index, value in enumerate(cols):
@@ -179,21 +176,18 @@ def read_groups(crop, family="fat", kind="gold", templates=None, max_groups=2,
             start = None
     if start is not None:
         runs.append((start, len(cols) - 1))
-    runs = [r for r in runs if 3 <= r[1] - r[0] + 1 <= 16]
-    if len(runs) <= 1:
-        digits = "".join(identify(g, family, templates)[0] for g in glyphs)
-        return [digits] if digits and len(digits) == len(glyphs) else []
-    gaps = [(runs[i + 1][0] - runs[i][1], i) for i in range(len(runs) - 1)]
-    groups, cuts = [], []
-    gaps.sort(reverse=True)
-    for _gap, index in gaps[:max_groups - 1]:
-        cuts.append(index)
-    cuts.sort()
+    if len(runs) < 2:
+        glyphs = split_glyphs(mask, max_height=max_height)
+        text = "".join(identify(g, family, templates)[0] for g in glyphs)
+        return [text] if text else []
+    gaps = sorted(((runs[i + 1][0] - runs[i][1], i) for i in range(len(runs) - 1)),
+                  reverse=True)
+    cuts = sorted(index for _gap, index in gaps[:max_groups - 1])
     bounds = [0] + [c + 1 for c in cuts] + [len(runs)]
+    groups = []
     for left, right in zip(bounds, bounds[1:]):
-        chunk = runs[left:right]
         text = ""
-        for run in chunk:
+        for run in runs[left:right]:
             piece = mask[:, run[0]:run[1] + 1]
             rows = np.where((piece > 0).any(axis=1))[0]
             if not len(rows):
@@ -203,6 +197,35 @@ def read_groups(crop, family="fat", kind="gold", templates=None, max_groups=2,
                 return []
             text += digit
         groups.append(text)
+    return groups
+
+
+def read_groups(crop, family="fat", kind="gold", templates=None, max_groups=2,
+                max_height=13, mode="separator"):
+    """按"认不出的字形"当分隔符来切组：``0/135`` -> ["0", "135"]、``03:48`` -> ["03","48"]。
+
+    斜杠、冒号不是数字，识别分数会很低，正好当分隔符用。
+    比"按最大空隙切"更稳：数字之间的空隙可能比斜杠还大。
+    """
+    mask = _mask(crop, kind=kind)
+    if mode == "gap":
+        return _groups_by_gap(mask, family, templates, max_groups, max_height)
+    glyphs = split_glyphs(mask, max_height=max_height)
+    if not glyphs:
+        return []
+    groups, current = [], []
+    for glyph in glyphs:
+        digit, score = identify(glyph, family=family, templates=templates)
+        if digit and score >= MATCH_THRESHOLD:
+            current.append(digit)
+            continue
+        if current:                    # 认不出 -> 当作分隔符
+            groups.append("".join(current))
+            current = []
+            if len(groups) >= max_groups:
+                return groups
+    if current:
+        groups.append("".join(current))
     return groups
 
 

@@ -44,7 +44,7 @@ def white_mask(img):
     return (gray > 150).astype(np.uint8) * 255
 
 
-def split_glyphs(mask, lo=3, hi=14, min_h=6):
+def split_glyphs(mask, lo=3, hi=14, min_h=6, max_h=None):
     """按列切字形，返回 [(位图, (x0,x1))]。"""
     cols = (mask > 0).any(axis=0)
     runs, start = [], None
@@ -64,6 +64,9 @@ def split_glyphs(mask, lo=3, hi=14, min_h=6):
         rows = np.where((sub > 0).any(axis=1))[0]
         if not len(rows) or rows.max() - rows.min() + 1 < min_h:
             continue
+        height = rows.max() - rows.min() + 1
+        if max_h is not None and height > max_h:
+            continue                     # 斜杠、粘连块：不是单个数字
         out.append((sub[rows.min():rows.max() + 1], (a, b)))
     return out
 
@@ -110,6 +113,11 @@ def main():
                                  trade.PRICE_BOX[2], trade.PRICE_BOX[3]), "18", "gold", "1920B 价格3"))
     if chat is not None:
         jobs.append(("thin", chat, (1440, 778, 180, 22), "1234567890", "white", "聊天输入框"))
+    six_shot = BASE / "ec" / "ec5c3323ab138e26c8687b7c072060930a45d35492e739e337fcea07acd00b4b"
+    if six_shot.exists():
+        frame6 = load(six_shot)
+        jobs.append(("fat", frame6, trade.COUNTDOWN_BOX, "03:16", "gold", "带6的倒计时"))
+        jobs.append(("whitefat", frame6, trade.CARGO_WEIGHT_SHOP, "0/135", "white", "负重 0/135"))
     only_box = BASE / "12" / "1268012dbe814704e6ca0447d40dee5250054c6013d6841125dcacecf8cfa52c"
     if only_box.exists():
         jobs.append(("fat", load(only_box), trade.CARGO_COINS_ONLY, "7923", "gold", "单独货舱 7923"))
@@ -126,7 +134,7 @@ def main():
             report.append((label, "取不到区域"))
             continue
         mask = gold_mask(crop) if mask_kind == "gold" else white_mask(crop)
-        glyphs = [(g, pos) for g, pos in split_glyphs(mask)]
+        glyphs = [(g, pos) for g, pos in split_glyphs(mask, max_h=11)]
         pairs = assign(glyphs, expected)
         if pairs is None:
             report.append((label, f"字形数 {len(glyphs)} != 期望位数 {sum(c.isdigit() for c in expected)}"))
