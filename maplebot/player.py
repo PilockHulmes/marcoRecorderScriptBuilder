@@ -91,11 +91,13 @@ def _content_rect(frame, content=None):
     return box.inner().as_tuple()
 
 
-def find_candidates(frame, content=None):
+def find_candidates(frame, content=None, scale=1.0):
     """返回内容区里所有"黄点+白圈"候选（按分数降序）。
 
     :param content: 小地图**内容区** ``(x, y, w, h)``（不含白框）。
                     不传就自动找小地图。
+    :param scale:   界面缩放比（1920x1080 下约 1.4）。白圈半径、点面积都按它放大，
+                    否则高分辨率下"黄点+白圈"会被尺寸阈值挡掉，一个候选都找不到。
     """
     if frame is None or getattr(frame, "size", 0) == 0:
         return []
@@ -116,18 +118,24 @@ def find_candidates(frame, content=None):
     if not mask.any():
         return []
     count, _labels, stats, centroids = cv2.connectedComponentsWithStats(mask, 8)
+    area_min = AREA_MIN * scale * scale
+    area_max = AREA_MAX * scale * scale
+    side_min = SIDE_MIN * scale
+    side_max = SIDE_MAX * scale
+    typical_area = 24.0 * scale * scale
     candidates = []
     for i in range(1, count):
         x, y, w, h, area = (int(v) for v in stats[i])
-        if not (AREA_MIN <= area <= AREA_MAX):
+        if not (area_min <= area <= area_max):
             continue
-        if not (SIDE_MIN <= w <= SIDE_MAX) or not (SIDE_MIN <= h <= SIDE_MAX):
+        if not (side_min <= w <= side_max) or not (side_min <= h <= side_max):
             continue
         cx, cy = int(round(centroids[i][0])), int(round(centroids[i][1]))
-        ring = _ring_ratio(hsv, cx, cy)
+        ring = _ring_ratio(hsv, cx, cy, inner=RING_INNER * scale,
+                           outer=RING_OUTER * scale)
         if ring < RING_RATIO_MIN:
             continue
-        area_score = 1.0 - abs(area - 24) / 24.0      # 24 px² 最典型
+        area_score = 1.0 - abs(area - typical_area) / typical_area
         area_score = max(0.0, min(1.0, area_score))
         score = 0.7 * ring + 0.3 * area_score
         candidates.append(

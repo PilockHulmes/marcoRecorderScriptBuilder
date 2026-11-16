@@ -478,7 +478,8 @@ def observe(frame):
     hsv = cv2.cvtColor(crop, cv2.COLOR_BGR2HSV)
 
     pos = None
-    candidates = player.find_candidates(frame, inner.as_tuple())
+    candidates = player.find_candidates(frame, inner.as_tuple(),
+                                         scale=_frame_scale(frame))
     if candidates:
         pos = ((candidates[0].x - inner.x) / width, (candidates[0].y - inner.y) / height)
 
