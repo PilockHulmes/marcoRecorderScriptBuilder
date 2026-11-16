@@ -645,17 +645,15 @@ class MapWatcher:
     def cluster(self, map_id, pos, size=None):
         """把位置吸附到这张图已有的传送门簇；返回**稳定**的 ``pos_key``。
 
-        半径按小地图像素算（默认 5px），命中后只更新桶内质心，返回的 key
-        永远不变——否则每帧的轻微抖动都会在 seen_portals 里造出一个新成员。
+        半径用**固定的归一化值**（``CLUSTER_RX/RY``），不按小地图像素换算：
+        换分辨率时小地图会放大 1.4 倍，若按像素算，同一个门在 1920 下的观测
+        会落在 1366 已有簇的半径之外，凭空多出一个"新门"，把门级时间样本拆薄。
         """
         if pos is None:
             return None
         if size and size[0] > 0 and size[1] > 0:
-            self.map_sizes[map_id] = (int(size[0]), int(size[1]))
-            rx = CLUSTER_PX / float(size[0])
-            ry = CLUSTER_PX / float(size[1])
-        else:
-            rx, ry = self._radii(map_id)
+            self.map_sizes[map_id] = (int(size[0]), int(size[1]))   # 仅作记录
+        rx, ry = CLUSTER_RX, CLUSTER_RY
         bucket = self.portal_points.setdefault(map_id, [])
         best, best_d = None, None
         for entry in bucket:
