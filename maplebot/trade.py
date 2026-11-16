@@ -472,10 +472,9 @@ def read_rows(frame) -> list[Row]:
             continue
 
         partial = icon_box[1] + icon_box[3] > list_bottom
-        name_crop = _crop(frame, (NAME_BOX[0], top + 1, NAME_BOX[2], NAME_BOX[3]))
-        name = _ocr_text(name_crop, mode="white", upscale=NAME_UPSCALE,
-                         interpolation=cv2.INTER_NEAREST)
-        name = name.strip(" \t\r\n【】[]()（）—-_.,，。:：|")
+        # 商品名不再 OCR：45 个商品全靠图标识别，名字只给"学名字"用，已经关掉。
+        # 这一步原来每次要 118 ms（每次读商店 29%），去掉后读一次快 3 成。
+        name = ""
 
         if partial:
             buy = sell = None
