@@ -808,8 +808,13 @@ def read_cargo(frame, profile="shop", cache=None) -> Cargo:
     if coins_crop is None or weight_crop is None:
         raise TradeParseError("CARGO 数字区域超出画面")
 
+    # 模板匹配一律在**原图**上做（字体高度是 10px）
+    raw_coins, raw_weight = coins_crop, weight_crop
+    coins = digits_module.read_number(raw_coins, family="fat", kind="gold")
+    weight_groups = digits_module.read_groups(raw_weight, family="fat", kind="gold")
+
+    # 后面几条兜底是给 OCR 用的：单独货舱的字更小，先放大 3 倍
     if profile == "only":
-        # 单独货舱的字更小，先放大再 OCR（实测 3 倍最稳）
         coins_crop = cv2.resize(
             coins_crop, (coins_crop.shape[1] * 3, coins_crop.shape[0] * 3),
             interpolation=cv2.INTER_CUBIC)
@@ -818,7 +823,6 @@ def read_cargo(frame, profile="shop", cache=None) -> Cargo:
             interpolation=cv2.INTER_CUBIC)
     else:
         coins_crop = _gold_only(coins_crop)
-    coins = digits_module.read_number(coins_crop, family="fat", kind="gold")
     if coins is None:
         coins = _digits_of_run(coins_crop)
     if coins is None:
@@ -832,7 +836,6 @@ def read_cargo(frame, profile="shop", cache=None) -> Cargo:
         coins = _longest_int(_ocr_text(coins_crop, mode="raw"))
     # 当前负重是**金色**数字，和金币同一套模板；"/135" 那部分才是白色，不读。
     weight_value = None
-    weight_groups = digits_module.read_groups(weight_crop, family="fat", kind="gold")
     if weight_groups and weight_groups[0].isdigit():
         weight_value = int(weight_groups[0])
 
