@@ -403,10 +403,31 @@ def _row_side_and_price(row):
     return "", 0
 
 
+#: 各档位的合法价格区间（见 TRADE_DESIGN.md §2）。越界一定是读错了。
+TIER_PRICE_RANGE = {
+    "tier1": (10, 25),
+    "tier2": (35, 75),
+    "volatile": (100, 300),
+}
+
+
+def _price_plausible(good, price):
+    """价格是否落在该档位的合法区间内。未知档位一律放行。"""
+    if price is None:
+        return False
+    span = TIER_PRICE_RANGE.get((good or {}).get("tier"))
+    if span is None:
+        return True
+    return span[0] <= int(price) <= span[1]
+
+
 def _append_row(visit, good_id, row, score, goods):
     side, price = _row_side_and_price(row)
     if not side:
         return False
+    # 价格越界（例如把 19 读成 1）说明这一帧读错了，宁可不记，也不要污染记录簿
+    if price is not None and not _price_plausible(goods.get(good_id, {}), price):
+        price = None
     visit.rows.append(Row(good_id, goods_name(good_id, goods),
                           side, price, score))
     return True
