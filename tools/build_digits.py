@@ -133,6 +133,18 @@ def main():
         if crop is None or crop.size == 0:
             report.append((label, "取不到区域"))
             continue
+        # 先用 OCR 核对这段区域真的是这个数字，避免标签错位把模板污染了
+        check_text = ""
+        try:
+            check_text = trade._ocr_text(crop, mode="light") or ""
+        except Exception:
+            check_text = ""
+        check_digits = "".join(ch for ch in check_text if ch.isdigit())
+        want_digits = "".join(ch for ch in expected if ch.isdigit())
+        if check_digits and check_digits != want_digits:
+            report.append((label, f"跳过：OCR 读到 {check_digits}，与期望 {want_digits} 不符"))
+            continue
+
         mask = gold_mask(crop) if mask_kind == "gold" else white_mask(crop)
         glyphs = [(g, pos) for g, pos in split_glyphs(mask, max_h=11)]
         pairs = assign(glyphs, expected)
