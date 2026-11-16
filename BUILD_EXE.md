@@ -88,7 +88,7 @@ os.environ.setdefault("PADDLEOCR_HOME", str(root / ".paddleocr"))
 
 ## 四、还没解决的问题（分享前必须处理）
 
-### 4.1 数据写到临时目录，退出就丢
+### 4.1 数据写到临时目录，退出就丢（**已解决**，见第五节）
 
 工具会写 `data/trade/*.jsonl`（价格记录、时间样本）。打包后
 `Path(__file__).resolve().parents[1]` 指向 `_MEIPASS`（临时解包目录），
@@ -105,3 +105,46 @@ os.environ.setdefault("PADDLEOCR_HOME", str(root / ".paddleocr"))
 
 想再小只能换 OCR 方案（ONNX / 系统自带 OCR），那是重写级别的改动，
 见 `TRADE_DESIGN.md` 里关于 C# 移植的讨论。
+
+## 五、运行期数据落在哪里（2026-11-17 加入）
+
+### 5.1 为什么需要
+
+单文件 exe 运行时会把内容解压到临时目录（`sys._MEIPASS`），**exe 一退出就删掉**。
+如果还往那里写观察记录、学到的模板，用户每次重开都从零开始（甚至写入直接失败）。
+
+### 5.2 现在的规则（`maplebot/paths.py`）
+
+```
+只读资源（RES_ROOT = _MEIPASS）
+    图标、数字模板、预置地图名、goods.json …
+
+可写数据（DATA_ROOT）
+    观察记录、过图记录、新学的模板、调试图
+```
+
+`DATA_ROOT` 的选择顺序：
+
+1. exe 旁边有 `portable.txt` 且目录可写 → `<exe目录>\data`
+2. exe 旁边有 `localdata.txt` → `%LOCALAPPDATA%\MapleTrade\data`
+3. exe 目录可写 → `<exe目录>\data`（默认，便携：数据跟着文件夹走）
+4. 不可写（`C:\Program Files` 之类）→ `%LOCALAPPDATA%\MapleTrade\data`
+
+**种子复制**：首次启动把只读资源里的 `data/` 补到 `DATA_ROOT`，
+**只补缺失文件，绝不覆盖**用户已有数据。实测种子 296 个文件。
+
+**环境变量覆盖**：`MAPLE_TRADE_DATA=<目录>` 可以强制指定（调试用）。
+
+### 5.3 启动日志
+
+```
+[啟動] 数据目录：E:\MapleTrade\data（资源目录：C:\Users\...\Temp\_MEIxxxxx）
+```
+
+出问题时先看这一行，就能知道数据落在哪。
+
+### 5.4 还没验证
+
+- **没有在真正打包出来的 exe 上测过**：种子复制、便携/兜底切换都只在源码模式
+  和临时目录模拟里验证过；下次打包后要实测这三件事。
+- `gui.spec` 已经包含 `(data/trade, "data/trade")`，种子数据会进 exe。
