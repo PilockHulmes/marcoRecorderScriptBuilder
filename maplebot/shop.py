@@ -37,6 +37,9 @@ GOOD_NAMES_PATH = ROOT / "data" / "trade" / "good_names.json"
 #: 学商品名 / 学未知图标：45 个商品已经齐了，默认关闭。
 #: 关掉之后每次读商店不再对每一行名字做 OCR（省时间），也不会再写文件。
 #: 需要临时复原时传 `learn_names=True` / `learn_icons=True`。
+#: 商店刷新的上限（秒）。超过这个值的读数一定是错的。
+MAX_REFRESH_SEC = 360
+
 LEARN_NAMES = False
 LEARN_ICONS = False
 
@@ -177,19 +180,25 @@ class Visit:
 
 
 def countdown_seconds(text):
-    """'01:18' -> 78。读不出返回 0。"""
+    """'01:18' -> 78。读不出、或读到不可能的值（>360 秒）都返回 0。
+
+    商店刷新是 3~5 分钟；出现过把 03:00 读成 30:00 的情况（1800 秒），
+    那种记录会污染看板的倒计时和"有效期"，所以超过 6 分钟一律作废。
+    """
     if not text:
         return 0
     digits = "".join(ch if ch.isdigit() else ":" for ch in str(text))
     parts = [p for p in digits.split(":") if p]
     try:
         if len(parts) >= 2:
-            return int(parts[0]) * 60 + int(parts[1])
-        if len(parts) == 1:
-            return int(parts[0])
+            value = int(parts[0]) * 60 + int(parts[1])
+        elif len(parts) == 1:
+            value = int(parts[0])
+        else:
+            return 0
     except ValueError:
-        pass
-    return 0
+        return 0
+    return value if 0 <= value <= MAX_REFRESH_SEC else 0
 
 
 #: 货舱物品行（实测，@1368x800 整窗坐标；客户区 x-1, y-32）
