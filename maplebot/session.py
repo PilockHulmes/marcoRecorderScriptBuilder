@@ -23,6 +23,7 @@ from . import ledger as ledger_module
 from . import mapwatch
 import logging
 
+from . import frame as frame_module
 from . import shop
 
 logger = logging.getLogger(__name__)
@@ -298,15 +299,18 @@ class TradeSession:
         self.cargo_error = ""
         self.watcher_error = ""
         try:
+            # 地图名用**原生**画面匹配（缩放会把"只差一位"的地名模糊掉）
             self.watcher.step(frame, now=clock)
         except Exception as exc:
             self.watcher_error = str(exc)
+        # 商店/货舱/数字一律在 1366x768 的基准视图上读
+        view = frame_module.canonical(frame)
         previous_map = self.state.map
         self.state.map = self.current_map()
         if previous_map and self.state.map and self.state.map != previous_map:
             self._refresh_idle(now)          # 过图后距离全变了，重算一次
 
-        opened = self._shop_open(frame)
+        opened = self._shop_open(view)
         try:
             # 告诉观察器"商店开着没有"：它要扣掉逛店时间，并记"门→商人"样本
             self.watcher.note_shop(clock, opened, map_name=self.state.map)
@@ -314,7 +318,7 @@ class TradeSession:
             pass
         if opened:
             if not self._open or clock - self._shop_at >= self.shop_every:
-                self._read_shop(frame, now)
+                self._read_shop(view, now)
                 self._shop_at = clock
             self._open = True
         else:

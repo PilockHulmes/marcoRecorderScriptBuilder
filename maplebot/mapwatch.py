@@ -173,19 +173,61 @@ KNOWN_EXTRA = [
 _name_templates = None
 
 
+def _shape_key(shape):
+    return (int(shape[0]), int(shape[1]))
+
+
 def load_name_templates():
+    """基准尺寸（44x240）的名字模板：``{名字: 图}``。"""
+    return load_name_templates_for((NAME_SIZE[1], NAME_SIZE[0]))
+
+
+def load_name_templates_for(shape):
+    """某个尺寸（高, 宽）下的名字模板。
+
+    不同分辨率的渲染位图不同，所以模板按尺寸分开存：
+    ``data/trade/map_names/44x240/``、``62x337/`` ……
+    旧版本把模板平铺在 map_names/ 下（44x240），仍按基准尺寸读。
+    """
     global _name_templates
     if _name_templates is None:
         _name_templates = {}
+    key = _shape_key(shape)
+    if key in _name_templates:
+        return _name_templates[key]
+    table = {}
+    canonical = (NAME_SIZE[1], NAME_SIZE[0])
+    if key == canonical:                      # 旧版平铺模板只属于基准尺寸
         try:
             for path in NAMES_DIR.glob("*.png"):
                 data = np.fromfile(str(path), dtype=np.uint8)
                 image = cv2.imdecode(data, cv2.IMREAD_COLOR)
-                if image is not None:
-                    _name_templates[path.stem] = image
+                if image is not None and _shape_key(image.shape) == canonical:
+                    table[path.stem] = image
         except Exception:
             pass
-    return _name_templates
+    try:
+        sub = NAMES_DIR / f"{int(key[1])}x{int(key[0])}"
+        if sub.is_dir():
+            for path in sub.glob("*.png"):
+                data = np.fromfile(str(path), dtype=np.uint8)
+                image = cv2.imdecode(data, cv2.IMREAD_COLOR)
+                if image is not None and _shape_key(image.shape) == key:
+                    table[path.stem] = image
+    except Exception:
+        pass
+    _name_templates[key] = table
+    return table
+
+
+def _frame_scale(frame):
+    """画面相对 1366x768 的缩放比（小于 1024 宽当测试帧，按 1 处理）。"""
+    if frame is None:
+        return 1.0
+    width = frame.shape[1]
+    if width < 1024:
+        return 1.0
+    return width / 1366.0
 
 
 def name_crop(frame):
@@ -200,9 +242,12 @@ def name_crop(frame):
     # 跑商界面里小地图固定左上角；跑偏时会把窗口标题栏当成地图名
     if box.y < 60 or box.x > 400:
         return None
-    width, height = NAME_SIZE
+    # 界面按 宽/1366 等比放大：1920 下名字区是 337x62，上边距也要按比例
+    scale = _frame_scale(frame)
+    width = int(round(NAME_SIZE[0] * scale))
+    height = int(round(NAME_SIZE[1] * scale))
     x = max(0, box.x)
-    y = max(0, box.y - 42)
+    y = max(0, box.y - int(round(42 * scale)))
     crop = frame[y:y + height, x:x + width]
     if crop.shape[0] != height or crop.shape[1] != width:
         return None          # 贴边/越界：宁可不认，也不能拿残缺图去比
@@ -238,13 +283,20 @@ def match_name(crop, threshold=NAME_THRESHOLD, mode="diff", margin=0.01):
 
     只差一个数字的地图名 NCC 都在 0.97~0.99，裕度极小，所以 diff 更稳。
     """
-    if crop is None or crop.shape[:2] != (NAME_SIZE[1], NAME_SIZE[0]):
+    if crop is None or min(crop.shape[:2]) < 8:
         return "", 0.0, 0.0
-    x, y, w, h = NAME_TEXT_BOX
+    shape = _shape_key(crop.shape)
+    scale_x = shape[1] / float(NAME_SIZE[0])
+    scale_y = shape[0] / float(NAME_SIZE[1])
+    bx, by, bw, bh = NAME_TEXT_BOX
+    x = int(round(bx * scale_x))
+    y = int(round(by * scale_y))
+    w = max(1, int(round(bw * scale_x)))
+    h = max(1, int(round(bh * scale_y)))
     query = crop[y:y + h, x:x + w]
     rows = []
-    for name, tpl in load_name_templates().items():
-        if tpl.shape[:2] != (NAME_SIZE[1], NAME_SIZE[0]):
+    for name, tpl in load_name_templates_for(shape).items():
+        if _shape_key(tpl.shape) != shape:
             continue
         candidate = tpl[y:y + h, x:x + w]
         if candidate.shape != query.shape or query.size == 0:
@@ -272,18 +324,23 @@ def match_name(crop, threshold=NAME_THRESHOLD, mode="diff", margin=0.01):
 
 
 def save_name_template(name, crop):
-    """保存模板；返回 True 表示是新建（用于只在首次打印）。"""
-    if crop is None or crop.shape[:2] != (NAME_SIZE[1], NAME_SIZE[0]):
+    """保存模板；返回 True 表示是新建（用于只在首次打印）。
+
+    按裁剪尺寸分目录存：不同分辨率的位图不同，混在一起会互相污染。
+    """
+    if crop is None or min(crop.shape[:2]) < 8:
         return False
-    NAMES_DIR.mkdir(parents=True, exist_ok=True)
-    path = NAMES_DIR / f"{name}.png"
+    height, width = crop.shape[:2]
+    sub = NAMES_DIR / f"{width}x{height}"
+    sub.mkdir(parents=True, exist_ok=True)
+    path = sub / f"{name}.png"
     created = False
     if not path.exists():
         ok, buffer = cv2.imencode(".png", crop)
         if ok:
             buffer.tofile(str(path))
             created = True
-    load_name_templates()[name] = crop
+    load_name_templates_for((height, width))[name] = crop
     return created
 
 
