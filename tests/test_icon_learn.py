@@ -121,6 +121,9 @@ class ReadVisitLearningTest(unittest.TestCase):
     def read(self, rows, vision, templates=None, **kwargs):
         if templates is None:
             templates = {}
+        # 学名字/学图标默认已关闭，这一组测试专门验证学习功能，显式打开
+        kwargs.setdefault("learn_names", True)
+        kwargs.setdefault("learn_icons", True)
         with mock.patch.object(shop.trade, "read_rows", return_value=rows), \
              mock.patch.object(shop.trade, "read_row_countdown", return_value=""), \
              mock.patch.object(shop.trade, "read_cargo",

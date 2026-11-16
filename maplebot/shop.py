@@ -33,8 +33,11 @@ UNKNOWN_ICON_DIR = ROOT / "data" / "trade" / "icons_unknown"
 GOOD_NAMES_PATH = ROOT / "data" / "trade" / "good_names.json"
 
 #: 学习开关（默认开启；测试/离线解析可显式关掉）
-LEARN_NAMES = True
-LEARN_ICONS = True
+#: 学商品名 / 学未知图标：45 个商品已经齐了，默认关闭。
+#: 关掉之后每次读商店不再对每一行名字做 OCR（省时间），也不会再写文件。
+#: 需要临时复原时传 `learn_names=True` / `learn_icons=True`。
+LEARN_NAMES = False
+LEARN_ICONS = False
 
 #: 图标匹配：缩到 24x24 后比较，0.80 足够区分不同商品
 ICON_MATCH_SIZE = (24, 24)
