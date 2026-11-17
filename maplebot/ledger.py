@@ -112,7 +112,8 @@ class Ledger:
                 price = row.get("price")
                 if not good_id or not side or price is None:
                     continue
-                cycle["rows"][f"{good_id}|{side}"] = int(price)
+                cycle["rows"][f"{good_id}|{side}"] = {
+                    "p": int(price), "t": moment, "r": refresh, "src": "local"}
             self._prune_locked(moment)
             self._dirty = True
 
@@ -133,9 +134,12 @@ class Ledger:
             for merchant_id, entry in self._merchants.items():
                 for cycle in entry["cycles"].values():
                     rows = []
-                    for key, price in cycle["rows"].items():
+                    for key, stored in cycle["rows"].items():
                         good_id, _, side = key.partition("|")
-                        rows.append({"good_id": good_id, "side": side, "price": price})
+                        price = stored.get("p") if isinstance(stored, dict) else stored
+                        if price is None:
+                            continue
+                        rows.append({"good_id": good_id, "side": side, "price": int(price)})
                     if not rows:
                         continue
                     out.append({
@@ -185,7 +189,16 @@ class Ledger:
         for merchant_id, entry in merchants.items():
             cycles = {}
             for key, cycle in (entry.get("cycles") or {}).items():
-                rows = dict(cycle.get("rows") or {})
+                raw_rows = dict(cycle.get("rows") or {})
+                rows = {}
+                for row_key, stored in raw_rows.items():
+                    if isinstance(stored, dict):
+                        rows[row_key] = stored
+                    elif stored is not None:
+                        rows[row_key] = {"p": int(stored),
+                                         "t": float(cycle.get("t") or 0),
+                                         "r": float(cycle.get("refresh_in") or 0),
+                                         "src": "local"}
                 if not rows:
                     continue
                 cycles[str(key)] = {
@@ -215,6 +228,57 @@ class Ledger:
             if not is_wall_clock(observation.get("t", 0)):
                 continue                     # 旧版 monotonic 记录，跨进程无意义
             self._merge(observation, float(observation.get("t", 0)))
+
+    # ------------------------------------------------------------ 共享
+    def merchant_record(self, merchant_id):
+        """把某个商人**本地观察**的行导出成共享格式（远端来的行不导出）。"""
+        with self._lock:
+            self._load_once()
+            entry = self._merchants.get(merchant_id)
+            if not entry:
+                return None
+            rows = {}
+            newest = 0.0
+            for cycle in entry["cycles"].values():
+                for key, row in cycle["rows"].items():
+                    if not isinstance(row, dict) or row.get("src") != "local":
+                        continue
+                    previous = rows.get(key)
+                    if previous is None or float(row.get("t", 0)) > float(previous.get("t", 0)):
+                        rows[key] = {"p": int(row.get("p", 0)),
+                                     "t": float(row.get("t", 0)),
+                                     "r": float(row.get("r", 0))}
+                        newest = max(newest, float(row.get("t", 0)))
+            if not rows:
+                return None
+            return {"v": 1, "merchant_id": merchant_id, "map": entry.get("map", ""),
+                    "writer": "", "rev": 0, "rows": rows}
+
+    def apply_remote(self, merchant_id, record):
+        """把合并好的远端行并进本地（标记来源 remote，下次不会重复上传）。"""
+        if not record or not record.get("rows"):
+            return False
+        rows = record["rows"]
+        deadline = max((float(r.get("t", 0)) + float(r.get("r", 0))) for r in rows.values())
+        with self._lock:
+            self._load_once()
+            entry = self._merchants.setdefault(
+                merchant_id, {"id": merchant_id, "map": "", "merchant": "",
+                              "kind": "", "cycles": {}})
+            if record.get("map"):
+                entry["map"] = record["map"]
+            cycle_key = f"remote:{int(round(deadline))}"
+            cycle = entry["cycles"].setdefault(
+                cycle_key, {"t": 0.0, "refresh_in": 0.0, "rows": {}})
+            for key, row in rows.items():
+                cycle["rows"][key] = {"p": int(row.get("p", 0)),
+                                      "t": float(row.get("t", 0)),
+                                      "r": float(row.get("r", 0)),
+                                      "src": "remote"}
+                cycle["t"] = max(cycle["t"], float(row.get("t", 0)))
+                cycle["refresh_in"] = max(cycle["refresh_in"], float(row.get("r", 0)))
+            self._dirty = True
+            return True
 
     # ------------------------------------------------------------ 落盘
     def _start_flusher(self):

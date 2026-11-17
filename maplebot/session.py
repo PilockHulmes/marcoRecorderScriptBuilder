@@ -23,6 +23,7 @@ from . import ledger as ledger_module
 from . import mapwatch
 import logging
 
+from . import activity as activity_module
 from . import anchors as anchors_module
 from . import frame as frame_module
 from . import shop
@@ -252,6 +253,10 @@ class TradeSession:
     def __init__(self, watcher=None, ledger=None, travel=None):
         #: 按像素摘要复用上一次的读取结果（滚动/刷新会自动失效）
         self.frame_cache = trade.FrameCache()
+        # 共享功能用：活跃度分档 + 新观察的回调（GUI 把它接到 ShareManager）
+        self.activity = activity_module.Activity()
+        self.activity_tier = activity_module.TIER_OFF
+        self.observation_hooks = []
         # 界面标定（锚点实测出的缩放比 + 商店面板原点）；1366 不需要
         self._calib = None
         self._calib_size = None
@@ -337,6 +342,16 @@ class TradeSession:
 
         opened = self._shop_open(view)
         try:
+            observation = getattr(self.watcher, "last_map_obs", None)
+            position = getattr(observation, "player", None) if observation else None
+            self.activity_tier = self.activity.update(
+                clock, game_running=(frame is not None and getattr(frame, "size", 0) > 0),
+                shop_open=opened, position=position,
+                map_changed=bool(previous_map and self.state.map
+                                 and self.state.map != previous_map))
+        except Exception:
+            pass
+        try:
             # 告诉观察器"商店开着没有"：它要扣掉逛店时间，并记"门→商人"样本
             self.watcher.note_shop(clock, opened, map_name=self.state.map)
         except Exception:
@@ -414,6 +429,12 @@ class TradeSession:
             self.ledger.record(visit, now=now)
         except Exception:
             pass
+        # 告诉共享模块：这个商人的数据变了（它会防抖后上传）
+        for hook in self.observation_hooks:
+            try:
+                hook(getattr(visit, "merchant_id", ""))
+            except Exception:
+                pass
         self.visit = visit
         self.shop_read = True
         # 每次都刷新身上的货：卖掉之后库存要立刻反映出来，

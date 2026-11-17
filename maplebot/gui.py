@@ -34,6 +34,7 @@ from pathlib import Path
 
 from . import paths as paths_module
 from . import shop
+from . import share as share_module
 from . import single_instance as single_instance_module
 from . import trade
 from .session import (BOARD_EVERY, CARGO_EVERY, LINE_ORDER, SHOP_EVERY, State,
@@ -830,6 +831,15 @@ def run_gui(interval=0.1):
 
     print(f"[啟動] {paths_module.describe()}", flush=True)
     controller = Controller()
+
+    # 共享：后台线程按活跃度决定拉取频率；写请求防抖后上传
+    controller.share = share_module.ShareManager(controller.ledger)
+    controller.observation_hooks.append(controller.share.mark_dirty)
+    if controller.share.enabled:
+        controller.share.start()
+        print("[共享] 已啟用（後台同步）", flush=True)
+    else:
+        print("[共享] 未設定 share.json，跳過", flush=True)
     root = tk.Tk()
     root.title("小助手")
     apply_icon(root)
@@ -889,6 +899,9 @@ class _Worker:
                         self._waiting = True
                 else:
                     state = self._controller.update(frame)
+                    share = getattr(self._controller, "share", None)
+                    if share is not None:
+                        share.set_tier(self._controller.activity_tier)
                     with self._lock:
                         self._state = state
                         self._waiting = False
