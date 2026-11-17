@@ -837,12 +837,18 @@ class MapWatcher:
                 if not name:
                     name, _score, _second = match_name(crop)
                     if not name:
-                        # 认不出来时把"差多少"记下来：0.97 和 0.6 是完全不同的两种问题
+                        # 认不出来时把"差多少"记下来（限流：一次过场会连续失败几十帧，
+                        # 不限流日志会被刷屏——实测 15 分钟 122 行，其中 78 行是过场噪声）
+                        import time as _time
                         from . import logbook
-                        logbook.log_event("地圖名未識別",
-                                          最佳分數=round(float(_score), 3),
-                                          次佳=round(float(_second), 3),
-                                          裁切=f"{crop.shape[1]}x{crop.shape[0]}")
+                        last = getattr(self, "_name_miss_logged", 0.0)
+                        moment = _time.time()
+                        if moment - last >= 10.0:
+                            self._name_miss_logged = moment
+                            logbook.log_event("地圖名未識別",
+                                              最佳分數=round(float(_score), 3),
+                                              次佳=round(float(_second), 3),
+                                              裁切=f"{crop.shape[1]}x{crop.shape[0]}")
             except Exception as exc:
                 self._error(f"match_name: {exc}")
                 self._alarm("name_match", f"地图名模板匹配抛异常：{exc}", now)

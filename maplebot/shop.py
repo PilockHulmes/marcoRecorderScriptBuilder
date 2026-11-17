@@ -47,6 +47,11 @@ LEARN_ICONS = False
 
 #: 图标匹配：缩到 24x24 后比较，0.80 足够区分不同商品
 ICON_MATCH_SIZE = (24, 24)
+
+#: 图标匹配的领先幅度门槛：第一名要比第二名高这么多才算"认出来"。
+#: 蓝宝石/祖母绿/黄水晶这类同色系宝石，彼此的相似度能到 0.7 以上，
+#: 不留余量就会互相认错（实测把藍寶石碎片记成了祖母綠碎片）。
+ICON_MARGIN = 0.06
 ICON_THRESHOLD = 0.80
 
 logger = logging.getLogger(__name__)
@@ -176,28 +181,49 @@ def match_icon(patch, templates, candidates=None):
     if patch is None or patch.size == 0:
         return "", 0.0
     query = cv2.resize(patch, ICON_MATCH_SIZE, interpolation=cv2.INTER_AREA)
-    best, best_id = _match_best(query, templates, candidates, ICON_MATCH_SIZE)
-    if best >= ICON_THRESHOLD or not candidates:
-        return (best_id if best >= ICON_THRESHOLD else ""), best
+    best, best_id, second = _match_best(query, templates, candidates, ICON_MATCH_SIZE)
+    ok = best >= ICON_THRESHOLD and (best - second) >= ICON_MARGIN
+    if ok or not candidates:
+        return (best_id if ok else ""), best
     # 候选里没有够像的（商人表可能不准）→ 退回全量再比一次
-    best, best_id = _match_best(query, templates, None, ICON_MATCH_SIZE)
-    return (best_id if best >= ICON_THRESHOLD else ""), best
+    best, best_id, second = _match_best(query, templates, None, ICON_MATCH_SIZE)
+    ok = best >= ICON_THRESHOLD and (best - second) >= ICON_MARGIN
+    return (best_id if ok else ""), best
+
+
+def _lab_score(a, b, size):
+    """按 Lab 三个通道分别算归一化相关，再取平均。
+
+    只按灰度/彩色原图算相关，蓝宝石和祖母绿这种"形状一样、颜色不同"的图标
+    会挤在 0.88 附近互相认错；拆成 Lab 通道后它们掉到 0.69，自己仍然是 1.0。
+    """
+    sa = cv2.resize(a, size, interpolation=cv2.INTER_AREA)
+    sb = cv2.resize(b, size, interpolation=cv2.INTER_AREA)
+    la = cv2.cvtColor(sa, cv2.COLOR_BGR2LAB).astype(np.float32)
+    lb = cv2.cvtColor(sb, cv2.COLOR_BGR2LAB).astype(np.float32)
+    total = 0.0
+    for channel in range(3):
+        ca, cb = la[:, :, channel], lb[:, :, channel]
+        ca = (ca - ca.mean()) / (ca.std() + 1e-6)
+        cb = (cb - cb.mean()) / (cb.std() + 1e-6)
+        total += float((ca * cb).mean())
+    return total / 3.0
 
 
 def _match_best(query, templates, candidates, size):
-    """在 ``candidates``（None = 全部）里找最像的模板。"""
+    """在 ``candidates``（None = 全部）里找最像的模板，返回 (分数, id, 次高分)。"""
     ids = candidates if candidates is not None else list(templates)
-    best, best_id = 0.0, ""
+    best, best_id, second = 0.0, "", 0.0
     for good_id in ids:
         small = _scaled(templates, good_id, size, ("icon", size))
         if small is None or small.shape[:2] != size[::-1]:
             continue
-        result = cv2.matchTemplate(query, small, cv2.TM_CCOEFF_NORMED)
-        if result.size:
-            score = float(result.max())
-            if score > best:
-                best, best_id = score, good_id
-    return best, best_id
+        score = _lab_score(query, small, size)
+        if score > best:
+            best, best_id, second = score, good_id, best
+        elif score > second:
+            second = score
+    return best, best_id, second
 
 
 @dataclass
@@ -556,6 +582,29 @@ def _icon_key(patch):
     return "icon:%08x" % (zlib.crc32(patch.tobytes()) & 0xFFFFFFFF)
 
 
+
+def _read_row_name_local(frame, icon_box):
+    """用**本地 OCR** 读这一行的商品名（不要走网络视觉模型）。
+
+    网络模型一次要几百毫秒还经常重试，放在每帧读取路径上会把帧率拖垮
+    （实测从 10 fps 掉到 2~3 fps）。视觉模型只在学习模式里用。
+    """
+    try:
+        box = icon_learn.row_name_box(icon_box)
+        if box is None:
+            return ""
+        x, y, w, h = box
+        height, width = frame.shape[:2]
+        x0, y0 = max(0, x), max(0, y)
+        x1, y1 = min(width, x + w), min(height, y + h)
+        if x1 <= x0 or y1 <= y0:
+            return ""
+        text = trade._ocr_text(frame[y0:y1, x0:x1], mode="name")
+    except Exception:
+        return ""
+    return icon_learn.clean_goods_name(text) if text else ""
+
+
 def read_visit(frame, map_name="", templates=None, *, cache=None, now=None, learn_names=None,
                learn_icons=None, vision=None, names_path=None,
                icon_dir=None, unknown_dir=None, index_path=None):
@@ -658,7 +707,10 @@ def read_visit(frame, map_name="", templates=None, *, cache=None, now=None, lear
         # 一旦有错，这件货就永远读不出来（貴族的布料踩过）。
         name = ""
         try:
-            name = icon_learn.read_row_name(frame, row.icon_box, vision=vision)
+            if vision is not None:
+                name = icon_learn.read_row_name(frame, row.icon_box, vision=vision)
+            else:
+                name = _read_row_name_local(frame, row.icon_box)
         except Exception:
             name = ""
         known_id = goodnames.resolve(name, names, goods) if name else ""

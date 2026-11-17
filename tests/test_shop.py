@@ -5,7 +5,7 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-from maplebot import shop
+from maplebot import shop, trade
 
 ROOT = Path(__file__).resolve().parents[1]
 SHOT = ROOT / "screenshots" / "trading" / "UI示例，购买了商品.png"
@@ -93,6 +93,16 @@ class NobleClothTest(unittest.TestCase):
     def test_noble_satin_icon_matches(self):
         row = [r for r in self.visit.rows if r.good_id == "noble_satin"][0]
         self.assertGreater(row.icon_score, 0.9)
+
+
+class LocalNameOcrTest(unittest.TestCase):
+    """图标认不出时的名字兜底必须走本地 OCR，不能调网络视觉模型。"""
+
+    def test_reads_the_row_name_with_local_ocr(self):
+        frame = load(NOBLE_SHOT)
+        box = (trade.ICON_BOX[0], trade.ROW_TOPS[2], trade.ICON_BOX[2], trade.ICON_BOX[3])
+        name = shop._read_row_name_local(frame, box)
+        self.assertIn("布料", name)
 
 
 if __name__ == "__main__":
