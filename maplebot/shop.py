@@ -14,7 +14,6 @@
 
 import json
 import logging
-import re
 import zlib
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -22,6 +21,8 @@ from pathlib import Path
 import cv2
 import numpy as np
 
+from . import goodnames
+from . import logbook
 from . import icon_learn, trade
 from . import paths as paths_module
 
@@ -577,8 +578,7 @@ def read_visit(frame, map_name="", templates=None, *, cache=None, now=None, lear
     templates = (templates if templates is not None
                  else _load_templates(icon_dir_arg, index_path_arg))
     goods = load_goods()
-    names = (icon_learn.load_good_names(names_path)
-             if (learn_names or learn_icons) else {})
+    names = icon_learn.load_good_names(names_path)
 
     try:
         visit.refresh_in = countdown_seconds(trade.read_row_countdown(frame))
@@ -653,31 +653,41 @@ def read_visit(frame, map_name="", templates=None, *, cache=None, now=None, lear
                         icon_learn.note_failure(key)
             continue
 
-        # 图标认不出来：先读名字，能从名字表反查到 good_id 就把图标补上
-        if not learn_icons or patch is None or getattr(patch, "size", 0) == 0:
-            continue
-        icon_key = _icon_key(patch)
-        if not icon_learn.should_attempt(icon_key):
-            continue
-        name = icon_learn.read_row_name(frame, row.icon_box, vision=vision)
-        if not name:
-            icon_learn.note_failure(icon_key)
-            continue
-        known_id = names.get(name, "")
+        # 图标认不出来：读这一行的名字兜底。
+        # 这一步**不受学习开关控制**——它是正常识别流程的一部分，否则图标模板
+        # 一旦有错，这件货就永远读不出来（貴族的布料踩过）。
+        name = ""
+        try:
+            name = icon_learn.read_row_name(frame, row.icon_box, vision=vision)
+        except Exception:
+            name = ""
+        known_id = goodnames.resolve(name, names, goods) if name else ""
         if known_id and known_id in goods:
-            created = icon_learn.save_icon(known_id, patch, icon_dir=icon_dir)
-            if created is not None or known_id not in templates:
-                templates = _load_templates(icon_dir_arg, index_path_arg)
             _append_row(visit, known_id, row, 0.0, goods)
-            if created is not None:
-                logger.info("[学习] 缺少图标 %s（%s），已存到 %s",
-                            known_id, name, created)
-        elif icon_learn.should_attempt("unknown:" + name):
-            path = icon_learn.save_unknown_icon(patch, unknown_dir=unknown_dir,
-                                                read_name=name)
-            icon_learn.note_failure("unknown:" + name)
-            icon_learn.note_failure(icon_key)
-            logger.warning("[学习] 认不出的商品名 %r，图标存到 %s", name, path)
+            # 顺手把这个图标补进模板（写盘仍然受学习开关控制）
+            if (learn_icons and patch is not None and known_id not in templates):
+                icon_key = _icon_key(patch)
+                if icon_learn.should_attempt(icon_key):
+                    created = icon_learn.save_icon(known_id, patch, icon_dir=icon_dir)
+                    if created is not None:
+                        templates = _load_templates(icon_dir_arg, index_path_arg)
+                        logger.info("[学习] 缺少图标 %s（%s），已存到 %s",
+                                    known_id, name, created)
+                    else:
+                        icon_learn.note_failure(icon_key)
+            continue
+
+        # 图标、名字都认不出：记日志，方便事后从群友的日志里发现
+        logbook.log_event("商品未認出", 名稱=name or "(讀不出名字)",
+                          商人=merchant_id or "?",
+                          圖標=("?" if patch is None else
+                              f"{patch.shape[1]}x{patch.shape[0]}"),
+                          買價=getattr(row, "buy_price", None),
+                          賣價=getattr(row, "sell_price", None))
+        logger.info("认不出这行商品：图标没匹配、名字=%r", name or "(读不出)")
+        if name:
+            icon_learn.save_unknown_icon(patch, unknown_dir=unknown_dir, read_name=name)
+
     return visit
 
 

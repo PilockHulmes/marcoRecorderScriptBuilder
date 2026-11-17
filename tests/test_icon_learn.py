@@ -264,9 +264,11 @@ class ReadVisitLearningTest(unittest.TestCase):
         visit = self.read([self.make_row(100, buy=13)], vision=vision,
                           learn_icons=False)
 
-        self.assertEqual(visit.rows, [])
+        # 学习开关只控制"要不要写图标文件"；名字兜底是正常识别流程，仍然生效
+        self.assertEqual([(r.good_id, r.price) for r in visit.rows],
+                         [("balloon_flower", 13)])
         self.assertFalse((self.icon_dir / "balloon_flower.png").exists())
-        vision.assert_not_called()
+        vision.assert_called()
 
     def test_name_learning_switch_off(self):
         self.set_names({})

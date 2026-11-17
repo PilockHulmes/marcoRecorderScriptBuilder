@@ -73,5 +73,27 @@ class ReadVisitTest(unittest.TestCase):
         self.assertTrue(payload["rows"])
 
 
+NOBLE_SHOT = Path(__file__).resolve().parent / "fixtures" / "shop_noble_cloth_1368.png"
+
+
+@unittest.skipUnless(NOBLE_SHOT.exists(), "缺少貴族的布料测试截图")
+class NobleClothTest(unittest.TestCase):
+    """图标模板曾经采错 + 名字表只有繁体 → 这件货被整行丢掉（2026-11-17）。"""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.visit = shop.read_visit(load(NOBLE_SHOT), "")
+
+    def test_three_rows_resolved(self):
+        rows = {(r.good_id, r.side): r.price for r in self.visit.rows}
+        self.assertEqual(rows.get(("black_crystal_shard", "buy")), 75)
+        self.assertEqual(rows.get(("golden_peach", "buy")), 228)
+        self.assertEqual(rows.get(("noble_satin", "buy")), 225)
+
+    def test_noble_satin_icon_matches(self):
+        row = [r for r in self.visit.rows if r.good_id == "noble_satin"][0]
+        self.assertGreater(row.icon_score, 0.9)
+
+
 if __name__ == "__main__":
     unittest.main()
