@@ -82,7 +82,7 @@ class ShareManagerTest(unittest.TestCase):
         manager.mark_dirty("dour_4")
         manager.tick(BASE)                                    # 防抖未到
         self.assertNotIn("dour_4", backend.objects)
-        manager.tick(BASE + 3)                                # 防抖过了
+        manager.tick(BASE + 4)                                # 防抖过了（3.5 秒）
         self.assertIn("dour_4", backend.objects)
 
     def test_writer_id_is_stable(self):

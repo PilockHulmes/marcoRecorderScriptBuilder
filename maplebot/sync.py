@@ -32,7 +32,9 @@ import time
 CLOCK_SKEW_LIMIT = 120.0
 
 #: 上传防抖（秒）
-UPLOAD_DEBOUNCE = 2.0
+#: 一次改动之后等多久再上传。必须**大于中转的限流间隔（3 秒/商人）**，
+#: 否则每次上传都正好落在限流窗口里，永远 429（实测：2 秒时 20 秒内 3 次失败）。
+UPLOAD_DEBOUNCE = 3.5
 
 #: 请求失败后的退避（秒），依次取用
 BACKOFF = (1.0, 3.0, 10.0, 30.0)
@@ -100,11 +102,16 @@ def merge_records(local, remote, now):
 
 
 def same_rows(a, b):
-    """两份记录的有效行是否完全一致（用来判断"要不要上传"）。"""
+    """两份记录的价格是否完全一致（用来判断"要不要上传"）。
+
+    只比价格。``t``/``r`` 每次观察都会变，但它们合起来就是"刷新时刻"这个
+    绝对值，远端已经有同样的有效期，没必要为此反复上传——那会撞上中转的
+    3 秒限流，把错误计数刷满（实测踩过）。
+    """
     if not a or not b:
         return a == b
-    left = {k: (v["p"], round(v["t"], 3)) for k, v in (a.get("rows") or {}).items()}
-    right = {k: (v["p"], round(v["t"], 3)) for k, v in (b.get("rows") or {}).items()}
+    left = {k: int(v.get("p", 0)) for k, v in (a.get("rows") or {}).items()}
+    right = {k: int(v.get("p", 0)) for k, v in (b.get("rows") or {}).items()}
     return left == right
 
 
@@ -177,13 +184,22 @@ class SyncEngine:
         self._etags = {}            # 上次见到的 etag
         self._backoff = 0
         self._next_attempt = 0.0
+        self._last_sent = {}        # merchant_id -> 上次成功上传的记录
         self.stats = {"uploaded": 0, "downloaded": 0, "conflicts": 0,
                       "errors": 0, "skipped_self": 0}
 
     # -------------------------------------------------------------- 上传
     def mark_dirty(self, merchant_id):
-        if merchant_id and merchant_id not in self._dirty:
-            self._dirty[merchant_id] = self.now()
+        if not merchant_id or merchant_id in self._dirty:
+            return
+        # 价格没变就不用传：远端已经有同样的东西
+        try:
+            local = self._get_local(merchant_id)
+        except Exception:
+            local = None
+        if local and same_rows(local, self._last_sent.get(merchant_id)):
+            return
+        self._dirty[merchant_id] = self.now()
 
     def upload_due(self, now):
         """到点的上传。返回真正传上去的商人列表。"""
@@ -195,7 +211,9 @@ class SyncEngine:
                 continue
             if self._upload_one(merchant_id, now):
                 done.append(merchant_id)
-            self._dirty.pop(merchant_id, None)
+                self._dirty.pop(merchant_id, None)
+            # 失败（比如撞上限流）不丢弃：留着，靠 _next_attempt 的退避重试，
+            # 否则这次改动要等到"下次再观察一次"才会重新入队。
         return done
 
     def _upload_one(self, merchant_id, now):
@@ -207,6 +225,9 @@ class SyncEngine:
         try:
             ok = self.backend.put_if_match(merchant_id, record, etag)
         except IOError as exc:
+            from . import logbook
+            logbook.log_event("共享上傳失敗", 商人=merchant_id,
+                              錯誤=str(exc)[:120])
             if "429" in str(exc):
                 self._backoff = min(self._backoff + 1, len(BACKOFF) - 1)
                 self._next_attempt = now + BACKOFF[self._backoff]
@@ -223,6 +244,7 @@ class SyncEngine:
         if ok:
             self._backoff = 0
             self._etags = self.backend.list_objects()
+            self._last_sent[merchant_id] = record
             self.stats["uploaded"] += 1
             return True
         # 冲突：别人先写了，合并后重试一次
@@ -242,6 +264,7 @@ class SyncEngine:
             return False
         if ok:
             self._etags = self.backend.list_objects()
+            self._last_sent[merchant_id] = retry
             self.stats["uploaded"] += 1
             return True
         return False
@@ -268,7 +291,9 @@ class SyncEngine:
         """拉一次目录，只下载 etag 变了的商人。返回被合并的商人列表。"""
         try:
             listing = self.backend.list_objects()
-        except IOError:
+        except IOError as exc:
+            from . import logbook
+            logbook.log_event("共享拉取失敗", 錯誤=str(exc)[:120])
             self.stats["errors"] += 1
             return []
         changed = []

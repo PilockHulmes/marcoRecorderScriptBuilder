@@ -78,13 +78,13 @@ class UploadTest(unittest.TestCase):
     def test_debounce_waits_before_upload(self):
         self.local.records["dour_4"] = record(t=BASE)
         self.engine.mark_dirty("dour_4")
-        self.assertEqual(self.engine.upload_due(BASE + 1.0), [])      # 还没到 2 秒
-        self.assertEqual(len(self.engine.upload_due(BASE + 3.0)), 1)
+        self.assertEqual(self.engine.upload_due(BASE + 1.0), [])      # 还没到防抖时间
+        self.assertEqual(len(self.engine.upload_due(BASE + sync.UPLOAD_DEBOUNCE + 0.5)), 1)
 
     def test_upload_writes_the_object(self):
         self.local.records["dour_4"] = record(t=BASE)
         self.engine.mark_dirty("dour_4")
-        self.engine.upload_due(BASE + 3.0)
+        self.engine.upload_due(BASE + sync.UPLOAD_DEBOUNCE + 0.5)
         self.assertIn("dour_4", self.backend.objects)
         self.assertEqual(self.backend.objects["dour_4"]["writer"], "me")
 
@@ -92,7 +92,7 @@ class UploadTest(unittest.TestCase):
         self.local.records["dour_4"] = record(t=BASE)
         self.engine.mark_dirty("dour_4")
         self.backend.fail_next_put = 1                 # 写成功但响应丢失
-        self.assertEqual(self.engine.upload_due(BASE + 3.0), ["dour_4"])
+        self.assertEqual(self.engine.upload_due(BASE + sync.UPLOAD_DEBOUNCE + 0.5), ["dour_4"])
         self.assertEqual(self.engine.stats["errors"], 1)
         self.assertEqual(self.backend.objects["dour_4"]["writer"], "me")
 
@@ -105,7 +105,7 @@ class UploadTest(unittest.TestCase):
             writer="other", rev=5,
             rows={"scarf|buy": {"p": 22, "t": BASE, "r": 300}})
         self.backend.etags["dour_4"] = '"x"'
-        self.engine.upload_due(BASE + 3.0)
+        self.engine.upload_due(BASE + sync.UPLOAD_DEBOUNCE + 0.5)
         self.assertEqual(self.engine.stats["conflicts"], 1)
         rows = self.backend.objects["dour_4"]["rows"]
         self.assertEqual(set(rows), {"water|sell", "scarf|buy"})   # 两边都保住
@@ -114,14 +114,14 @@ class UploadTest(unittest.TestCase):
         self.local.records["dour_4"] = record(t=BASE)
         self.engine.mark_dirty("dour_4")
         self.backend.rate_limited = 1
-        self.assertEqual(self.engine.upload_due(BASE + 3.0), [])
+        self.assertEqual(self.engine.upload_due(BASE + sync.UPLOAD_DEBOUNCE + 0.5), [])
         self.assertGreater(self.engine._next_attempt, BASE + 3.0)
 
     def test_nothing_to_upload_when_expired(self):
         self.local.records["dour_4"] = record(
             rows={"water|sell": {"p": 19, "t": BASE - 1000, "r": 60}})
         self.engine.mark_dirty("dour_4")
-        self.assertEqual(self.engine.upload_due(BASE + 3.0), [])
+        self.assertEqual(self.engine.upload_due(BASE + sync.UPLOAD_DEBOUNCE + 0.5), [])
 
 
 class DownloadTest(unittest.TestCase):
@@ -179,3 +179,20 @@ class DownloadTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+class SameRowsTest(unittest.TestCase):
+    """t/r 每次观察都会变，但价格没变就不该重复上传（否则撞限流）。"""
+
+    def _record(self, price, t, r):
+        return {"rows": {"honey|sell": {"p": price, "t": t, "r": r}}}
+
+    def test_same_price_with_different_timestamps_is_equal(self):
+        from maplebot import sync
+        self.assertTrue(sync.same_rows(self._record(13, 100.0, 50.0),
+                                       self._record(13, 130.0, 20.0)))
+
+    def test_price_change_is_different(self):
+        from maplebot import sync
+        self.assertFalse(sync.same_rows(self._record(13, 100.0, 50.0),
+                                        self._record(19, 130.0, 20.0)))
+
