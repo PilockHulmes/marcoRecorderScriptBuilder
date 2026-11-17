@@ -61,8 +61,11 @@ class FindMinimapTest(unittest.TestCase):
     def test_too_wide_is_rejected(self):
         self.assertIsNone(minimap.find_minimap(make_frame((10, 30, 600, 100))))
 
-    def test_ring_outside_roi_is_ignored(self):
-        self.assertIsNone(minimap.find_minimap(make_frame((600, 30, 200, 80))))
+    def test_ring_outside_roi_is_found_by_full_search(self):
+        """小地图可以被玩家拖走：默认 ROI 找不到时要退到全屏搜索。"""
+        box = minimap.find_minimap(make_frame((600, 30, 200, 80)))
+        self.assertIsNotNone(box)
+        self.assertLessEqual(abs(box.x - 600), 2, box)
 
     def test_custom_roi(self):
         frame = make_frame((600, 30, 200, 80))

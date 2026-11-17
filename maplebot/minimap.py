@@ -182,23 +182,58 @@ def _candidate_ok(mask, v_channel, box, width, height, roi_w=None, roi_h=None):
     }
 
 
-def find_minimap(frame, roi=None, debug=False):
-    """在 FRAME 左上角找小地图白框，返回 :class:`MinimapBox` 或 None。
+#: 上次找到过小地图的位置（按画面尺寸记）：玩家可能把它拖离左上角，
+#: 记下来下次先在这附近找，拖动后也不用每帧都全屏扫。
+_POSITION_HINT = {}
 
-    :param roi: 可选搜索区域 ``(x, y, w, h)``；默认按 :data:`ROI_*`。
+
+def find_minimap(frame, roi=None, debug=False):
+    """找小地图白框，返回 :class:`MinimapBox` 或 None。
+
+    玩家可以拖动小地图，所以搜索是分级的：
+
+    1. 记住的位置附近（拖动过也能快速找到）；
+    2. 默认的左上角区域 :data:`ROI_*`（正常情况，1~2 ms）；
+    3. 全屏（小地图被拖到别处时才走这里，约 13 ms），找到后记住位置。
+
+    :param roi: 指定搜索区域 ``(x, y, w, h)``，给了就只搜这一块。
     :param debug: 为真时返回 ``(box, info)``，info 含命中的阈值、四边覆盖率、对比度等。
     """
     if frame is None or getattr(frame, "size", 0) == 0:
-        return None
-    height, width = frame.shape[:2]
+        return (None, None) if debug else None
+    if roi is not None:
+        return _find_in_roi(frame, roi, debug=debug)
 
-    if roi is None:
-        rx = int(width * ROI_X0)
-        ry = int(height * ROI_Y0)
-        rw = int(width * (ROI_X1 - ROI_X0))
-        rh = int(height * (ROI_Y1 - ROI_Y0))
-    else:
-        rx, ry, rw, rh = (int(v) for v in roi)
+    height, width = frame.shape[:2]
+    key = (int(width), int(height))
+    hint = _POSITION_HINT.get(key)
+    if hint is not None:
+        pad = 24
+        window = (max(0, hint[0] - pad), max(0, hint[1] - pad),
+                  int(hint[2]) + 2 * pad, int(hint[3]) + 2 * pad)
+        found = _find_in_roi(frame, window, debug=debug)
+        if (found[0] if debug else found) is not None:
+            return found
+
+    default = (int(width * ROI_X0), int(height * ROI_Y0),
+               int(width * (ROI_X1 - ROI_X0)), int(height * (ROI_Y1 - ROI_Y0)))
+    found = _find_in_roi(frame, default, debug=debug)
+    box = found[0] if debug else found
+    if box is not None:
+        _POSITION_HINT[key] = (box.x, box.y, box.w, box.h)
+        return found
+
+    found = _find_in_roi(frame, (0, 0, width, height), debug=debug)
+    box = found[0] if debug else found
+    if box is not None:
+        _POSITION_HINT[key] = (box.x, box.y, box.w, box.h)
+    return found
+
+
+def _find_in_roi(frame, roi, debug=False):
+    """在指定区域内找小地图白框。"""
+    height, width = frame.shape[:2]
+    rx, ry, rw, rh = (int(v) for v in roi)
     rx, ry = max(0, rx), max(0, ry)
     rw, rh = min(rw, width - rx), min(rh, height - ry)
     if rw <= 0 or rh <= 0:

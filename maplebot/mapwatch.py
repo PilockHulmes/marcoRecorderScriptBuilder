@@ -246,8 +246,9 @@ def name_crop(frame, scale=None):
     box = minimap.find_minimap(frame)
     if box is None:
         return None
-    # 跑商界面里小地图固定左上角；跑偏时会把窗口标题栏当成地图名
-    if box.y < 60 or box.x > 400:
+    # 小地图可以被玩家拖动，所以不再限制 x；只挡住贴着画面顶边的情况
+    # （那种位置裁不出完整名字区，而且容易把别的白框当小地图）
+    if box.y < 20:
         return None
     # 界面按 宽/1366 等比放大：1920 下名字区是 337x62，上边距也要按比例
     scale = _frame_scale(frame, scale)
@@ -338,9 +339,14 @@ def save_name_template(name, crop):
     if crop is None or min(crop.shape[:2]) < 8:
         return False
     height, width = crop.shape[:2]
-    sub = NAMES_DIR / f"{width}x{height}"
-    sub.mkdir(parents=True, exist_ok=True)
-    path = sub / f"{name}.png"
+    canonical = (NAME_SIZE[1], NAME_SIZE[0])
+    if (height, width) == canonical:
+        NAMES_DIR.mkdir(parents=True, exist_ok=True)
+        path = NAMES_DIR / f"{name}.png"      # 基准尺寸存平铺目录
+    else:
+        sub = NAMES_DIR / f"{width}x{height}"
+        sub.mkdir(parents=True, exist_ok=True)
+        path = sub / f"{name}.png"
     created = False
     if not path.exists():
         ok, buffer = cv2.imencode(".png", crop)
