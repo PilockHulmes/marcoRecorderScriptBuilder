@@ -91,7 +91,6 @@ class Ledger:
         # 随机商人没有 id：按地图分开存，别让不同地图的随机商人挤成一条
         key = merchant_id or f"anon:{payload.get('map') or ''}"
         refresh = float(payload.get("refresh_in") or 0)
-        cycle_key = f"{int(round(moment + refresh))}"      # 同一个刷新时刻 = 同一货架
         with self._lock:
             self._load_once()
             entry = self._merchants.setdefault(
@@ -101,11 +100,24 @@ class Ledger:
             entry["merchant"] = (payload.get("merchant")
                                  or payload.get("game_name") or entry["merchant"])
             entry["kind"] = payload.get("merchant_kind") or entry["kind"]
+
+            # 倒计时没读到（refresh<=0）时**不要新建一个立即过期的周期**：
+            # 并进当前最晚到期的那个周期，否则这条价格会瞬间失效，
+            # 看板和共享都会丢掉它（实测踩过）。
+            if refresh <= 0:
+                live = [(float(cycle["t"]) + float(cycle["refresh_in"]), cycle_key)
+                        for cycle_key, cycle in entry["cycles"].items()
+                        if float(cycle["t"]) + float(cycle["refresh_in"]) >= moment - 5]
+                cycle_key = max(live)[1] if live else f"{int(round(moment))}"
+            else:
+                cycle_key = f"{int(round(moment + refresh))}"
+
             cycle = entry["cycles"].setdefault(
                 cycle_key, {"t": moment, "refresh_in": refresh, "rows": {}})
             if moment > cycle["t"]:
                 cycle["t"] = moment
             cycle["refresh_in"] = max(refresh, cycle["refresh_in"])
+            row_refresh = cycle["refresh_in"]
             for row in payload.get("rows") or []:
                 good_id = str(row.get("good_id") or "")
                 side = str(row.get("side") or "")
@@ -113,7 +125,7 @@ class Ledger:
                 if not good_id or not side or price is None:
                     continue
                 cycle["rows"][f"{good_id}|{side}"] = {
-                    "p": int(price), "t": moment, "r": refresh, "src": "local"}
+                    "p": int(price), "t": moment, "r": row_refresh, "src": "local"}
             self._prune_locked(moment)
             self._dirty = True
 
