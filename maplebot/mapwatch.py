@@ -394,6 +394,8 @@ def save_name_template(name, crop):
     """
     if crop is None or min(crop.shape[:2]) < 8:
         return False
+    if not str(name or "").strip():
+        return False          # 空名字会写成 ".png"，加载时变成一张无名模板
     height, width = crop.shape[:2]
     canonical = (NAME_SIZE[1], NAME_SIZE[0])
     if (height, width) == canonical:
