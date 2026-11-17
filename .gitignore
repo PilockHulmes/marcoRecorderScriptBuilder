@@ -147,3 +147,20 @@ dmypy.json
 
 # PyInstaller 打包产物（会到几百 MB，不进版本库）
 build_exe/
+
+# 运行期数据（本地生成，不进版本库）
+data/trade/observations.json
+data/trade/observations.json.bak
+data/trade/observations.jsonl
+data/trade/observations.jsonl.bak
+data/trade/map_visits.jsonl
+data/trade/seen_portals.json
+data/trade/portal_shop_raw.jsonl
+data/trade/edge_times.jsonl
+data/trade/edge_times_raw.jsonl
+data/trade/icons_unknown/
+data/trade/map_nodes.json
+data/trade/map_graph_user.json
+
+# 临时截图 / 调试产物（用户或脚本随手放的）
+tmp_debug/

@@ -1,0 +1,515 @@
+{
+  "version": 1,
+  "merchants": [
+    {
+      "id": "ore_5",
+      "name": "卡勒卡萨",
+      "portrait": "merchants/ore_5.png",
+      "source": "trader_ui/卡勒奇沙.png",
+      "goods_seen": [
+        "shining_steel_shard",
+        "emerald_shard"
+      ],
+      "match": "ok",
+      "note": "前两行显示顺序与 goods.json sells 顺序相反（集合一致）；第 3 行是本波在售的波动商品「金块」"
+    },
+    {
+      "id": "dour_4",
+      "name": "史莱",
+      "portrait": "merchants/dour_4.png",
+      "source": "trader_ui/史來.png",
+      "goods_seen": [
+        "mineral_water",
+        "desert_pomegranate"
+      ],
+      "match": "ok",
+      "note": "前两行显示顺序与 goods.json sells 顺序相反（集合一致）"
+    },
+    {
+      "id": "ore_7",
+      "name": "哲里",
+      "portrait": "merchants/ore_7.png",
+      "source": "trader_ui/哲利.png",
+      "goods_seen": [
+        "gold_ore",
+        "diamond_shard"
+      ],
+      "match": "ok",
+      "note": "前两行显示顺序与 goods.json sells 顺序相反（集合一致）；第 3 行是本波在售的波动商品「光辉钻石」"
+    },
+    {
+      "id": "kobi_2",
+      "name": "奇里文",
+      "portrait": "merchants/kobi_2.png",
+      "source": "trader_ui/奇里營.png",
+      "goods_seen": [
+        "ore_shard",
+        "sapphire_shard"
+      ],
+      "match": "ok",
+      "note": "第 3 行是本波在售的波动商品「顶级紫水晶」"
+    },
+    {
+      "id": "kobi_5",
+      "name": "柯比",
+      "portrait": "merchants/kobi_5.png",
+      "source": "trader_ui/寇比.png",
+      "goods_seen": [
+        "fox_tail",
+        "synthetic_oil"
+      ],
+      "match": "ok",
+      "note": ""
+    },
+    {
+      "id": "ore_4",
+      "name": "工作人员0",
+      "portrait": "merchants/ore_4.png",
+      "source": "trader_ui/幹員 0.png",
+      "goods_seen": [
+        "steel_shard",
+        "citrine_shard"
+      ],
+      "match": "ok",
+      "note": "前两行显示顺序与 goods.json sells 顺序相反（集合一致）"
+    },
+    {
+      "id": "kobi_7",
+      "name": "扎比埃尔",
+      "portrait": "merchants/kobi_7.png",
+      "source": "trader_ui/查比爾.png",
+      "goods_seen": [
+        "desert_scarf",
+        "ornate_cloth_scrap"
+      ],
+      "match": "ok",
+      "note": "第 3 行是本波在售的波动商品「皇帝的绸缎」"
+    },
+    {
+      "id": "dour_7",
+      "name": "萨哥特",
+      "portrait": "merchants/dour_7.png",
+      "source": "trader_ui/沙吉達.png",
+      "goods_seen": [
+        "animal_fat",
+        "desert_tomato"
+      ],
+      "match": "ok",
+      "note": "前两行显示顺序与 goods.json sells 顺序相反（集合一致）"
+    },
+    {
+      "id": "kobi_4",
+      "name": "玛帕",
+      "portrait": "merchants/kobi_4.png",
+      "source": "trader_ui/瑪帕.png",
+      "goods_seen": [
+        "cotton_ball",
+        "otter_pelt"
+      ],
+      "match": "ok",
+      "note": ""
+    },
+    {
+      "id": "kobi_1",
+      "name": "石铁",
+      "portrait": "merchants/kobi_1.png",
+      "source": "trader_ui/石鉄.png",
+      "goods_seen": [
+        "balloon_flower",
+        "natural_honey"
+      ],
+      "match": "ok",
+      "note": ""
+    },
+    {
+      "id": "ore_6",
+      "name": "罗森",
+      "portrait": "merchants/ore_6.png",
+      "source": "trader_ui/羅森.png",
+      "goods_seen": [
+        "silver_ore",
+        "black_crystal_shard"
+      ],
+      "match": "ok",
+      "note": ""
+    },
+    {
+      "id": "kobi_3",
+      "name": "兰明",
+      "portrait": "merchants/kobi_3.png",
+      "source": "trader_ui/藍明.png",
+      "goods_seen": [
+        "cloth_scrap",
+        "cotton"
+      ],
+      "match": "ok",
+      "note": "前两行显示顺序与 goods.json sells 顺序相反（集合一致）"
+    },
+    {
+      "id": "kobi_6",
+      "name": "伍德万",
+      "portrait": "merchants/kobi_6.png",
+      "source": "trader_ui/財務大臣烏特宛.png",
+      "goods_seen": [
+        "soft_silk",
+        "felt_cloth"
+      ],
+      "match": "ok",
+      "note": ""
+    },
+    {
+      "id": "dour_5",
+      "name": "豆尔",
+      "portrait": "merchants/dour_5.png",
+      "source": "trader_ui/道勒.png",
+      "goods_seen": [
+        "cactus_sap",
+        "immortal_peach"
+      ],
+      "match": "ok",
+      "note": ""
+    },
+    {
+      "id": "dour_6",
+      "name": "雅思敏",
+      "portrait": "merchants/dour_6.png",
+      "source": "trader_ui/雅斯敏.png",
+      "goods_seen": [
+        "pork",
+        "white_sugar"
+      ],
+      "match": "ok",
+      "note": "第 3 行是本波在售的波动商品「黄金桃子」"
+    }
+  ],
+  "icons": [
+    {
+      "good_id": "animal_fat",
+      "file": "icons/animal_fat.png",
+      "seen_in": [
+        "ore_4",
+        "dour_7",
+        "kobi_4"
+      ]
+    },
+    {
+      "good_id": "balloon_flower",
+      "file": "icons/balloon_flower.png",
+      "seen_in": [
+        "kobi_5",
+        "kobi_1"
+      ]
+    },
+    {
+      "good_id": "black_crystal_shard",
+      "file": "icons/black_crystal_shard.png",
+      "seen_in": [
+        "ore_6"
+      ]
+    },
+    {
+      "good_id": "cactus_sap",
+      "file": "icons/cactus_sap.png",
+      "seen_in": [
+        "dour_5"
+      ]
+    },
+    {
+      "good_id": "citrine_shard",
+      "file": "icons/citrine_shard.png",
+      "seen_in": [
+        "ore_4"
+      ]
+    },
+    {
+      "good_id": "cloth_scrap",
+      "file": "icons/cloth_scrap.png",
+      "seen_in": [
+        "kobi_3"
+      ]
+    },
+    {
+      "good_id": "cotton",
+      "file": "icons/cotton.png",
+      "seen_in": [
+        "kobi_3"
+      ]
+    },
+    {
+      "good_id": "cotton_ball",
+      "file": "icons/cotton_ball.png",
+      "seen_in": [
+        "kobi_4"
+      ]
+    },
+    {
+      "good_id": "desert_pomegranate",
+      "file": "icons/desert_pomegranate.png",
+      "seen_in": [
+        "dour_4"
+      ]
+    },
+    {
+      "good_id": "desert_scarf",
+      "file": "icons/desert_scarf.png",
+      "seen_in": [
+        "dour_4",
+        "kobi_7"
+      ]
+    },
+    {
+      "good_id": "desert_tomato",
+      "file": "icons/desert_tomato.png",
+      "seen_in": [
+        "dour_7"
+      ]
+    },
+    {
+      "good_id": "diamond_shard",
+      "file": "icons/diamond_shard.png",
+      "seen_in": [
+        "ore_7"
+      ]
+    },
+    {
+      "good_id": "emerald_shard",
+      "file": "icons/emerald_shard.png",
+      "seen_in": [
+        "ore_5"
+      ]
+    },
+    {
+      "good_id": "felt_cloth",
+      "file": "icons/felt_cloth.png",
+      "seen_in": [
+        "kobi_6"
+      ]
+    },
+    {
+      "good_id": "fox_tail",
+      "file": "icons/fox_tail.png",
+      "seen_in": [
+        "kobi_5",
+        "dour_7"
+      ]
+    },
+    {
+      "good_id": "gold_bar",
+      "file": "icons/gold_bar.png",
+      "seen_in": [
+        "ore_5"
+      ]
+    },
+    {
+      "good_id": "gold_ore",
+      "file": "icons/gold_ore.png",
+      "seen_in": [
+        "ore_7"
+      ]
+    },
+    {
+      "good_id": "golden_peach",
+      "file": "icons/golden_peach.png",
+      "seen_in": [
+        "dour_6"
+      ]
+    },
+    {
+      "good_id": "immortal_peach",
+      "file": "icons/immortal_peach.png",
+      "seen_in": [
+        "dour_5"
+      ]
+    },
+    {
+      "good_id": "imperial_satin",
+      "file": "icons/imperial_satin.png",
+      "seen_in": [
+        "kobi_7"
+      ]
+    },
+    {
+      "good_id": "mineral_water",
+      "file": "icons/mineral_water.png",
+      "seen_in": [
+        "dour_4",
+        "ore_6",
+        "kobi_6"
+      ]
+    },
+    {
+      "good_id": "natural_honey",
+      "file": "icons/natural_honey.png",
+      "seen_in": [
+        "kobi_1",
+        "dour_5"
+      ]
+    },
+    {
+      "good_id": "ore_shard",
+      "file": "icons/ore_shard.png",
+      "seen_in": [
+        "kobi_2"
+      ]
+    },
+    {
+      "good_id": "ornate_cloth_scrap",
+      "file": "icons/ornate_cloth_scrap.png",
+      "seen_in": [
+        "kobi_7"
+      ]
+    },
+    {
+      "good_id": "otter_pelt",
+      "file": "icons/otter_pelt.png",
+      "seen_in": [
+        "kobi_4"
+      ]
+    },
+    {
+      "good_id": "pork",
+      "file": "icons/pork.png",
+      "seen_in": [
+        "kobi_3",
+        "dour_6"
+      ]
+    },
+    {
+      "good_id": "radiant_diamond",
+      "file": "icons/radiant_diamond.png",
+      "seen_in": [
+        "ore_7"
+      ]
+    },
+    {
+      "good_id": "sapphire_shard",
+      "file": "icons/sapphire_shard.png",
+      "seen_in": [
+        "kobi_2"
+      ]
+    },
+    {
+      "good_id": "shining_steel_shard",
+      "file": "icons/shining_steel_shard.png",
+      "seen_in": [
+        "ore_5"
+      ]
+    },
+    {
+      "good_id": "silver_ore",
+      "file": "icons/silver_ore.png",
+      "seen_in": [
+        "ore_6"
+      ]
+    },
+    {
+      "good_id": "soft_silk",
+      "file": "icons/soft_silk.png",
+      "seen_in": [
+        "kobi_1",
+        "kobi_6"
+      ]
+    },
+    {
+      "good_id": "steel_shard",
+      "file": "icons/steel_shard.png",
+      "seen_in": [
+        "ore_4"
+      ]
+    },
+    {
+      "good_id": "synthetic_oil",
+      "file": "icons/synthetic_oil.png",
+      "seen_in": [
+        "kobi_5"
+      ]
+    },
+    {
+      "good_id": "top_amethyst",
+      "file": "icons/top_amethyst.png",
+      "seen_in": [
+        "kobi_2"
+      ]
+    },
+    {
+      "good_id": "white_sugar",
+      "file": "icons/white_sugar.png",
+      "seen_in": [
+        "dour_6"
+      ]
+    }
+  ],
+  "unmatched": [],
+  "missing_goods": [
+    {
+      "good_id": "refined_lithium",
+      "name": "提炼的锂",
+      "tier": "volatile",
+      "seller": "ore_6",
+      "reason": "该商人本波没有把波动商品摆出来（列表只露出前 3 行：2 个卖货 + 第 1 个收货/波动货），截图中看不到它的图标"
+    },
+    {
+      "good_id": "refined_black_crystal",
+      "name": "精炼黑水晶",
+      "tier": "volatile",
+      "seller": "ore_4",
+      "reason": "该商人本波没有把波动商品摆出来（列表只露出前 3 行：2 个卖货 + 第 1 个收货/波动货），截图中看不到它的图标"
+    },
+    {
+      "good_id": "silk_fabric",
+      "name": "丝绸布料",
+      "tier": "volatile",
+      "seller": "kobi_4",
+      "reason": "该商人本波没有把波动商品摆出来（列表只露出前 3 行：2 个卖货 + 第 1 个收货/波动货），截图中看不到它的图标"
+    },
+    {
+      "good_id": "wild_ginseng",
+      "name": "山参",
+      "tier": "volatile",
+      "seller": "dour_7",
+      "reason": "该商人本波没有把波动商品摆出来（列表只露出前 3 行：2 个卖货 + 第 1 个收货/波动货），截图中看不到它的图标"
+    },
+    {
+      "good_id": "fine_silk",
+      "name": "精致丝绸",
+      "tier": "volatile",
+      "seller": "kobi_3",
+      "reason": "该商人本波没有把波动商品摆出来（列表只露出前 3 行：2 个卖货 + 第 1 个收货/波动货），截图中看不到它的图标"
+    },
+    {
+      "good_id": "tiger_pelt",
+      "name": "虎皮",
+      "tier": "volatile",
+      "seller": "kobi_5",
+      "reason": "该商人本波没有把波动商品摆出来（列表只露出前 3 行：2 个卖货 + 第 1 个收货/波动货），截图中看不到它的图标"
+    },
+    {
+      "good_id": "noble_satin",
+      "name": "贵族的绸缎",
+      "tier": "volatile",
+      "seller": "kobi_6",
+      "reason": "该商人本波没有把波动商品摆出来（列表只露出前 3 行：2 个卖货 + 第 1 个收货/波动货），截图中看不到它的图标"
+    },
+    {
+      "good_id": "monster_meat",
+      "name": "怪物肉",
+      "tier": "volatile",
+      "seller": "dour_4",
+      "reason": "该商人本波没有把波动商品摆出来（列表只露出前 3 行：2 个卖货 + 第 1 个收货/波动货），截图中看不到它的图标"
+    },
+    {
+      "good_id": "legendary_tonic",
+      "name": "传说中的补药",
+      "tier": "volatile",
+      "seller": "kobi_1",
+      "reason": "该商人本波没有把波动商品摆出来（列表只露出前 3 行：2 个卖货 + 第 1 个收货/波动货），截图中看不到它的图标"
+    },
+    {
+      "good_id": "top_vitamin",
+      "name": "顶级维他命",
+      "tier": "volatile",
+      "seller": "dour_5",
+      "reason": "该商人本波没有把波动商品摆出来（列表只露出前 3 行：2 个卖货 + 第 1 个收货/波动货），截图中看不到它的图标"
+    }
+  ]
+}
