@@ -369,6 +369,61 @@ class NameAndEdgeTest(MapWatchTestBase):
         self.assertEqual(len(watcher.events), 1)
 
 
+class NameTemplateStorageTest(unittest.TestCase):
+    """模板落盘：基准尺寸进平铺目录，其他分辨率进各自子目录。
+
+    踩过的坑：把 1920 缩小后的裁剪也当成 240x44 存进 240x44/ 子目录，
+    加载时它盖住了原本清晰的 1366 模板，导致 9 张图在 1366 下认不出来。
+    """
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp(prefix="mapwatch-names-"))
+        self.addCleanup(shutil.rmtree, str(self.tmp), True)
+        self.names_dir = self.tmp / "map_names"
+        patcher = mock.patch.object(mapwatch, "NAMES_DIR", self.names_dir)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        self._saved = mapwatch._name_templates
+        mapwatch._name_templates = None
+        self.addCleanup(self._restore)
+
+    def _restore(self):
+        mapwatch._name_templates = self._saved
+
+    def test_canonical_crop_goes_to_the_flat_directory(self):
+        crop = np.zeros((44, 240, 3), np.uint8)
+        crop[:] = 17
+        self.assertTrue(mapwatch.save_name_template("測試圖", crop))
+        self.assertTrue((self.names_dir / "測試圖.png").exists())
+        self.assertFalse((self.names_dir / "240x44").exists())
+
+    def test_other_size_crop_goes_to_its_own_subdirectory(self):
+        crop = np.zeros((62, 337, 3), np.uint8)
+        crop[:] = 23
+        self.assertTrue(mapwatch.save_name_template("測試圖1920", crop))
+        self.assertTrue((self.names_dir / "337x62" / "測試圖1920.png").exists())
+        self.assertFalse((self.names_dir / "測試圖1920.png").exists())
+
+    def test_canonical_templates_ignore_other_sizes(self):
+        small = np.zeros((44, 240, 3), np.uint8)
+        big = np.zeros((62, 337, 3), np.uint8)
+        mapwatch.save_name_template("小的", small)
+        mapwatch.save_name_template("大的", big)
+        table = mapwatch.load_name_templates_for((44, 240))
+        self.assertIn("小的", table)
+        self.assertNotIn("大的", table)
+
+    def test_existing_template_is_never_overwritten(self):
+        first = np.zeros((44, 240, 3), np.uint8)
+        first[:] = 5
+        self.assertTrue(mapwatch.save_name_template("測試圖", first))
+        second = np.zeros((44, 240, 3), np.uint8)
+        second[:] = 200
+        self.assertFalse(mapwatch.save_name_template("測試圖", second))
+        loaded = mapwatch.load_name_templates_for((44, 240))["測試圖"]
+        self.assertEqual(int(loaded[0, 0, 0]), 5)
+
+
 class AlarmTest(MapWatchTestBase):
     """需求 2：影响地图记录的异常必须立刻打印 ``！！！！！`` 告警。"""
 

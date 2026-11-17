@@ -347,14 +347,21 @@ def save_name_template(name, crop):
         sub = NAMES_DIR / f"{width}x{height}"
         sub.mkdir(parents=True, exist_ok=True)
         path = sub / f"{name}.png"
-    created = False
-    if not path.exists():
-        ok, buffer = cv2.imencode(".png", crop)
-        if ok:
-            buffer.tofile(str(path))
-            created = True
-    load_name_templates_for((height, width))[name] = crop
-    return created
+    table = load_name_templates_for((height, width))
+    if path.exists():
+        # 已有模板不覆盖；缓存也要保持和磁盘一致，否则同一会话里会"变脸"
+        if name not in table:
+            data = np.fromfile(str(path), dtype=np.uint8)
+            image = cv2.imdecode(data, cv2.IMREAD_COLOR)
+            if image is not None:
+                table[name] = image
+        return False
+    ok, buffer = cv2.imencode(".png", crop)
+    if not ok:
+        return False
+    buffer.tofile(str(path))
+    table[name] = crop
+    return True
 
 
 def _dump_name_crop(crop, name):
