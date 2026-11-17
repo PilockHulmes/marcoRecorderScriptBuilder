@@ -34,6 +34,7 @@ from pathlib import Path
 
 from . import paths as paths_module
 from . import shop
+from . import single_instance as single_instance_module
 from . import trade
 from .session import (BOARD_EVERY, CARGO_EVERY, LINE_ORDER, SHOP_EVERY, State,
                       TradeSession, _fixed_merchant_entries,
@@ -817,6 +818,15 @@ class View:
 
 def run_gui(interval=0.1):
     import tkinter as tk
+
+    # 只允许跑一个实例：两个实例会同时截屏、同时写记录、同时上传，互相踩
+    instance = single_instance_module.SingleInstance()
+    if not instance.acquire():
+        if single_instance_module.activate_running_window():
+            print("[啟動] 已經有一個小助手在跑，已把它切到前台", flush=True)
+        else:
+            print("[啟動] 已經有一個小助手在跑（找不到它的窗口）", flush=True)
+        return 2
 
     print(f"[啟動] {paths_module.describe()}", flush=True)
     controller = Controller()
