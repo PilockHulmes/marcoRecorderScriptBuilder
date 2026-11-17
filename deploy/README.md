@@ -1,99 +1,72 @@
 # 共享功能部署（阿里云 OSS + 函数计算）
 
-> 状态：代码已就绪，**账号侧还没打通**——用现在的 AccessKey 创建桶返回
-> `UserDisable`（账号未开通/未实名/欠费）。先把账号弄好，再按下面步骤走。
+> 2026-11-17 已实际部署并跑通：错误 token 401、上传 200、3 秒内重复写 429、
+> 预签名读回价格正确。以下是最终形态。
 
-## 0. 一次性准备
-
-1. 登录阿里云 → 开通 **OSS**（对象存储）与 **函数计算 FC**
-2. 完成实名认证、确认没有欠费
-3. 建一个桶，建议：
+## 实际部署的东西
 
 ```
-地域：华东1（杭州）（实测延迟 45~60 ms，最快）
-名称：maple-trade-share-<6 位随机>
-读写权限：私有
-版本控制：开启（写坏了能回滚）
+OSS 桶      maple-trade-560b008d2f   华东1（杭州）  私有
+函数计算    服务 maple-trade-share / 函数 share（Python 3.10，128 MB）
+HTTP 触发器 https://share-maple-tde-share-nxulewxbuy.cn-hangzhou.fcapp.run
+代码       deploy/fc/index.py + ossmin.py（打包 4 KB，零第三方依赖）
 ```
 
-## 1. 建 RAM 用户（只给最小权限）
+## 实测决定的设计（和最初的设想不同）
 
-函数计算要用一把只能写 `merchants/` 和 `index.json` 的密钥：
+| 试过的 | 结果 | 最终方案 |
+|---|---|---|
+| 桶设公共读 / 对象设 public-read | 403（RAM 用户没有 PutObjectAcl）| **预签名 URL**（匿名可用，实测 200）|
+| PUT 带 `If-Match` 条件写 | 400 `NotImplemented` | 冲突检测放在**函数里**（比对客户端带来的 etag）|
+| 函数里用 oss2 | 没有 manylinux wheel，Windows 轮子跑不了 | **纯标准库** `ossmin.py`（V1 签名）|
 
-```json
-{
-  "Version": "1",
-  "Statement": [
-    {
-      "Effect": "Allow",
-      "Action": ["oss:GetObject", "oss:PutObject", "oss:HeadObject"],
-      "Resource": [
-        "acs:oss:*:*:<桶名>/merchants/*",
-        "acs:oss:*:*:<桶名>/index.json"
-      ]
-    }
-  ]
-}
-```
-
-**不要把主账号 AccessKey 放进任何地方。**
-
-## 2. 部署函数
+## 数据流
 
 ```
-函数计算 → 新建函数 → 类型选「HTTP 函数」→ Python 3.10
-代码：deploy/fc/index.py
-依赖：oss2（在"层"或函数里 pip install oss2 -t .）
+读：客户端 POST /bundle（带 token）
+      → 函数返回 index 的预签名 URL + 15 个商人对象的预签名 URL（5 分钟有效）
+      → 客户端拿这些 URL 直连 OSS 轮询（1 秒一次也不消耗函数额度）
+写：客户端 POST /upload（带 token + 上次看到的 etag）
+      → 函数校验 token/字段/限流/etag → 写对象 → 更新 index.json
 ```
 
-环境变量（函数配置里填）：
+## 函数侧的四道关卡
 
 ```
-OSS_ENDPOINT   https://oss-cn-hangzhou.aliyuncs.com
-OSS_BUCKET     <桶名>
-OSS_KEY_ID     <RAM 用户 AccessKeyId>
-OSS_KEY_SECRET <RAM 用户 AccessKeySecret>
-SHARE_TOKEN    <共享口令，长随机串>
+1. token 校验            错误直接 401
+2. 字段校验              商人 id 白名单字符、行 key 格式、价格 0~999999、
+                         刷新时间 ≤360 秒、体积 ≤2 KB、行数 ≤12
+3. 限流                  同一个商人 3 秒内只接受一次（读旧对象判断，无需额外存储）
+4. 冲突检测              etag 不一致 → 409，客户端合并后重试
 ```
 
-触发器：HTTP 触发器，方法只留 POST，鉴权选「无需签名」（我们自己用 token）。
+## 客户端配置
 
-## 3. 让客户端能匿名读
-
-共享的只有游戏价格，公开读没有风险，而且能让 1 秒轮询不消耗函数额度：
-
-```
-方式 A：把 merchants/ 和 index.json 设为「公共读」
-方式 B（更稳）：给桶开 CDN，用 CDN 域名做 read_prefix
-```
-
-## 4. 客户端配置
-
-在数据目录放 `share.json`（`%LOCALAPPDATA%\MapleTrade\data\` 或 exe 旁的 `data\`）：
+数据目录下的 `share.json`（已生成，**不进版本库**，里面有 token）：
 
 ```json
 {
   "endpoint": "https://oss-cn-hangzhou.aliyuncs.com",
-  "bucket": "maple-trade-share-xxxxxx",
-  "token": "<共享口令>",
-  "upload_url": "https://<函数 HTTP 地址>/upload",
-  "read_prefix": "https://<桶名>.oss-cn-hangzhou.aliyuncs.com"
+  "bucket": "maple-trade-560b008d2f",
+  "token": "<见 detections/share_token.txt>",
+  "upload_url": "https://<触发器域名>/upload",
+  "bundle_url": "https://<触发器域名>/bundle"
 }
 ```
 
-**客户端里没有 OSS 密钥**，只有这个 token；写请求全部经函数校验。
+客户端**没有任何 OSS 密钥**，只有这个 token。
 
-## 5. 费用与止损
+## 费用与止损
 
 ```
-OSS 请求：读 0.01 元/万次量级，写入更少；30 人全活跃也就每天 < 1 元
-函数计算：写入频率低（3 分钟才刷新一次），免费额度足够
-关掉方式：删掉函数触发器 / 换 SHARE_TOKEN / 关函数
-预警：阿里云「费用预警」设 10 元/月，短信通知
+读：直连 OSS 的预签名 GET，按请求计费（约 0.01 元/万次）
+写：只写变化的那一个商人，频率 ≈ 每分钟几次
+函数：只有 /bundle（5 分钟一次）和 /upload 会调用，免费额度绰绰有余
+止损：删除触发器 / 换 SHARE_TOKEN / 阿里云费用预警
 ```
 
-## 6. 已知限制
+## 已知限制
 
-- 中转的限流是**无状态**的：只靠"同一个商人 3 秒内只收一次"（读旧对象判断），
-  不依赖额外存储；恶意刷不同商人仍可绕过，靠费用预警和 token 轮换止损
-- `index.json` 是读-改-写，并发写可能丢一次更新——客户端下次拉取会自愈
+- `index.json` 是读-改-写，并发写可能丢一次更新；客户端下次 `/bundle` 会自愈
+- 3 秒限流是"同一商人"，恶意刷不同商人仍可绕过（靠费用预警 + 换 token 止损）
+- 预签名 URL 有效期 5 分钟；过期后客户端会自动重新 `/bundle`

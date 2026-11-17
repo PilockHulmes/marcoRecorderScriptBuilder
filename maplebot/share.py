@@ -64,7 +64,8 @@ class ShareManager:
 
     # ------------------------------------------------------------------
     def _make_backend(self):
-        if not share_config.enabled():
+        # 用传进来的配置判断（测试会传空配置），不要回读磁盘上的 share.json
+        if not (self.config.get("bucket") and self.config.get("token")):
             return None
         try:
             from .oss_backend import OssBackend

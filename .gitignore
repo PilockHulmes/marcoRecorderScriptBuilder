@@ -164,3 +164,11 @@ data/trade/map_graph_user.json
 
 # 临时截图 / 调试产物（用户或脚本随手放的）
 tmp_debug/
+
+# 共享配置（含 token，不进版本库）
+data/share.json
+
+# 函数打包产物
+deploy/fc/pkg/
+deploy/fc/wheels/
+deploy/fc/share.zip

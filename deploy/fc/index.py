@@ -1,28 +1,23 @@
 """阿里云函数计算：共享数据的读入口（预签名 URL）+ 写入口。
 
-实测结论：
+实测结论（照它们设计的）：
 
-* 这个 RAM 用户**不能**把对象设成公共读（``Put public object acl is not allowed``）
-* 但**预签名 URL 可用**（匿名 GET 返回 200）
-* OSS **不支持** ``If-Match`` 条件写（返回 ``NotImplemented``）
+* 这个 RAM 用户不能把对象设成公共读 → 用**预签名 URL** 让别人读
+* OSS 的 PutObject **不支持 If-Match** → 冲突检测放在这里
+* oss2 没有 manylinux wheel → 换成只依赖标准库的 :mod:`ossmin`
 
-所以：
+    读：``/bundle`` 一次返回 index 和全部商人对象的预签名 URL（5 分钟有效）
+        客户端拿 URL 直连 OSS，1 秒轮询也不消耗函数额度
+    写：``/upload`` 校验 token / 字段 / 限流 / etag 冲突，然后写对象并更新 index
 
-    读：``/bundle`` 一次性返回 index 和 15 个商人对象的预签名 URL（默认 5 分钟有效）
-        客户端拿 URL 直连 OSS 轮询 → 1 秒一次也不消耗函数额度
-    写：``/upload`` 校验 token / 字段 / 限流，并用"客户端带来的 etag 与当前对比"
-        做冲突检测（OSS 不支持条件写，只能在这里串行化）
-
-环境变量：
-
-    OSS_ENDPOINT / OSS_BUCKET / OSS_KEY_ID / OSS_KEY_SECRET / SHARE_TOKEN
+环境变量：``OSS_ENDPOINT`` ``OSS_BUCKET`` ``OSS_KEY_ID`` ``OSS_KEY_SECRET`` ``SHARE_TOKEN``
 """
 
 import json
 import os
 import time
 
-import oss2
+import ossmin
 
 PREFIX = "merchants/"
 INDEX_KEY = "index.json"
@@ -32,15 +27,36 @@ MAX_REFRESH = 360
 MIN_WRITE_INTERVAL = 3.0
 URL_TTL = 300
 
-_bucket = None
+
+def _settings():
+    return {
+        "bucket": os.environ["OSS_BUCKET"],
+        "endpoint": os.environ["OSS_ENDPOINT"],
+        "access_id": os.environ["OSS_KEY_ID"],
+        "secret": os.environ["OSS_KEY_SECRET"],
+    }
 
 
-def bucket():
-    global _bucket
-    if _bucket is None:
-        auth = oss2.Auth(os.environ["OSS_KEY_ID"], os.environ["OSS_KEY_SECRET"])
-        _bucket = oss2.Bucket(auth, os.environ["OSS_ENDPOINT"], os.environ["OSS_BUCKET"])
-    return _bucket
+def _get(key):
+    s = _settings()
+    body, etag = ossmin.get_object(s["bucket"], s["endpoint"], key,
+                                   s["access_id"], s["secret"])
+    if body is None:
+        return None, None
+    return json.loads(body.decode("utf-8")), etag
+
+
+def _put(key, payload):
+    s = _settings()
+    body = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+    return ossmin.put_object(s["bucket"], s["endpoint"], key, body,
+                             s["access_id"], s["secret"])
+
+
+def _presign(key):
+    s = _settings()
+    return ossmin.presign_get(s["bucket"], s["endpoint"], key,
+                              s["access_id"], s["secret"], URL_TTL)
 
 
 def _response(start_response, status, payload):
@@ -61,16 +77,6 @@ def _valid_merchant(merchant_id):
     return all(ch.isalnum() or ch in "_-" for ch in merchant_id)
 
 
-def _read_object(merchant_id):
-    try:
-        result = bucket().get_object(f"{PREFIX}{merchant_id}.json")
-        return json.loads(result.read().decode("utf-8")), result.headers.get("ETag")
-    except oss2.exceptions.NoSuchKey:
-        return None, None
-    except Exception:
-        return None, None
-
-
 def _newest_t(record):
     if not record:
         return 0.0
@@ -89,10 +95,8 @@ def _validate_record(record, merchant_id, now):
         if not isinstance(key, str) or "|" not in key or len(key) > 64:
             return None, "行 key 不合法"
         good_id, _, side = key.partition("|")
-        if not good_id or side not in ("buy", "sell"):
-            return None, "行 key 不合法"
-        if not isinstance(row, dict):
-            return None, "行不是对象"
+        if not good_id or side not in ("buy", "sell") or not isinstance(row, dict):
+            return None, "行不合法"
         try:
             price = int(row["p"])
             t = float(row["t"])
@@ -111,28 +115,23 @@ def _validate_record(record, merchant_id, now):
 
 
 def handle_bundle(payload):
-    """返回 index 和所有商人对象的预签名 URL。"""
     if not _token_ok(payload):
         return 401, {"ok": False, "error": "token 不对"}
-    b = bucket()
-    index = {}
     try:
-        result = b.get_object(INDEX_KEY)
-        index = json.loads(result.read().decode("utf-8")) or {}
+        index, _etag = _get(INDEX_KEY)
     except Exception:
         index = {}
+    index = index or {}
     objects = {}
-    for merchant_id in index:
+    for merchant_id in list(index)[:64]:
         if not _valid_merchant(merchant_id):
             continue
-        key = f"{PREFIX}{merchant_id}.json"
         objects[merchant_id] = {
-            "url": b.sign_url("GET", key, URL_TTL, slash_safe=True),
+            "url": _presign(f"{PREFIX}{merchant_id}.json"),
             "etag": index.get(merchant_id, ""),
         }
     return 200, {"ok": True, "expires": int(time.time()) + URL_TTL,
-                 "index_url": b.sign_url("GET", INDEX_KEY, URL_TTL, slash_safe=True),
-                 "objects": objects}
+                 "index_url": _presign(INDEX_KEY), "objects": objects}
 
 
 def handle_upload(payload, now):
@@ -145,47 +144,30 @@ def handle_upload(payload, now):
     if error:
         return 400, {"ok": False, "error": error}
 
-    existing, etag = _read_object(merchant_id)
+    key = f"{PREFIX}{merchant_id}.json"
+    existing, etag = _get(key)
     client_etag = payload.get("etag") or ""
     if existing and client_etag and client_etag != etag:
         return 409, {"ok": False, "error": "别人先写了，请合并后重试"}
     if existing and now - _newest_t(existing) < MIN_WRITE_INTERVAL:
         return 429, {"ok": False, "error": "同一个商人 3 秒内只收一次"}
 
-    key = f"{PREFIX}{merchant_id}.json"
-    body = json.dumps(record, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
-    if len(body) > MAX_BODY:
-        return 413, {"ok": False, "error": "记录太大"}
-    try:
-        result = bucket().put_object(key, body,
-                                     headers={"Content-Type": "application/json"})
-    except Exception as exc:
-        return 409, {"ok": False, "error": f"写入冲突：{exc}"}
-    new_etag = result.headers.get("ETag", "")
+    new_etag = _put(key, record)
 
-    # index.json：客户端只读它就知道该下哪些（读-改-写，失败不影响对象本身）
     try:
-        result = bucket().get_object(INDEX_KEY)
-        index = json.loads(result.read().decode("utf-8")) or {}
-        index_etag = result.headers.get("ETag")
-    except Exception:
-        index, index_etag = {}, None
-    index[merchant_id] = new_etag
-    headers = {"Content-Type": "application/json"}
-    if index_etag:
-        headers["If-Match"] = index_etag
-    try:
-        bucket().put_object(INDEX_KEY, json.dumps(index, ensure_ascii=False).encode("utf-8"),
-                            headers=headers)
+        index, index_etag = _get(INDEX_KEY)
+        index = index or {}
+        index[merchant_id] = new_etag
+        _put(INDEX_KEY, index)
     except Exception:
         pass
     return 200, {"ok": True, "etag": new_etag}
 
 
 def handler(environ, start_response):
-    """FC HTTP 函数入口：``/bundle`` 和 ``/upload`` 两个路径。"""
+    """FC HTTP 函数入口：``/bundle`` 与 ``/upload``。"""
     now = time.time()
-    path = (environ.get("PATH_INFO") or "").rstrip("/") or "/"
+    path = (environ.get("PATH_INFO") or "/").rstrip("/") or "/"
     try:
         length = int(environ.get("CONTENT_LENGTH") or 0)
     except ValueError:
@@ -196,7 +178,8 @@ def handler(environ, start_response):
     try:
         payload = json.loads(raw.decode("utf-8")) if raw else {}
     except Exception:
-        return _response(start_response, "400 Bad Request", {"ok": False, "error": "不是 JSON"})
+        return _response(start_response, "400 Bad Request",
+                         {"ok": False, "error": "不是 JSON"})
     try:
         if path.endswith("/bundle"):
             status, body = handle_bundle(payload)
