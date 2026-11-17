@@ -397,22 +397,21 @@ def scroll_handle(frame) -> float | None:
 
 
 # ---------------------------------------------------------------- 倒计时 / 行
-CARGO_HEADER_PATH = paths_module.trade_dir() / "icons" / "cargo_header.png"
-
-
 def find_cargo_window(frame) -> bool:
-    """画面里是不是开着货舱窗口（用窗口标题做模板，位置固定）。"""
+    """画面里是不是开着货舱窗口（用面板标题 "CARGO" 做模板）。
+
+    模板只有 CARGO 文字，**不含玩家角色外观**——旧的 cargo_header.png 是从
+    我的角色画面截的，别人用会匹配不上，已删除。
+    """
     if _empty(frame):
         return False
-    try:
-        raw = np.fromfile(str(CARGO_HEADER_PATH), dtype=np.uint8)
-        template = cv2.imdecode(raw, cv2.IMREAD_COLOR)
-    except Exception:
+    from . import anchors as anchors_module
+
+    patch = anchors_module.load_patches().get("cargo")
+    if patch is None or patch.shape[0] >= frame.shape[0]:
         return False
-    if template is None or template.shape[0] >= frame.shape[0]:
-        return False
-    result = cv2.matchTemplate(frame, template, cv2.TM_CCOEFF_NORMED)
-    return bool(result.size and float(result.max()) >= 0.80)
+    result = cv2.matchTemplate(frame, patch, cv2.TM_CCOEFF_NORMED)
+    return bool(result.size and float(result.max()) >= 0.85)
 
 
 def read_row_countdown(frame) -> str:

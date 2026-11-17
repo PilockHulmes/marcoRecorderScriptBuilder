@@ -43,7 +43,6 @@ NAME_MARGIN = 0.02
 NAME_SIZE = (240, 44)
 # 名字裁剪里"第二行文字"的精确区域：不含地区名、不含图标，只留 仙人掌沙漠-1 这一条
 NAME_TEXT_BOX = (38, 20, 162, 21)
-NAME_TEXT_DIR = paths_module.trade_dir() / "map_name_text"
 BASELINE_PATH = paths_module.trade_dir() / "map_graph.json"
 EDGE_RAW_PATH = paths_module.trade_dir() / "edge_times_raw.jsonl"
 #: 单跳低于这个秒数基本是"连穿两张图"，不是真的走完一张图

@@ -271,62 +271,66 @@ CARGO_COUNT_SHOP = (896, 298, 46, 20)   # 行右侧的「N 個」
 
 
 # 货舱面板定位：标题模板找到后，图标原点相对它的偏移（实测）
-CARGO_HEADER_DX = -214
-CARGO_HEADER_DY = 117
 
 
-#: 货舱标题图（只解码一次）+ 上次找到的位置（按画面尺寸记）
-_CARGO_HEADER_CACHE = {}
+#: 上次找到的 CARGO 标题位置（按画面尺寸记）
 _CARGO_ORIGIN_HINT = {}
 
+#: 从 CARGO 文字左上角到"物品格原点"的偏移（帧坐标，两种布局实测一致）
+CARGO_ORIGIN_DX = -108
+CARGO_ORIGIN_DY = 78
 
-def _cargo_header():
-    """货舱标题模板；只在第一次从磁盘解码，之后走缓存。"""
-    if "image" in _CARGO_HEADER_CACHE:
-        return _CARGO_HEADER_CACHE["image"]
-    image = None
+
+def _find_cargo_title(frame):
+    """找货舱面板标题 "CARGO" 的位置（帧坐标）；找不到返回 None。
+
+    用 ``anchors/cargo_title.png``（只有 CARGO 文字），**不含玩家角色**——
+    之前用的 ``cargo_header.png`` 是从我的角色画面截的，别人拿到就对不上。
+    """
+    from . import anchors as anchors_module
+
+    patch = anchors_module.load_patches().get("cargo")
+    if patch is None:
+        return None
+    height, width = frame.shape[:2]
+    hint = _CARGO_ORIGIN_HINT.get((width, height))
+    pad = 12
+    if hint is not None:
+        x0 = max(0, hint[0] - pad)
+        y0 = max(0, hint[1] - pad)
+        window = frame[y0:y0 + patch.shape[0] + 2 * pad,
+                       x0:x0 + patch.shape[1] + 2 * pad]
+        if (window.shape[0] >= patch.shape[0]
+                and window.shape[1] >= patch.shape[1]):
+            result = cv2.matchTemplate(window, patch, cv2.TM_CCOEFF_NORMED)
+            _, score, _, loc = cv2.minMaxLoc(result)
+            if score >= 0.85:
+                found = (loc[0] + x0, loc[1] + y0)
+                _CARGO_ORIGIN_HINT[(width, height)] = found
+                return found
     try:
-        image = cv2.imdecode(np.fromfile(str(trade.CARGO_HEADER_PATH), dtype=np.uint8),
-                             cv2.IMREAD_COLOR)
+        result = cv2.matchTemplate(frame, patch, cv2.TM_CCOEFF_NORMED)
+        _, score, _, loc = cv2.minMaxLoc(result)
+        if score < 0.85:
+            return None
+        _CARGO_ORIGIN_HINT[(width, height)] = (loc[0], loc[1])
+        return (loc[0], loc[1])
     except Exception:
-        image = None
-    _CARGO_HEADER_CACHE["image"] = image
-    return image
+        return None
 
 
 def _cargo_origin(frame):
-    """用货舱标题定位面板，返回图标原点（整窗坐标）；定位不到返回 None。
+    """用货舱标题定位面板，返回图标原点（**整窗坐标**）；定位不到返回 None。
 
-    标题位置是固定的，所以先在上次找到的位置附近找（1~2 ms），
-    找不到才全屏匹配（约 30 ms）。
+    标题位置是固定的，所以先在上次找到的位置附近找（<1 ms），
+    找不到才全屏匹配。偏移量对"商店右侧货舱"和"单独货舱"都成立。
     """
-    template = _cargo_header()
-    if template is None:
+    title = _find_cargo_title(frame)
+    if title is None:
         return None
-    try:
-        height, width = frame.shape[:2]
-        hint = _CARGO_ORIGIN_HINT.get((width, height))
-        if hint is not None:
-            pad = 12
-            x0 = max(0, hint[0] - pad)
-            y0 = max(0, hint[1] - pad)
-            window = frame[y0:y0 + template.shape[0] + 2 * pad,
-                           x0:x0 + template.shape[1] + 2 * pad]
-            if (window.shape[0] >= template.shape[0]
-                    and window.shape[1] >= template.shape[1]):
-                result = cv2.matchTemplate(window, template, cv2.TM_CCOEFF_NORMED)
-                _, score, _, loc = cv2.minMaxLoc(result)
-                if score >= 0.90:
-                    _CARGO_ORIGIN_HINT[(width, height)] = (loc[0] + x0, loc[1] + y0)
-                    return (loc[0] + x0 + CARGO_HEADER_DX, loc[1] + y0 + CARGO_HEADER_DY)
-        result = cv2.matchTemplate(frame, template, cv2.TM_CCOEFF_NORMED)
-        _, score, _, loc = cv2.minMaxLoc(result)
-        if score < 0.90:
-            return None
-        _CARGO_ORIGIN_HINT[(width, height)] = (loc[0], loc[1])
-        return (loc[0] + CARGO_HEADER_DX, loc[1] + CARGO_HEADER_DY)
-    except Exception:
-        return None
+    offset = trade.client_offset(frame)
+    return (title[0] + CARGO_ORIGIN_DX + offset[0],
+            title[1] + CARGO_ORIGIN_DY + offset[1])
 
 
 def _count_items(frame, layout, templates):
