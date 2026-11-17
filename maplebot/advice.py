@@ -76,6 +76,29 @@ def _fastest_mean(values):
     return sum(fastest) / len(fastest)
 
 
+#: 原始样本文件缓存：(路径, 修改时间, 大小) -> 行列表
+_LINES_CACHE = {}
+
+
+def _read_lines_cached(path):
+    """读 JSONL 原始样本，按文件修改时间缓存（每次新建 MapTravel 都重读很贵）。"""
+    try:
+        stat = path.stat()
+    except Exception:
+        return []
+    key = (str(path), stat.st_mtime, stat.st_size)
+    hit = _LINES_CACHE.get(key)
+    if hit is not None:
+        return hit
+    try:
+        rows = [json.loads(line) for line in
+                path.read_text(encoding="utf-8").splitlines() if line.strip()]
+    except Exception:
+        rows = []
+    _LINES_CACHE[key] = rows
+    return rows
+
+
 class MapTravel:
     """地图之间的距离（秒）。实测优先，否则按跳数估。
 
@@ -103,13 +126,7 @@ class MapTravel:
                 if row.get("n", 0) >= MIN_SAMPLES:
                     self.times[(row["from"], row["to"])] = float(row["median_fastest"])
             return
-        raw = []
-        try:
-            if EDGE_RAW_PATH.exists():
-                raw = [json.loads(line) for line in
-                       EDGE_RAW_PATH.read_text(encoding="utf-8").splitlines() if line.strip()]
-        except Exception:
-            raw = []
+        raw = _read_lines_cached(EDGE_RAW_PATH) if EDGE_RAW_PATH.exists() else []
         if raw:
             buckets = defaultdict(list)
             portal_buckets = defaultdict(list)

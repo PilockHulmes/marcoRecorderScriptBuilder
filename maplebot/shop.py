@@ -101,7 +101,7 @@ def load_icon_templates(icon_dir=None, index_path=None):
     index_path = Path(index_path) if index_path is not None else ICON_INDEX_PATH
     index = _read_json(index_path, {})
     goods = load_goods()
-    templates = {}
+    templates = IconTemplates()
     entries = index.get("icons", []) if isinstance(index, dict) else []
     if not isinstance(entries, list):
         entries = []
@@ -132,20 +132,71 @@ def load_icon_templates(icon_dir=None, index_path=None):
 
 
 
-def match_icon(patch, templates):
-    """返回 (good_id, score)。"""
+class IconTemplates(dict):
+    """图标模板表。自带一个"缩放结果"缓存，避免每次匹配都重新 resample。
+
+    缓存挂在对象自身上，而不是用 ``id(templates)`` 当键——id 会被复用，
+    不同模板表会撞车（这个坑被测试抓到过）。
+    """
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.resized = {}
+
+
+def _scaled(templates, good_id, size, cache_key):
+    """取缩放到 ``size`` 的模板；同一个模板只 resample 一次。"""
+    cache = getattr(templates, "resized", None)
+    template = templates.get(good_id)
+    if template is None:
+        return None
+    if cache is None:                 # 普通 dict（测试里常见）：不缓存
+        return cv2.resize(template, size, interpolation=cv2.INTER_AREA)
+    key = (cache_key, good_id)
+    hit = cache.get(key)
+    if hit is not None:
+        return hit
+    image = cv2.resize(template, size, interpolation=cv2.INTER_AREA)
+    cache[key] = image
+    return image
+
+
+#: 货舱格子的识别缓存：格子像素摘要 -> good_id（同一格没变就不用重比）
+_CARGO_CELL_CACHE = {}
+_CARGO_CELL_CACHE_MAX = 256
+
+
+def match_icon(patch, templates, candidates=None):
+    """返回 (good_id, score)。
+
+    ``candidates`` 给了就只比这些 good_id（知道商人是谁时，只比他那几样货），
+    全都没过阈值再退回比全部——防止认错商人时彻底认不出商品。
+    """
     if patch is None or patch.size == 0:
         return "", 0.0
     query = cv2.resize(patch, ICON_MATCH_SIZE, interpolation=cv2.INTER_AREA)
+    best, best_id = _match_best(query, templates, candidates, ICON_MATCH_SIZE)
+    if best >= ICON_THRESHOLD or not candidates:
+        return (best_id if best >= ICON_THRESHOLD else ""), best
+    # 候选里没有够像的（商人表可能不准）→ 退回全量再比一次
+    best, best_id = _match_best(query, templates, None, ICON_MATCH_SIZE)
+    return (best_id if best >= ICON_THRESHOLD else ""), best
+
+
+def _match_best(query, templates, candidates, size):
+    """在 ``candidates``（None = 全部）里找最像的模板。"""
+    ids = candidates if candidates is not None else list(templates)
     best, best_id = 0.0, ""
-    for good_id, template in templates.items():
-        small = cv2.resize(template, ICON_MATCH_SIZE, interpolation=cv2.INTER_AREA)
+    for good_id in ids:
+        small = _scaled(templates, good_id, size, ("icon", size))
+        if small is None or small.shape[:2] != size[::-1]:
+            continue
         result = cv2.matchTemplate(query, small, cv2.TM_CCOEFF_NORMED)
         if result.size:
             score = float(result.max())
             if score > best:
                 best, best_id = score, good_id
-    return (best_id if best >= ICON_THRESHOLD else ""), best
+    return best, best_id
 
 
 @dataclass
@@ -261,6 +312,21 @@ def _count_items(frame, layout, templates):
     return count
 
 
+def _cached_icon_half(patch, templates):
+    """货舱格子识别（带像素摘要缓存）：格子没变就直接复用上次结果。"""
+    if patch is None or patch.size == 0:
+        return "", 0.0
+    key = hash(patch.tobytes())
+    hit = _CARGO_CELL_CACHE.get(key)
+    if hit is not None:
+        return hit[0], hit[1]
+    result = match_icon_half(patch, templates)
+    if len(_CARGO_CELL_CACHE) >= _CARGO_CELL_CACHE_MAX:
+        _CARGO_CELL_CACHE.clear()
+    _CARGO_CELL_CACHE[key] = result
+    return result
+
+
 def read_cargo_items(frame, templates=None, profile="only", with_counts=False):
     """读身上带着哪些货；只认商品，不读价格（最近購買金額不能当成本）。
 
@@ -293,7 +359,7 @@ def read_cargo_items(frame, templates=None, profile="only", with_counts=False):
             patch = trade.crop_box(frame, start_x - 4, y - 4, icon + 10, icon + 10)
         except Exception:
             continue
-        good_id, score = match_icon_half(patch, templates)
+        good_id, score = _cached_icon_half(patch, templates)
         if good_id and score >= 0.80:
             if with_counts:
                 count = read_cargo_count(frame, origin=(start_x, start_y),
@@ -354,15 +420,21 @@ CARGO_ICON_SCALE = 0.5
 CARGO_MATCH_THRESHOLD = 0.70
 
 
-def match_icon_half(region, templates, scale=CARGO_ICON_SCALE):
+def match_icon_half(region, templates, scale=CARGO_ICON_SCALE, candidates=None):
     """在 region 里滑动 50% 大小的模板，返回 (good_id, score)。"""
     if region is None or region.size == 0:
         return "", 0.0
     best, best_id = 0.0, ""
-    for good_id, template in templates.items():
-        small = cv2.resize(template, (max(8, int(template.shape[1] * scale)),
-                                      max(8, int(template.shape[0] * scale))),
-                           interpolation=cv2.INTER_AREA)
+    ids = candidates if candidates is not None else list(templates)
+    for good_id in ids:
+        template = templates.get(good_id)
+        if template is None:
+            continue
+        size = (max(8, int(template.shape[1] * scale)),
+                max(8, int(template.shape[0] * scale)))
+        small = _scaled(templates, good_id, size, ("half", scale))
+        if small is None:
+            continue
         if small.shape[0] > region.shape[0] or small.shape[1] > region.shape[1]:
             continue
         result = cv2.matchTemplate(region, small, cv2.TM_CCOEFF_NORMED)
@@ -509,6 +581,13 @@ def read_visit(frame, map_name="", templates=None, *, cache=None, now=None, lear
     except Exception:
         rows = []
 
+    # 知道是哪个商人了，就只比他那几样货的图标（认不出来会自动退回全量）
+    merchant_id = getattr(visit, "merchant_id", "") or ""
+    candidates = None
+    if merchant_id:
+        candidates = [gid for gid, item in goods.items()
+                      if item.get("seller") == merchant_id] or None
+
     for row in rows:
         if getattr(row, "partial", False):
             continue
@@ -518,7 +597,7 @@ def read_visit(frame, map_name="", templates=None, *, cache=None, now=None, lear
             patch = frame[y:y + h, x:x + w]
         except Exception:
             pass
-        good_id, score = match_icon(patch, templates)
+        good_id, score = match_icon(patch, templates, candidates)
 
         if good_id:
             _append_row(visit, good_id, row, score, goods)
