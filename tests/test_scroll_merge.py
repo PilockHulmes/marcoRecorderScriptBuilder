@@ -23,6 +23,7 @@ def visit(rows):
 class ScrollMergeTest(unittest.TestCase):
     def test_rows_merge_across_frames(self):
         ledger = mock.Mock()
+        ledger.load.return_value = []          # 看板会遍历它，给个空列表
         watcher = mock.Mock()
         watcher.last_map_obs = mock.Mock(map_id="A")
         rt = runtime_module.Runtime(watcher=watcher, ledger=ledger,

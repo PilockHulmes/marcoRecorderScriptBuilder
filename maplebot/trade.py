@@ -397,11 +397,17 @@ def scroll_handle(frame) -> float | None:
 
 
 # ---------------------------------------------------------------- 倒计时 / 行
+#: 上次找到 CARGO 标题的位置（按画面尺寸记）：全屏匹配很贵，记住后只查附近
+_CARGO_WINDOW_HINT = {}
+
+
 def find_cargo_window(frame) -> bool:
     """画面里是不是开着货舱窗口（用面板标题 "CARGO" 做模板）。
 
     模板只有 CARGO 文字，**不含玩家角色外观**——旧的 cargo_header.png 是从
     我的角色画面截的，别人用会匹配不上，已删除。
+
+    标题位置是固定的：先在上次的位置附近找（<1 ms），找不到才全屏匹配（约 40 ms）。
     """
     if _empty(frame):
         return False
@@ -410,8 +416,31 @@ def find_cargo_window(frame) -> bool:
     patch = anchors_module.load_patches().get("cargo")
     if patch is None or patch.shape[0] >= frame.shape[0]:
         return False
-    result = cv2.matchTemplate(frame, patch, cv2.TM_CCOEFF_NORMED)
-    return bool(result.size and float(result.max()) >= 0.85)
+    height, width = frame.shape[:2]
+    hint = _CARGO_WINDOW_HINT.get((width, height))
+    if hint is not None:
+        pad = 12
+        x0 = max(0, hint[0] - pad)
+        y0 = max(0, hint[1] - pad)
+        window = frame[y0:y0 + patch.shape[0] + 2 * pad,
+                       x0:x0 + patch.shape[1] + 2 * pad]
+        if (window.shape[0] >= patch.shape[0]
+                and window.shape[1] >= patch.shape[1]):
+            result = cv2.matchTemplate(window, patch, cv2.TM_CCOEFF_NORMED)
+            if result.size and float(result.max()) >= 0.85:
+                _CARGO_WINDOW_HINT[(width, height)] = (hint[0], hint[1])
+                return True
+    try:
+        result = cv2.matchTemplate(frame, patch, cv2.TM_CCOEFF_NORMED)
+    except Exception:
+        return False
+    if not result.size:
+        return False
+    _min, score, _loc, loc = cv2.minMaxLoc(result)
+    if float(score) >= 0.85:
+        _CARGO_WINDOW_HINT[(width, height)] = (loc[0], loc[1])
+        return True
+    return False
 
 
 def read_row_countdown(frame) -> str:
