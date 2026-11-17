@@ -275,21 +275,55 @@ CARGO_HEADER_DX = -214
 CARGO_HEADER_DY = 117
 
 
+#: 货舱标题图（只解码一次）+ 上次找到的位置（按画面尺寸记）
+_CARGO_HEADER_CACHE = {}
+_CARGO_ORIGIN_HINT = {}
+
+
+def _cargo_header():
+    """货舱标题模板；只在第一次从磁盘解码，之后走缓存。"""
+    if "image" in _CARGO_HEADER_CACHE:
+        return _CARGO_HEADER_CACHE["image"]
+    image = None
+    try:
+        image = cv2.imdecode(np.fromfile(str(trade.CARGO_HEADER_PATH), dtype=np.uint8),
+                             cv2.IMREAD_COLOR)
+    except Exception:
+        image = None
+    _CARGO_HEADER_CACHE["image"] = image
+    return image
+
+
 def _cargo_origin(frame):
     """用货舱标题定位面板，返回图标原点（整窗坐标）；定位不到返回 None。
 
-    这样"商店右侧的货舱"和"单独打开的货舱"不用各写一套坐标——
-    面板挪到哪儿，原点就跟到哪儿。
+    标题位置是固定的，所以先在上次找到的位置附近找（1~2 ms），
+    找不到才全屏匹配（约 30 ms）。
     """
+    template = _cargo_header()
+    if template is None:
+        return None
     try:
-        template = cv2.imdecode(np.fromfile(str(trade.CARGO_HEADER_PATH), dtype=np.uint8),
-                                cv2.IMREAD_COLOR)
-        if template is None:
-            return None
+        height, width = frame.shape[:2]
+        hint = _CARGO_ORIGIN_HINT.get((width, height))
+        if hint is not None:
+            pad = 12
+            x0 = max(0, hint[0] - pad)
+            y0 = max(0, hint[1] - pad)
+            window = frame[y0:y0 + template.shape[0] + 2 * pad,
+                           x0:x0 + template.shape[1] + 2 * pad]
+            if (window.shape[0] >= template.shape[0]
+                    and window.shape[1] >= template.shape[1]):
+                result = cv2.matchTemplate(window, template, cv2.TM_CCOEFF_NORMED)
+                _, score, _, loc = cv2.minMaxLoc(result)
+                if score >= 0.90:
+                    _CARGO_ORIGIN_HINT[(width, height)] = (loc[0] + x0, loc[1] + y0)
+                    return (loc[0] + x0 + CARGO_HEADER_DX, loc[1] + y0 + CARGO_HEADER_DY)
         result = cv2.matchTemplate(frame, template, cv2.TM_CCOEFF_NORMED)
         _, score, _, loc = cv2.minMaxLoc(result)
         if score < 0.90:
             return None
+        _CARGO_ORIGIN_HINT[(width, height)] = (loc[0], loc[1])
         return (loc[0] + CARGO_HEADER_DX, loc[1] + CARGO_HEADER_DY)
     except Exception:
         return None
