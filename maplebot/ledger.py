@@ -39,6 +39,8 @@ MIN_WALL_CLOCK = 1_000_000_000
 FLUSH_INTERVAL = 5.0
 
 #: 过期多久的货架周期直接从内存里丢掉（秒）
+CYCLE_TOL = 5.0
+
 KEEP_AFTER_EXPIRY = 300.0
 
 
@@ -48,6 +50,17 @@ def is_wall_clock(value):
         return float(value) >= MIN_WALL_CLOCK
     except (TypeError, ValueError):
         return False
+
+
+def _cycle_deadline(cycle):
+    """周期的到期时刻（墙钟）。老文件没有 deadline 字段，用 t + refresh_in 兜底。"""
+    deadline = cycle.get("deadline")
+    if deadline is not None:
+        try:
+            return float(deadline)
+        except (TypeError, ValueError):
+            pass
+    return float(cycle.get("t", 0)) + float(cycle.get("refresh_in", 0))
 
 
 def _wall_now(value):
@@ -101,22 +114,33 @@ class Ledger:
                                  or payload.get("game_name") or entry["merchant"])
             entry["kind"] = payload.get("merchant_kind") or entry["kind"]
 
-            # 倒计时没读到（refresh<=0）时**不要新建一个立即过期的周期**：
-            # 并进当前最晚到期的那个周期，否则这条价格会瞬间失效，
-            # 看板和共享都会丢掉它（实测踩过）。
-            if refresh <= 0:
-                live = [(float(cycle["t"]) + float(cycle["refresh_in"]), cycle_key)
-                        for cycle_key, cycle in entry["cycles"].items()
-                        if float(cycle["t"]) + float(cycle["refresh_in"]) >= moment - 5]
-                cycle_key = max(live)[1] if live else f"{int(round(moment))}"
-            else:
-                cycle_key = f"{int(round(moment + refresh))}"
+            # 到期时刻是唯一真相：deadline = 观察时刻 + 当时剩余时间。
+            # 同一轮商店里多次观察算出来的 deadline 应该一样（±几秒），
+            # **不能**像以前那样"取最大剩余时间 + 一直推进 t"——那会让倒计时
+            # 永远停在第一次读到的大数字上（实测踩过）。
+            estimate = moment + refresh
+            cycle = None
+            if refresh > 0:
+                for candidate in entry["cycles"].values():
+                    if abs(_cycle_deadline(candidate) - estimate) <= CYCLE_TOL:
+                        cycle = candidate
+                        break
+            if cycle is None:
+                # 倒计时没读到（refresh<=0）：并进当前还没过期的周期
+                live = [item for item in entry["cycles"].values()
+                        if _cycle_deadline(item) >= moment - 5]
+                if refresh > 0 or not live:
+                    cycle = {"rows": {}}
+                    entry["cycles"][str(int(round(estimate)))] = cycle
+                else:
+                    cycle = max(live, key=_cycle_deadline)
 
-            cycle = entry["cycles"].setdefault(
-                cycle_key, {"t": moment, "refresh_in": refresh, "rows": {}})
-            if moment > cycle["t"]:
-                cycle["t"] = moment
-            cycle["refresh_in"] = max(refresh, cycle["refresh_in"])
+            if refresh > 0:
+                cycle["deadline"] = estimate
+            else:
+                cycle.setdefault("deadline", _cycle_deadline(cycle))
+            cycle["t"] = moment
+            cycle["refresh_in"] = max(0.0, _cycle_deadline(cycle) - moment)
             row_refresh = cycle["refresh_in"]
             for row in payload.get("rows") or []:
                 good_id = str(row.get("good_id") or "")
@@ -124,7 +148,7 @@ class Ledger:
                 price = row.get("price")
                 if not good_id or not side or price is None:
                     continue
-                cycle["rows"][f"{good_id}|{side}"] = {
+                cycle.setdefault("rows", {})[f"{good_id}|{side}"] = {
                     "p": int(price), "t": moment, "r": row_refresh, "src": "local"}
             self._prune_locked(moment)
             self._dirty = True
@@ -133,7 +157,7 @@ class Ledger:
         """丢掉过期太久的货架周期——每个商人只保留当前（和刚换下的）。"""
         for entry in self._merchants.values():
             dead = [key for key, cycle in entry["cycles"].items()
-                    if cycle["t"] + cycle["refresh_in"] < moment - KEEP_AFTER_EXPIRY]
+                    if _cycle_deadline(cycle) < moment - KEEP_AFTER_EXPIRY]
             for key in dead:
                 entry["cycles"].pop(key, None)
 
@@ -162,6 +186,7 @@ class Ledger:
                         "map": entry["map"],
                         "t": cycle["t"],
                         "refresh_in": cycle["refresh_in"],
+                        "deadline": _cycle_deadline(cycle),
                         "rows": rows,
                     })
             return out
@@ -281,14 +306,17 @@ class Ledger:
                 entry["map"] = record["map"]
             cycle_key = f"remote:{int(round(deadline))}"
             cycle = entry["cycles"].setdefault(
-                cycle_key, {"t": 0.0, "refresh_in": 0.0, "rows": {}})
+                cycle_key, {"t": 0.0, "refresh_in": 0.0, "deadline": deadline,
+                            "rows": {}})
+            cycle["deadline"] = deadline
             for key, row in rows.items():
                 cycle["rows"][key] = {"p": int(row.get("p", 0)),
                                       "t": float(row.get("t", 0)),
                                       "r": float(row.get("r", 0)),
                                       "src": "remote"}
                 cycle["t"] = max(cycle["t"], float(row.get("t", 0)))
-                cycle["refresh_in"] = max(cycle["refresh_in"], float(row.get("r", 0)))
+                # 剩余时间由 deadline 反推，不能直接用远端的 r（那是它上传那一刻的值）
+                cycle["refresh_in"] = max(0.0, deadline - cycle["t"])
             self._dirty = True
             return True
 
@@ -327,7 +355,7 @@ class Ledger:
                     "kind": entry["kind"],
                     "cycles": {key: {"t": cycle["t"],
                                      "refresh_in": cycle["refresh_in"],
-                                     "rows": dict(cycle["rows"])}
+                                     "rows": dict(cycle.get("rows") or {})}
                                for key, cycle in entry["cycles"].items()},
                 }
             text = json.dumps(payload, ensure_ascii=False)
@@ -348,6 +376,12 @@ class Ledger:
     # ------------------------------------------------------------ 有效期
     @staticmethod
     def valid_until(observation):
+        deadline = observation.get("deadline")
+        if deadline is not None:
+            try:
+                return float(deadline)
+            except (TypeError, ValueError):
+                pass
         return float(observation.get("t", 0)) + float(observation.get("refresh_in", 0))
 
     def valid(self, at=None):
