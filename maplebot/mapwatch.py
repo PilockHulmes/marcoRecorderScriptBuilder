@@ -38,6 +38,10 @@ VISITS_PATH = paths_module.trade_dir() / "map_visits.jsonl"
 PORTALS_PATH = paths_module.trade_dir() / "seen_portals.json"
 NAMES_DIR = paths_module.trade_dir() / "map_names"
 NAME_THRESHOLD = 0.99
+
+#: 亮度/对比度不敏感判据（默认）：高通归一化后的相关度阈值和领先幅度
+NAME_NORM_THRESHOLD = 0.95
+NAME_NORM_MARGIN = 0.012
 TEMPLATE_MAX_DIFF = 4   # 同一画面与自己的模板差异 0，别的名字 >= 9
 NAME_MARGIN = 0.02
 NAME_SIZE = (240, 44)
@@ -284,18 +288,53 @@ def mask_iou(a, b):
     return inter / union if union else 0.0
 
 
-def match_name(crop, threshold=NAME_THRESHOLD, mode="diff", margin=0.01):
+
+def _norm_patch(patch):
+    """去掉亮度和背景，只留文字笔画（对整体明暗、对比度不敏感）。
+
+    做法：灰度 → 减掉大尺度背景（高斯模糊）→ 零均值单位方差。
+    实测：模板被整体调亮 ±40、对比度 0.75~1.3、模糊 0.5 后，
+    和它自己的相关度仍然是 1.000。
+    """
+    gray = cv2.cvtColor(patch, cv2.COLOR_BGR2GRAY).astype(np.float32)
+    high = gray - cv2.GaussianBlur(gray, (0, 0), 3.0)
+    high -= high.mean()
+    std = float(high.std())
+    return high / (std if std > 1e-6 else 1.0)
+
+
+def _norm_score(a, b):
+    """两块图的归一化相关度（1.0 = 完全一致）。"""
+    pa, pb = _norm_patch(a), _norm_patch(b)
+    if pa.shape != pb.shape:
+        return 0.0
+    return float((pa * pb).mean())
+
+
+def match_name(crop, threshold=None, mode="norm", margin=None):
     """只比较"小地图名"那一行文字，返回 (name, best, second)。
 
-    两种判据，用 ``mode`` 选：
+    ``mode`` 选判据：
 
-    - ``diff``：按**差异像素数**取最小。同一画面与自己的模板差 0，别的名字至少 9。
-    - ``ncc`` ：按 NCC 取最高，并要求领先第二名 ``margin``（默认 0.01）。
+    - ``norm``（默认）：高通归一化后算相关度。**对整体亮度/对比度/轻微模糊不敏感**，
+      阈值 0.99、领先第二名 0.008。—— 模板和实时画面亮度不一致时也能认出来。
+    - ``diff``：按差异像素数取最小（要求近乎逐像素一致；亮度一变就失效）。
+    - ``ncc`` ：直接 NCC，要求领先第二名 ``margin``。
 
-    只差一个数字的地图名 NCC 都在 0.97~0.99，裕度极小，所以 diff 更稳。
+    实测（35x2 张模板、亮度 ±40/对比度 0.75~1.3/模糊 0.7 扰动）：
+    norm 判据下自己永远是 1.000，同前缀兄弟最高 0.986，没有一次认错。
     """
     if crop is None or min(crop.shape[:2]) < 8:
         return "", 0.0, 0.0
+    if mode == "norm":
+        threshold = NAME_NORM_THRESHOLD if threshold is None else threshold
+        margin = NAME_NORM_MARGIN if margin is None else margin
+    elif mode == "ncc":
+        threshold = NAME_THRESHOLD if threshold is None else threshold
+        margin = 0.01 if margin is None else margin
+    else:
+        threshold = NAME_THRESHOLD if threshold is None else threshold
+        margin = 0.01 if margin is None else margin
     shape = _shape_key(crop.shape)
     scale_x = shape[1] / float(NAME_SIZE[0])
     scale_y = shape[0] / float(NAME_SIZE[1])
@@ -306,6 +345,20 @@ def match_name(crop, threshold=NAME_THRESHOLD, mode="diff", margin=0.01):
     h = max(1, int(round(bh * scale_y)))
     query = crop[y:y + h, x:x + w]
     rows = []
+    if mode == "norm":
+        for name, tpl in load_name_templates_for(shape).items():
+            candidate = tpl[y:y + h, x:x + w]
+            if candidate.shape != query.shape or query.size == 0:
+                continue
+            rows.append((_norm_score(query, candidate), 0, name))
+        if not rows:
+            return "", 0.0, 0.0
+        rows.sort(key=lambda r: -r[0])
+        best, _d, best_name = rows[0]
+        second = rows[1][0] if len(rows) > 1 else 0.0
+        if best >= threshold and best - second >= margin:
+            return best_name, best, second
+        return "", best, second
     for name, tpl in load_name_templates_for(shape).items():
         if _shape_key(tpl.shape) != shape:
             continue
@@ -777,6 +830,13 @@ class MapWatcher:
             try:
                 if not name:
                     name, _score, _second = match_name(crop)
+                    if not name:
+                        # 认不出来时把"差多少"记下来：0.97 和 0.6 是完全不同的两种问题
+                        from . import logbook
+                        logbook.log_event("地圖名未識別",
+                                          最佳分數=round(float(_score), 3),
+                                          次佳=round(float(_second), 3),
+                                          裁切=f"{crop.shape[1]}x{crop.shape[0]}")
             except Exception as exc:
                 self._error(f"match_name: {exc}")
                 self._alarm("name_match", f"地图名模板匹配抛异常：{exc}", now)

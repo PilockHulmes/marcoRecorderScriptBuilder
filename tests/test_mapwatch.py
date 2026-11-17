@@ -26,9 +26,19 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
+import cv2
 import numpy as np
 
 from maplebot import mapwatch, minimap
+
+def _load_frame(path):
+    return cv2.imdecode(np.fromfile(str(path), dtype=np.uint8), cv2.IMREAD_COLOR)
+
+
+
+
+def load(path):
+    return cv2.imdecode(np.fromfile(str(path), dtype=np.uint8), cv2.IMREAD_COLOR)
 
 
 #: 真实小地图名（``KNOWN_EXTRA`` 白名单内，``plausible_name`` 必须放行；
@@ -689,3 +699,61 @@ class ShopDwellTest(unittest.TestCase):
         watcher.note_shop(110.0, True)
         watcher.note_shop(135.0, False)
         self.assertAlmostEqual(watcher._shop_dwell, 25.0, places=3)
+
+class NameTemplateRobustnessTest(unittest.TestCase):
+    """模板对亮度和对比度不敏感，且同前缀 -1/-2/-3 之间不会互相认错。
+
+    背景：早期模板和实时画面亮度差 40 个灰度，用"差异像素"判据会把正确模板
+    拒掉（610 个像素被判不同），于是掉进 OCR 兜底、把地图认成隔壁那张。
+    """
+
+    @staticmethod
+    def _perturb(img, bright=0, contrast=1.0, blur=0.0):
+        out = np.clip(img.astype(np.float32) * contrast + bright, 0, 255).astype(np.uint8)
+        if blur:
+            out = cv2.GaussianBlur(out, (0, 0), blur)
+        return out
+
+    def test_every_template_identifies_itself(self):
+        for shape in ((44, 240), (62, 337)):
+            templates = mapwatch.load_name_templates_for(shape)
+            self.assertGreater(len(templates), 20)
+            for name, image in templates.items():
+                got, best, second = mapwatch.match_name(image)
+                self.assertEqual(got, name, f"形状 {shape} 的模板 {name} 认成了自己以外")
+                self.assertGreaterEqual(best - second, 0.005)
+
+    def test_brightness_and_contrast_do_not_break_matching(self):
+        templates = mapwatch.load_name_templates()
+        for name in ("孤獨的沙漠-3", "寂寞的沙漠-2", "豐饒的沙漠-1", "仙人掌沙漠-3"):
+            image = templates[name]
+            for kwargs in ({"bright": 40}, {"bright": -40}, {"contrast": 1.3},
+                           {"contrast": 0.75}, {"blur": 0.5}):
+                got, _best, _second = mapwatch.match_name(self._perturb(image, **kwargs))
+                self.assertEqual(got, name, f"{name} 在 {kwargs} 之后认不出了")
+
+    def test_prefix_siblings_are_not_confused(self):
+        templates = mapwatch.load_name_templates()
+        for name in ("豐饒的沙漠-1", "豐饒的沙漠-2", "豐饒的沙漠-3",
+                     "孤獨的沙漠-1", "孤獨的沙漠-2", "孤獨的沙漠-3"):
+            got, _best, _second = mapwatch.match_name(templates[name])
+            self.assertEqual(got, name)
+
+    def test_live_frame_is_recognised(self):
+        path = Path(__file__).resolve().parent / "fixtures" / "map_name_gudu_1366.png"
+        self.assertTrue(path.exists())
+        frame = _load_frame(path)
+        crop = mapwatch.name_crop(frame)
+        self.assertIsNotNone(crop)
+        got, _best, _second = mapwatch.match_name(crop)
+        self.assertEqual(got, "孤獨的沙漠-3")
+
+    def test_non_trade_map_is_rejected(self):
+        path = Path(__file__).resolve().parent / "fixtures" / "map_name_archer_1366.png"
+        self.assertTrue(path.exists())
+        crop = mapwatch.name_crop(_load_frame(path))
+        self.assertIsNotNone(crop)
+        got, best, _second = mapwatch.match_name(crop)
+        self.assertEqual(got, "", "非跑商地图不该被硬认成某张跑商图")
+        self.assertLess(best, 0.5)
+
