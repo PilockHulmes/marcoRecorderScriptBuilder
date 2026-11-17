@@ -29,6 +29,7 @@ import logging
 from . import activity as activity_module
 from . import anchors as anchors_module
 from . import frame as frame_module
+from . import logbook
 from . import shop
 
 logger = logging.getLogger(__name__)
@@ -439,6 +440,13 @@ class TradeSession:
         if self.ui_scale:
             print(f"[標定] 界面縮放 {self.ui_scale:.3f}（锚點 {result.get('shop')}，"
                   f"得分 {result.get('score', 0):.2f}）", flush=True)
+        logbook.log_event("標定", 畫面=f"{size[1]}x{size[0]}",
+                          尺度=self.ui_scale,
+                          錨點=result.get("shop"),
+                          得分=round(float(result.get("score") or 0), 3),
+                          對齊=("平移" if self.ui_scale and
+                                anchors_module.view_scale(self.ui_scale) == "native"
+                                else "縮放" if self.ui_scale else "無"))
 
     def _read_shop(self, frame, now):
         try:
@@ -637,6 +645,8 @@ class TradeSession:
         except Exception as exc:
             self.state.note = f"读货舱失败：{exc}"
             self.cargo_error = str(exc)
+            logbook.log_event("貨艙失敗", 類型=type(exc).__name__,
+                              訊息=str(exc)[:200])
             return
         try:
             cargo = trade.read_cargo(frame, profile="only", cache=self.frame_cache)

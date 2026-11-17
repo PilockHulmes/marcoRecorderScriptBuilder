@@ -172,3 +172,6 @@ data/share.json
 deploy/fc/pkg/
 deploy/fc/wheels/
 deploy/fc/share.zip
+
+# 运行日志
+logs/

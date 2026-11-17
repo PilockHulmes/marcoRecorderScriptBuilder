@@ -32,6 +32,7 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from . import logbook
 from . import paths as paths_module
 from . import shop
 from . import share as share_module
@@ -820,6 +821,10 @@ class View:
 def run_gui(interval=0.1):
     import tkinter as tk
 
+    # 先把日志接上：之后所有 print 和异常都会进 logs/ 里的文件
+    logbook.setup()
+    logbook.log_startup(paths_module)
+
     # 只允许跑一个实例：两个实例会同时截屏、同时写记录、同时上传，互相踩
     instance = single_instance_module.SingleInstance()
     if not instance.acquire():
@@ -841,6 +846,8 @@ def run_gui(interval=0.1):
     else:
         print("[共享] 未設定 share.json，跳過", flush=True)
     root = tk.Tk()
+    # Tk 回调里的异常默认只打到 stderr（打包后看不到），接进日志
+    root.report_callback_exception = lambda *args: logbook._excepthook(*args)
     root.title("小助手")
     apply_icon(root)
     root.geometry(f"{WINDOW_W}x{WINDOW_H}")
@@ -848,6 +855,8 @@ def run_gui(interval=0.1):
     view = View(root)
     worker = _Worker(_grabber(), controller, interval=interval)
     painted = {"version": -1, "at": 0.0}
+
+    beat = {"at": 0.0, "started": time.time()}
 
     def tick():
         # 只用来看"该不该重画"（本进程内的节流），不参与倒计时/落盘。
@@ -860,8 +869,18 @@ def run_gui(interval=0.1):
             return
         if state is None:
             view.status.config(text="未找到游戏窗口，等待启动…")
+            if now - beat["at"] >= 30:
+                beat["at"] = now
+                logbook.log_event("心跳", 狀態="未找到遊戲窗口",
+                                  運行秒=int(time.time() - beat["started"]),
+                                  幀數=worker.frames, 失敗=worker.failures)
             root.after(int(interval * 1000), tick)
             return
+        if now - beat["at"] >= 30:
+            beat["at"] = now
+            logbook.log_heartbeat(state, controller, extra={
+                "運行秒": int(time.time() - beat["started"]),
+                "幀數": worker.frames})
         # 数据变了立刻画；否则每 REPAINT_EVERY 秒重画一次，让倒计时走字
         if state.version != painted["version"] or now - painted["at"] >= REPAINT_EVERY:
             view.paint(state)
@@ -886,6 +905,8 @@ class _Worker:
         self._lock = threading.Lock()
         self._state = None
         self._waiting = True
+        self.frames = 0
+        self.failures = 0
         self._stop = threading.Event()
         self._thread = threading.Thread(target=self._run, daemon=True)
         self._thread.start()
@@ -899,14 +920,20 @@ class _Worker:
                         self._waiting = True
                 else:
                     state = self._controller.update(frame)
+                    self.frames += 1
                     share = getattr(self._controller, "share", None)
                     if share is not None:
                         share.set_tier(self._controller.activity_tier)
                     with self._lock:
                         self._state = state
                         self._waiting = False
-            except Exception:
-                pass
+            except Exception as exc:
+                # 读帧/识别出错：前几次和之后每 100 次记一条，方便线上排查
+                self.failures += 1
+                if self.failures <= 3 or self.failures % 100 == 0:
+                    logbook.log_event("讀取異常", 次數=self.failures,
+                                      類型=type(exc).__name__,
+                                      訊息=str(exc)[:200])
             self._stop.wait(self._interval)
 
     def latest(self):

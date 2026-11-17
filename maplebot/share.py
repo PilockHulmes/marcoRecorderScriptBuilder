@@ -20,6 +20,7 @@ import uuid
 from pathlib import Path
 
 from . import activity as activity_module
+from . import logbook
 from . import paths as paths_module
 from . import share_config
 from . import sync
@@ -135,9 +136,16 @@ class ShareManager:
         self._thread = None
 
     def _loop(self):
+        failures = 0
         while not self._stop.is_set():
             try:
                 self.tick()
-            except Exception:
-                pass
+                failures = 0
+            except Exception as exc:
+                # 以前是静默吞掉，线上出问题时完全查不到；现在记日志（限流，别刷爆）
+                failures += 1
+                if failures <= 3 or failures % 60 == 0:
+                    logbook.log_event("共享異常", 次數=failures,
+                                      類型=type(exc).__name__,
+                                      訊息=str(exc)[:200])
             self._stop.wait(0.5)
