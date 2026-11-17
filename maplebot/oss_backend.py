@@ -129,9 +129,18 @@ class OssBackend:
             self._bundle = None              # URL 过期：下次重新取 bundle
             raise
 
+    @staticmethod
+    def _opener():
+        """不走系统/环境变量里的代理。
+
+        实测：机器上配了代理但代理没开时，urllib 会报 10061「连接被拒绝」，
+        而直连是通的（45~60 ms）。共享请求一律直连，避免被本地代理拖死。
+        """
+        return urllib.request.build_opener(urllib.request.ProxyHandler({}))
+
     def _fetch(self, url):
         try:
-            with urllib.request.urlopen(url, timeout=5) as response:
+            with self._opener().open(url, timeout=5) as response:
                 return self._parse(response.read())
         except urllib.error.HTTPError as exc:
             if exc.code in (403, 404):
@@ -174,7 +183,7 @@ class OssBackend:
         request = urllib.request.Request(url, data=body, method="POST",
                                          headers={"Content-Type": "application/json"})
         try:
-            with urllib.request.urlopen(request, timeout=8) as response:
+            with self._opener().open(request, timeout=8) as response:
                 return json.loads(response.read().decode("utf-8") or "{}")
         except urllib.error.HTTPError as exc:
             if exc.code in (409, 412):

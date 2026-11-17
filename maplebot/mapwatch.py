@@ -503,8 +503,12 @@ def read_map_name(frame, box, ocr=None):
     if crop is None or crop.size == 0:
         return "", ""
     if ocr is None:
+        # 默认走**本地** paddle OCR。以前这里调网络视觉模型：一次几百毫秒、
+        # 失败还会重试，直接把帧率拖到 2~5 fps（实测日志里每 5 秒一次 retry）。
+        # 本地 OCR 会把「-」读成「一」之类，交给 _correct_name 纠错即可。
         try:
-            return "", _vision_read(crop)
+            from . import trade as _trade
+            ocr = _trade._get_ocr()
         except Exception:
             return "", ""
     big = cv2.resize(crop, None, fx=3, fy=3, interpolation=cv2.INTER_CUBIC)
