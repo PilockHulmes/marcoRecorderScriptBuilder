@@ -1,22 +1,20 @@
 """观察记录簿：把每次打开商店的结果存下来，并回答"这个价还有效吗"。
 
-有效期模型（TRADE_DESIGN.md 13.5）：
+有效期模型：**每个商人只存一组**
 
-    valid_until = 观察时刻 + 该 NPC 的刷新倒计时
+    deadline = 观察时刻 + 商店倒计时剩余秒数      ← 这一轮商店几点刷新
 
-给建议前要查两道：现在没过期、跑到时也没过期。
+- ``deadline > 现在``：这一组价格有效，看板显示价格和剩余时间；
+- ``deadline <= 现在``：整组作废，看板显示"已过期"。
 
-存储（2026-11-17 改）
---------------------
-以前是"每读一次商店追加一行 JSONL"，一小时能攒上万行，每次 load() 都要把
-整个文件重新解析（实测每帧 222 ms）。现在改成：
+同一轮商店里反复观察（滚动读取）时**合并**行；发现倒计时明显跳高
+（超过 :data:`REFRESH_MARGIN`）才认为是商店刷新了，清空旧行重新开始。
 
-- **内存里**是一张 ``商人 -> 货架周期 -> 货物行`` 的表，读写都是 dict 操作；
-- **磁盘上**是 ``observations.json``，只保留每个商人当前的货架；
-- 写盘交给后台线程每 5 秒一次（原子替换 + 单个 .bak），主线程不阻塞；
-- 老格式 ``observations.jsonl`` 首次读取时自动迁移。
+早期版本存过"多个货架周期"，遇到那种旧格式直接丢弃——价格几分钟就过期，
+重新读一次就有了（见 TRADE_DESIGN.md 31）。
 
-这样文件大小恒定（实测 16 个商人 28 KB），不再随时间变慢。
+存储：内存里是 ``商人 -> {deadline, rows}``，磁盘上是 ``observations.json``，
+后台线程每 5 秒原子落盘一次（保留一份 .bak）。
 """
 
 import atexit
@@ -38,10 +36,12 @@ MIN_WALL_CLOCK = 1_000_000_000
 #: 后台写盘间隔（秒）
 FLUSH_INTERVAL = 5.0
 
-#: 过期多久的货架周期直接从内存里丢掉（秒）
-CYCLE_TOL = 5.0
-
+#: 过期多久之后把整条记录丢掉（秒）
 KEEP_AFTER_EXPIRY = 300.0
+
+#: 新算出的刷新时刻要比当前晚这么多秒，才认为商店刷新了（秒）。
+#: 倒计时只能一秒一秒减，正常重算不会变大；只有刷新才会跳到 3~6 分钟。
+REFRESH_MARGIN = 20.0
 
 
 def is_wall_clock(value):
@@ -50,17 +50,6 @@ def is_wall_clock(value):
         return float(value) >= MIN_WALL_CLOCK
     except (TypeError, ValueError):
         return False
-
-
-def _cycle_deadline(cycle):
-    """周期的到期时刻（墙钟）。老文件没有 deadline 字段，用 t + refresh_in 兜底。"""
-    deadline = cycle.get("deadline")
-    if deadline is not None:
-        try:
-            return float(deadline)
-        except (TypeError, ValueError):
-            pass
-    return float(cycle.get("t", 0)) + float(cycle.get("refresh_in", 0))
 
 
 def _wall_now(value):
@@ -78,7 +67,8 @@ class Ledger:
     def __init__(self, path=None):
         self.path = Path(path or DEFAULT_PATH)
         self._lock = threading.RLock()
-        self._merchants = {}          # merchant_id -> {"map", "merchant", "kind", "cycles"}
+        #: key -> {"id","map","merchant","kind","deadline","t","rows"}
+        self._merchants = {}
         self._loaded = False
         self._dirty = False
         self._flusher = None
@@ -108,87 +98,75 @@ class Ledger:
             self._load_once()
             entry = self._merchants.setdefault(
                 key, {"id": merchant_id, "map": "", "merchant": "", "kind": "",
-                      "cycles": {}})
+                      "deadline": 0.0, "t": 0.0, "rows": {}})
             entry["map"] = payload.get("map") or entry["map"]
             entry["merchant"] = (payload.get("merchant")
                                  or payload.get("game_name") or entry["merchant"])
             entry["kind"] = payload.get("merchant_kind") or entry["kind"]
 
-            # 到期时刻是唯一真相：deadline = 观察时刻 + 当时剩余时间。
-            # 同一轮商店里多次观察算出来的 deadline 应该一样（±几秒），
-            # **不能**像以前那样"取最大剩余时间 + 一直推进 t"——那会让倒计时
-            # 永远停在第一次读到的大数字上（实测踩过）。
-            estimate = moment + refresh
-            cycle = None
             if refresh > 0:
-                for candidate in entry["cycles"].values():
-                    if abs(_cycle_deadline(candidate) - estimate) <= CYCLE_TOL:
-                        cycle = candidate
-                        break
-            if cycle is None:
-                # 倒计时没读到（refresh<=0）：并进当前还没过期的周期
-                live = [item for item in entry["cycles"].values()
-                        if _cycle_deadline(item) >= moment - 5]
-                if refresh > 0 or not live:
-                    cycle = {"rows": {}}
-                    entry["cycles"][str(int(round(estimate)))] = cycle
-                else:
-                    cycle = max(live, key=_cycle_deadline)
-
-            if refresh > 0:
-                cycle["deadline"] = estimate
-            else:
-                cycle.setdefault("deadline", _cycle_deadline(cycle))
-            cycle["t"] = moment
-            cycle["refresh_in"] = max(0.0, _cycle_deadline(cycle) - moment)
-            row_refresh = cycle["refresh_in"]
+                estimate = moment + refresh
+                current = float(entry.get("deadline") or 0)
+                if not current or estimate > current + REFRESH_MARGIN:
+                    # 商店刷新了：上一轮的商品全部作废
+                    entry["rows"] = {}
+                    entry["deadline"] = estimate
+                # 同一轮：保留已经确定的刷新时刻。
+                # 倒计时读错（比如 3:07 读成 2:07）只会让这次的数字变小，
+                # 不能让它改写刷新时刻，否则同一轮会被拆成两轮（实测踩过）。
+            entry["t"] = moment
+            deadline = float(entry.get("deadline") or 0)
+            row_refresh = max(0.0, deadline - moment) if deadline else 0.0
             for row in payload.get("rows") or []:
                 good_id = str(row.get("good_id") or "")
                 side = str(row.get("side") or "")
                 price = row.get("price")
                 if not good_id or not side or price is None:
                     continue
-                cycle.setdefault("rows", {})[f"{good_id}|{side}"] = {
+                entry["rows"][f"{good_id}|{side}"] = {
                     "p": int(price), "t": moment, "r": row_refresh, "src": "local"}
             self._prune_locked(moment)
             self._dirty = True
 
     def _prune_locked(self, moment):
-        """丢掉过期太久的货架周期——每个商人只保留当前（和刚换下的）。"""
-        for entry in self._merchants.values():
-            dead = [key for key, cycle in entry["cycles"].items()
-                    if _cycle_deadline(cycle) < moment - KEEP_AFTER_EXPIRY]
-            for key in dead:
-                entry["cycles"].pop(key, None)
+        """过期太久的商人记录整条丢掉（只留最近 5 分钟）。"""
+        dead = [key for key, entry in self._merchants.items()
+                if float(entry.get("deadline") or 0) < moment - KEEP_AFTER_EXPIRY]
+        for key in dead:
+            self._merchants.pop(key, None)
 
     # ---------------------------------------------------------------- 读
     def load(self):
-        """当前记录，形状和旧版一致：``[{merchant_id, map, rows: [...]}, ...]``。"""
+        """当前记录：``[{merchant_id, map, deadline, rows: [...]}, ...]``。
+
+        每个商人最多一条。
+        """
         with self._lock:
             self._load_once()
             out = []
             for merchant_id, entry in self._merchants.items():
-                for cycle in entry["cycles"].values():
-                    rows = []
-                    for key, stored in cycle["rows"].items():
-                        good_id, _, side = key.partition("|")
-                        price = stored.get("p") if isinstance(stored, dict) else stored
-                        if price is None:
-                            continue
-                        rows.append({"good_id": good_id, "side": side, "price": int(price)})
-                    if not rows:
+                rows = []
+                for key, stored in (entry.get("rows") or {}).items():
+                    good_id, _, side = key.partition("|")
+                    price = stored.get("p") if isinstance(stored, dict) else stored
+                    if price is None:
                         continue
-                    out.append({
-                        "merchant_id": entry.get("id", merchant_id),
-                        "merchant": entry["merchant"],
-                        "game_name": entry["merchant"],
-                        "merchant_kind": entry["kind"],
-                        "map": entry["map"],
-                        "t": cycle["t"],
-                        "refresh_in": cycle["refresh_in"],
-                        "deadline": _cycle_deadline(cycle),
-                        "rows": rows,
-                    })
+                    rows.append({"good_id": good_id, "side": side, "price": int(price)})
+                if not rows:
+                    continue
+                deadline = float(entry.get("deadline") or 0)
+                observed = float(entry.get("t") or 0)
+                out.append({
+                    "merchant_id": entry.get("id", merchant_id),
+                    "merchant": entry.get("merchant", ""),
+                    "game_name": entry.get("merchant", ""),
+                    "merchant_kind": entry.get("kind", ""),
+                    "map": entry.get("map", ""),
+                    "t": observed,
+                    "refresh_in": max(0.0, deadline - observed) if deadline else 0.0,
+                    "deadline": deadline,
+                    "rows": rows,
+                })
             return out
 
     def _load_once(self):
@@ -196,14 +174,6 @@ class Ledger:
             return
         self._loaded = True
         if not self.path.exists():
-            # 老格式（observations.jsonl）还在的话，迁移进来，下次落盘写成新格式
-            legacy = self.path.with_suffix(".jsonl")
-            if legacy != self.path and legacy.exists():
-                try:
-                    self._hydrate_lines(legacy.read_text(encoding="utf-8"))
-                    self._dirty = True
-                except Exception:
-                    pass
             return
         try:
             text = self.path.read_text(encoding="utf-8")
@@ -211,60 +181,47 @@ class Ledger:
             return
         if not text.strip():
             return
-        payload = None
         try:
             payload = json.loads(text)
         except Exception:
-            payload = None
-        if isinstance(payload, dict) and isinstance(payload.get("merchants"), dict):
-            self._hydrate(payload["merchants"])
             return
-        # 老格式（每行一条），或者测试里直接写进来的 JSONL
-        self._hydrate_lines(text)
+        if not (isinstance(payload, dict) and isinstance(payload.get("merchants"), dict)):
+            return
+        merchants = payload["merchants"]
+        if any(isinstance(item, dict) and "cycles" in item for item in merchants.values()):
+            # 旧格式（一个商人存多轮）——按约定直接丢弃：价格几分钟就过期，
+            # 重新读一次商店就有了。删掉文件，免得下次还被误读。
+            try:
+                self.path.unlink()
+            except OSError:
+                pass
+            return
+        self._hydrate(merchants)
 
     def _hydrate(self, merchants):
         for merchant_id, entry in merchants.items():
-            cycles = {}
-            for key, cycle in (entry.get("cycles") or {}).items():
-                raw_rows = dict(cycle.get("rows") or {})
-                rows = {}
-                for row_key, stored in raw_rows.items():
-                    if isinstance(stored, dict):
-                        rows[row_key] = stored
-                    elif stored is not None:
-                        rows[row_key] = {"p": int(stored),
-                                         "t": float(cycle.get("t") or 0),
-                                         "r": float(cycle.get("refresh_in") or 0),
-                                         "src": "local"}
-                if not rows:
-                    continue
-                cycles[str(key)] = {
-                    "t": float(cycle.get("t") or 0),
-                    "refresh_in": float(cycle.get("refresh_in") or 0),
-                    "rows": rows,
-                }
-            if cycles:
-                self._merchants[str(merchant_id)] = {
-                    "id": entry.get("id", str(merchant_id)),
-                    "map": entry.get("map") or "",
-                    "merchant": entry.get("merchant") or "",
-                    "kind": entry.get("kind") or "",
-                    "cycles": cycles,
-                }
-
-    def _hydrate_lines(self, text):
-        for line in text.splitlines():
-            if not line.strip():
+            if not isinstance(entry, dict):
                 continue
-            try:
-                observation = json.loads(line)
-            except Exception:
+            rows = {}
+            for row_key, stored in (entry.get("rows") or {}).items():
+                if isinstance(stored, dict):
+                    rows[row_key] = stored
+                elif stored is not None:
+                    rows[row_key] = {"p": int(stored),
+                                     "t": float(entry.get("t") or 0),
+                                     "r": float(entry.get("refresh_in") or 0),
+                                     "src": "local"}
+            if not rows:
                 continue
-            if not isinstance(observation, dict):
-                continue
-            if not is_wall_clock(observation.get("t", 0)):
-                continue                     # 旧版 monotonic 记录，跨进程无意义
-            self._merge(observation, float(observation.get("t", 0)))
+            self._merchants[str(merchant_id)] = {
+                "id": entry.get("id", str(merchant_id)),
+                "map": entry.get("map") or "",
+                "merchant": entry.get("merchant") or "",
+                "kind": entry.get("kind") or "",
+                "deadline": float(entry.get("deadline") or 0),
+                "t": float(entry.get("t") or 0),
+                "rows": rows,
+            }
 
     # ------------------------------------------------------------ 共享
     def merchant_record(self, merchant_id):
@@ -275,48 +232,48 @@ class Ledger:
             if not entry:
                 return None
             rows = {}
-            newest = 0.0
-            for cycle in entry["cycles"].values():
-                for key, row in cycle["rows"].items():
-                    if not isinstance(row, dict) or row.get("src") != "local":
-                        continue
-                    previous = rows.get(key)
-                    if previous is None or float(row.get("t", 0)) > float(previous.get("t", 0)):
-                        rows[key] = {"p": int(row.get("p", 0)),
-                                     "t": float(row.get("t", 0)),
-                                     "r": float(row.get("r", 0))}
-                        newest = max(newest, float(row.get("t", 0)))
+            for key, row in (entry.get("rows") or {}).items():
+                if not isinstance(row, dict) or row.get("src") != "local":
+                    continue
+                rows[key] = {"p": int(row.get("p", 0)),
+                             "t": float(row.get("t", 0)),
+                             "r": float(row.get("r", 0))}
             if not rows:
                 return None
             return {"v": 1, "merchant_id": merchant_id, "map": entry.get("map", ""),
                     "writer": "", "rev": 0, "rows": rows}
 
     def apply_remote(self, merchant_id, record):
-        """把合并好的远端行并进本地（标记来源 remote，下次不会重复上传）。"""
+        """把合并好的远端记录并进本地（标记来源 remote，下次不会重复上传）。"""
         if not record or not record.get("rows"):
             return False
         rows = record["rows"]
-        deadline = max((float(r.get("t", 0)) + float(r.get("r", 0))) for r in rows.values())
+        deadline = max((float(r.get("t", 0)) + float(r.get("r", 0)))
+                       for r in rows.values())
         with self._lock:
             self._load_once()
             entry = self._merchants.setdefault(
                 merchant_id, {"id": merchant_id, "map": "", "merchant": "",
-                              "kind": "", "cycles": {}})
+                              "kind": "", "deadline": 0.0, "t": 0.0, "rows": {}})
             if record.get("map"):
                 entry["map"] = record["map"]
-            cycle_key = f"remote:{int(round(deadline))}"
-            cycle = entry["cycles"].setdefault(
-                cycle_key, {"t": 0.0, "refresh_in": 0.0, "deadline": deadline,
-                            "rows": {}})
-            cycle["deadline"] = deadline
+            current = float(entry.get("deadline") or 0)
+            if not current or deadline > current + REFRESH_MARGIN:
+                # 远端是更新的一轮：本地旧行作废
+                entry["rows"] = {}
+                entry["deadline"] = deadline
+            else:
+                entry["deadline"] = max(current, deadline)
+            newest = float(entry.get("t") or 0)
             for key, row in rows.items():
-                cycle["rows"][key] = {"p": int(row.get("p", 0)),
-                                      "t": float(row.get("t", 0)),
-                                      "r": float(row.get("r", 0)),
-                                      "src": "remote"}
-                cycle["t"] = max(cycle["t"], float(row.get("t", 0)))
-                # 剩余时间由 deadline 反推，不能直接用远端的 r（那是它上传那一刻的值）
-                cycle["refresh_in"] = max(0.0, deadline - cycle["t"])
+                row_t = float(row.get("t", 0))
+                previous = entry["rows"].get(key)
+                if previous is not None and float(previous.get("t", 0)) > row_t:
+                    continue                     # 本地这条更新，保留本地的
+                entry["rows"][key] = {"p": int(row.get("p", 0)), "t": row_t,
+                                      "r": float(row.get("r", 0)), "src": "remote"}
+                newest = max(newest, row_t)
+            entry["t"] = newest
             self._dirty = True
             return True
 
@@ -346,17 +303,16 @@ class Ledger:
         with self._lock:
             if not self._dirty:
                 return False
-            payload = {"version": 1, "merchants": {}}
+            payload = {"version": 2, "merchants": {}}
             for merchant_id, entry in self._merchants.items():
                 payload["merchants"][merchant_id] = {
                     "id": entry.get("id", ""),
-                    "map": entry["map"],
-                    "merchant": entry["merchant"],
-                    "kind": entry["kind"],
-                    "cycles": {key: {"t": cycle["t"],
-                                     "refresh_in": cycle["refresh_in"],
-                                     "rows": dict(cycle.get("rows") or {})}
-                               for key, cycle in entry["cycles"].items()},
+                    "map": entry.get("map", ""),
+                    "merchant": entry.get("merchant", ""),
+                    "kind": entry.get("kind", ""),
+                    "deadline": float(entry.get("deadline") or 0),
+                    "t": float(entry.get("t") or 0),
+                    "rows": dict(entry.get("rows") or {}),
                 }
             text = json.dumps(payload, ensure_ascii=False)
             path = self.path

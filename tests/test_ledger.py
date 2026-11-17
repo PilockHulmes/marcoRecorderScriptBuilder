@@ -44,17 +44,13 @@ class LedgerTest(unittest.TestCase):
         self.ledger.record(visit("A", "甲", [("honey", "buy", 50)]), now=time.time())
         self.assertEqual([o["map"] for o in self.ledger.valid()], ["A"])
 
-    def test_load_skips_legacy_monotonic_observations(self):
-        """上一次开机落盘的 t=61665 这类记录跨进程无意义，读的时候直接跳过。"""
+    def test_legacy_jsonl_is_ignored(self):
+        """旧版按行追加的格式已经废弃：直接当作空记录，不再迁移。"""
         legacy = visit("A", "甲", [("honey", "buy", 50)])
-        legacy["t"] = 61665.078
-        wall = visit("B", "乙", [("silk", "sell", 20)])
-        wall["t"] = BASE
+        legacy["t"] = BASE
         self.ledger.path.write_text(
-            json.dumps(legacy, ensure_ascii=False) + "\n"
-            + json.dumps(wall, ensure_ascii=False) + "\n",
-            encoding="utf-8")
-        self.assertEqual([o["map"] for o in self.ledger.load()], ["B"])
+            json.dumps(legacy, ensure_ascii=False) + "\n", encoding="utf-8")
+        self.assertEqual(self.ledger.load(), [])
 
     def test_best_bid_picks_highest(self):
         self.ledger.record(visit("A", "甲", [("honey", "buy", 50)]), now=BASE)
@@ -130,13 +126,14 @@ class CountdownTest(unittest.TestCase):
             self.ledger.record(self._visit(refresh), now=BASE + offset)
         self.assertEqual(len(self.ledger.load()), 1)
 
-    def test_new_shop_session_creates_a_new_cycle(self):
+    def test_new_shop_session_replaces_the_previous_rows(self):
         self.ledger.record(self._visit(20, price=15), now=BASE)
         self.ledger.record(self._visit(238, price=99), now=BASE + 22)
-        deadlines = sorted(item["deadline"] - BASE for item in self.ledger.load())
-        self.assertEqual(len(deadlines), 2)
-        self.assertAlmostEqual(deadlines[0], 20, delta=1.5)
-        self.assertAlmostEqual(deadlines[1], 260, delta=1.5)
+        items = self.ledger.load()
+        self.assertEqual(len(items), 1)
+        self.assertAlmostEqual(items[0]["deadline"] - BASE, 260, delta=1.5)
+        self.assertEqual([(r["good_id"], r["price"]) for r in items[0]["rows"]],
+                         [("ore_shard", 99)])
 
     def test_missing_countdown_keeps_the_current_cycle(self):
         self.ledger.record(self._visit(200), now=BASE)
@@ -159,7 +156,7 @@ class CountdownTest(unittest.TestCase):
         item = [o for o in self.ledger.load() if o["merchant_id"] == "kobi_1"][0]
         self.assertAlmostEqual(self.ledger.valid_until(item) - BASE, 140, delta=1.5)
 
-    def test_legacy_cycle_without_deadline_still_works(self):
+    def test_legacy_multi_cycle_file_is_discarded(self):
         legacy = {"merchants": {"kobi_1": {"id": "kobi_1", "map": "M",
                                            "merchant": "石鐵", "kind": "fixed",
                                            "cycles": {"1700000100": {
@@ -170,7 +167,5 @@ class CountdownTest(unittest.TestCase):
         path = Path(self.tmp.name) / "legacy.json"
         path.write_text(json.dumps(legacy), encoding="utf-8")
         book = ledger.Ledger(path)
-        item = book.load()[0]
-        self.assertTrue(path.exists())
-        self.assertAlmostEqual(book.valid_until(item), BASE + 100, delta=0.5)
-
+        self.assertEqual(book.load(), [])
+        self.assertFalse(path.exists(), "旧格式文件应当被删掉")
