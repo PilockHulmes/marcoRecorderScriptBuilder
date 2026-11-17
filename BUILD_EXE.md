@@ -185,3 +185,53 @@ exe 会在**自己旁边**建 `logs/`：
 `map_graph_user.json`、`icons_unknown/`。
 
 实测：exe 首次运行只生成空的 `data/trade/`，没有 observations 文件。
+## 六、打包检查清单（2026-11-18 事故后加）
+
+### 6.1 事故：包里没有数据 → 看板空
+
+打包时我用：
+
+```powershell
+robocopy $src $stage /E /XD data logs
+```
+
+`/XD data` 排除的是**所有叫 data 的目录**，包括 `_internal\data`——
+而商人表、图标模板、地图名模板全在那里。结果：
+
+```
+exe 能启动、能截屏、能识别地图名（从画面里学）
+但 _fixed_merchants() 读到空的商人数 → 看板一条商人都不显示
+直到玩家进到某张图，程序"现学"一个地图/商人才显示出来
+```
+
+**正确写法：排除项用绝对路径，只排掉顶层的运行期目录**
+
+```powershell
+robocopy $src $stage /E /XD "$src\data" "$src\logs"
+```
+
+### 6.2 打包后必须验证的四件事
+
+```powershell
+# 1) 包里有数据
+Get-ChildItem "$stage\小助手\_internal\data\trade" | Measure-Object      # 应为 17 项
+Get-ChildItem "$stage\小助手\_internal\data\trade\merchants" | Measure-Object  # 应为 15 个
+# 2) 共享配置在 data 里（不在 _internal）
+Test-Path "$stage\小助手\data\share.json"                                # True
+# 3) 解压到干净目录跑一次，日志前几行应当是
+#    [啟動] 版本=... 打包=True
+#    [共享] 已啟用（後台同步）
+#    [mapwatch] 起点地图：<某张已知地图>     ← 说明模板加载成功
+# 4) 运行时补种
+(Get-ChildItem "$folder\data\trade\merchants").Count                      # 应为 15
+```
+
+### 6.3 另一个坑：空名字模板
+
+`save_name_template("")` 会写成 `map_names\.png`，加载时变成一张**无名模板**，
+既占位置又可能干扰匹配。现在函数里加了空名字守卫，并且已删掉历史生成的 `.png`。
+
+### 6.4 版本号从哪来
+
+exe 里的版本 = 打包时仓库根目录的 `BUILD.txt`（spec 会把它塞进 `_internal`），
+格式 `2.0.0+<git 提交>`。排错时先看日志第一行的版本，确认群友跑的是哪一版。
