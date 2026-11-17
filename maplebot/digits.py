@@ -147,6 +147,48 @@ def identify(glyph, family="fat", templates=None):
     return best, best_score
 
 
+def read_groups_at(crop, family="fat", kind="gold", max_height=13):
+    """和 :func:`read_groups` 一样，但把每组数字的横坐标也返回：``[(文本, (x0, x1))]``。
+
+    用来"取最右边那一组"——货舱每行右侧就是件数，左边的名字/价格不会干扰。
+    """
+    mask = _mask(crop, kind=kind)
+    if mask is None:
+        return []
+    cols = (mask > 0).any(axis=0)
+    runs, start = [], None
+    for index, value in enumerate(cols):
+        if value and start is None:
+            start = index
+        elif not value and start is not None:
+            runs.append((start, index - 1))
+            start = None
+    if start is not None:
+        runs.append((start, len(cols) - 1))
+
+    groups, text, left, right = [], "", None, None
+    for run in runs:
+        piece = mask[:, run[0]:run[1] + 1]
+        rows = np.where((piece > 0).any(axis=1))[0]
+        if not len(rows):
+            continue
+        height = rows.max() - rows.min() + 1
+        digit = ""
+        if height <= max_height:
+            digit, _score = identify(piece[rows.min():rows.max() + 1], family)
+        if digit:
+            if left is None:
+                left = run[0]
+            right = run[1]
+            text += digit
+        elif text:
+            groups.append((text, (left, right)))
+            text, left, right = "", None, None
+    if text:
+        groups.append((text, (left, right)))
+    return groups
+
+
 def read_number(crop, family="fat", kind="gold", templates=None,
                 max_height=None):
     """把整块区域读成整数；有任何一位认不出就返回 None。

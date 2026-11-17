@@ -295,17 +295,27 @@ def read_cargo_items(frame, templates=None, profile="only", with_counts=False):
             continue
         good_id, score = match_icon_half(patch, templates)
         if good_id and score >= 0.80:
-            count = read_cargo_count(frame, origin=(start_x, start_y),
-                                     icon=icon, row_h=row_h, index=index)
-            found.append((good_id, count) if with_counts else good_id)
+            if with_counts:
+                count = read_cargo_count(frame, origin=(start_x, start_y),
+                                         icon=icon, row_h=row_h, index=index)
+                found.append((good_id, count))
+            else:
+                found.append(good_id)
     return found
 
 
 def read_cargo_count(frame, origin=None, icon=None, row_h=None, index=0):
-    """读货舱第 index 行的数量（"135 個"）。
+    """读货舱第 index 行的件数（行右侧的 "135 個"）。
 
-    数量在最右边，只裁"右半段"再 OCR（没有商品名干扰）。
-    单个裁法会读出 138/135/136 这种抖动，所以多裁几种、**投票**取多数。
+    以前是"裁 4 个位置 × 2 种模式投票"，因为不知道数字在哪，而且同一行里
+    还有 `最近購買金額: 1620`，裁偏就会读到价格。现在改成：
+
+    1. 裁这条行的右半段（足够宽，不用猜）；
+    2. 用细体数字模板找"金色笔画分组"；
+    3. **取最右边那一组**——件数永远在行尾；
+    4. 位数/范围校验。
+
+    一次裁剪、一次比对，约 1 ms。
     """
     if origin is None:
         return None
@@ -314,32 +324,29 @@ def read_cargo_count(frame, origin=None, icon=None, row_h=None, index=0):
     row_h = row_h or CARGO_SHOP_ROW_H
     y = start_y + index * row_h - 4
 
-    votes = {}
-    for dx, width in ((180, 120), (150, 150), (165, 135), (140, 160)):
-        try:
-            band = trade.crop_box(frame, start_x + dx, y, width, icon + 8)
-        except Exception:
-            continue
-        if band is None or band.size == 0:
-            continue
-        for mode in ("light", "raw"):
-            runs = re.findall(r"\d+", trade._ocr_text(band, mode=mode) or "")
-            if not runs:
-                continue
-            value = int(max(runs, key=len))
-            votes[value] = votes.get(value, 0) + 1
-    if votes:
-        best = max(votes.items(), key=lambda kv: (kv[1], -len(str(kv[0]))))
-        return best[0]
+    band = None
+    try:
+        band = trade.crop_box(frame, start_x + 120, y, 220, icon + 8)
+    except Exception:
+        band = None
+    if band is not None and band.size:
+        groups = trade.digits_module.read_groups_at(band, family="thin", kind="gold")
+        for text, _span in reversed(groups):          # 从右往左取第一个合法的
+            if text.isdigit() and 1 <= len(text) <= 4:
+                value = int(text)
+                if 0 <= value <= 9999:
+                    return value
 
-    # 兜底：固定窄框
+    # 兜底：只读一次（不再投票）
     try:
         crop = trade.crop_box(frame, start_x + 211, y + 13, 46, 20)
     except Exception:
         return None
+    if crop is None or crop.size == 0:
+        return None
     text = trade._ocr_text(crop, mode="light") or ""
-    digits = "".join(ch for ch in text if ch.isdigit())
-    return int(digits) if digits else None
+    digits_text = "".join(ch for ch in text if ch.isdigit())
+    return int(digits_text) if digits_text else None
 
 
 #: 货舱图标是商店图标的 50%，用滑动匹配（不要去拉伸模板）

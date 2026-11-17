@@ -252,6 +252,10 @@ def name_crop(frame, scale=None):
         return None
     # 界面按 宽/1366 等比放大：1920 下名字区是 337x62，上边距也要按比例
     scale = _frame_scale(frame, scale)
+    # 标定值会有 ±0.5% 的误差（1.0036 这种）：贴着 1.0 就按 1.0 算，
+    # 否则会算出 241x44 这种尺寸，模板目录被拆成一堆近似的
+    if abs(scale - 1.0) <= 0.02:
+        scale = 1.0
     width = int(round(NAME_SIZE[0] * scale))
     height = int(round(NAME_SIZE[1] * scale))
     x = max(0, box.x)
