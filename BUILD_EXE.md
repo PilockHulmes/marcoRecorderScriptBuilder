@@ -2,7 +2,7 @@
 
 目标：给别人一个 **双击就能跑、不用装 Python、首次运行不用联网** 的 exe。
 
-当前结果：**255 MB 单文件**，冷启动约 **6 秒**，GUI 正常出窗口。
+当前结果：**261 MB 单文件**，冷启动约 **6 秒**，GUI 正常出窗口，日志写在 exe 旁边的 `logs/`。
 
 ---
 
@@ -168,3 +168,20 @@ exe 会在**自己旁边**建 `logs/`：
 隐私：不截屏、不读角色名、不记录账号信息（日志第一行有写）。
 
 打包时不用额外处理：`logs/` 是运行时创建的，不会进包。
+
+### 5.4 只打包程序需要的数据（2026-11-17 加入）
+
+`data/trade` 里混着运行期产物（记录簿、地图访问记录、学习到的未知图标等）。
+以前整个目录打进包，等于把本机历史数据发给每个测试者。现在 spec 里白名单：
+
+```
+目录：anchors  icons  merchants  merchants_face  map_names
+文件：digits.json  good_names.json  goods.json  goods_routes.json
+      map_graph.json  map_tree.md  merchant_faces.json  merchant_index.json
+      merchant_maps.json  edge_times.json  edge_truth.json  edge_worklist.md
+```
+
+不打包：`observations*`、`*.jsonl`、`seen_portals.json`、`map_nodes.json`、
+`map_graph_user.json`、`icons_unknown/`。
+
+实测：exe 首次运行只生成空的 `data/trade/`，没有 observations 文件。

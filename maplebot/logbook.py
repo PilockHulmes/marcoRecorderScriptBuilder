@@ -242,6 +242,11 @@ def _package_version(name):
         from importlib import metadata
         return metadata.version(name)
     except Exception:
+        pass
+    try:                      # 冻结后 importlib.metadata 找不到，退回读模块属性
+        module = __import__(name.split("-")[0])
+        return getattr(module, "__version__", "?")
+    except Exception:
         return "?"
 
 

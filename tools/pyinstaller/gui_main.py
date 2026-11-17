@@ -13,8 +13,7 @@ def main():
     os.environ.setdefault("PADDLEOCR_HOME", str(root / ".paddleocr"))
     from maplebot.gui import run_gui
 
-    run_gui()
-    return 0
+    return run_gui()          # 0=正常退出，2=已经有实例在跑
 
 
 if __name__ == "__main__":
