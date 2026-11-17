@@ -18,6 +18,9 @@
 import time
 from dataclasses import dataclass, field
 
+import cv2
+import numpy as np
+
 from . import advice as advice_module
 from . import ledger as ledger_module
 from . import mapwatch
@@ -335,6 +338,12 @@ class TradeSession:
                     view = shifted[0:768, 0:1366].copy()
                 else:
                     view = frame_module.canonical(frame)
+            else:
+                # 没标定成功（常见：商店没开，只有货舱窗口）：
+                # 用货舱面板的原点对齐——界面 1:1 时这样也能读。
+                aligned = self._align_by_cargo(frame)
+                if aligned is not None:
+                    view = aligned
         previous_map = self.state.map
         self.state.map = self.current_map()
         if previous_map and self.state.map and self.state.map != previous_map:
@@ -368,9 +377,9 @@ class TradeSession:
             if was_open:
                 self._refresh_idle(now)          # 关商店就重算，别留着旧建议
                 self._idle_at = clock
-            if self._cargo_open(frame):
+            if self._cargo_open(view):
                 if clock - self._cargo_at >= self.cargo_every:
-                    self._read_cargo(frame, now)
+                    self._read_cargo(view, now)
                     self._cargo_at = clock
             elif clock - self._idle_at >= self.cargo_every:
                 # 商店和货舱都没开：也要给建议，否则开局/过图后整片空白
@@ -387,6 +396,31 @@ class TradeSession:
         return self.state
 
     # ------------------------------------------------------------------
+    def _align_by_cargo(self, frame):
+        """用货舱面板原点把 1:1 界面平移回 1366 坐标；做不到返回 None。
+
+        「大画布 + 1:1 界面」时，货舱窗口会被游戏居中摆放，位置和 1366 基准不同。
+        只要 CARGO 标题能在 1:1 尺度匹配上，就能算出平移量。
+        """
+        try:
+            origin = shop._cargo_origin(frame)
+        except Exception:
+            return None
+        if not origin:
+            return None
+        dx = shop.CARGO_ICON_X - int(origin[0])
+        dy = shop.CARGO_ICON_Y - int(origin[1])
+        if abs(dx) <= 2 and abs(dy) <= 2:
+            return None                      # 位置本来就对，不用动
+        height, width = frame.shape[:2]
+        matrix = np.float32([[1, 0, dx], [0, 1, dy]])
+        shifted = cv2.warpAffine(frame, matrix, (width, height),
+                                 flags=cv2.INTER_NEAREST,
+                                 borderMode=cv2.BORDER_REPLICATE)
+        if shifted.shape[0] < 768 or shifted.shape[1] < 1366:
+            return None
+        return shifted[0:768, 0:1366].copy()
+
     def _calibrate(self, frame, now):
         """按画面尺寸标定一次界面缩放比；失败也记住，隔 30 秒再试。"""
         size = frame.shape[:2]
@@ -606,8 +640,11 @@ class TradeSession:
             return
         try:
             cargo = trade.read_cargo(frame, profile="only", cache=self.frame_cache)
-            self.state.stats = {"coins": cargo.coins, "weight": cargo.weight,
-                                "capacity": cargo.capacity or 135}
+            # 同时更新 self.stats：update() 结尾会用 self.stats 覆盖 state.stats，
+            # 只写 state 的话，单独开货舱时通栏会显示 0
+            self.stats = {"coins": cargo.coins, "weight": cargo.weight,
+                          "capacity": cargo.capacity or 135}
+            self.state.stats = dict(self.stats)
         except Exception:
             pass
         plan = []
