@@ -221,17 +221,23 @@ def load_name_templates_for(shape):
     return table
 
 
-def _frame_scale(frame):
-    """画面相对 1366x768 的缩放比（小于 1024 宽当测试帧，按 1 处理）。"""
+def _frame_scale(frame, scale=None):
+    """画面相对 1366x768 的缩放比。
+
+    ``scale`` 由外部标定（锚点实测）优先；没给就按"界面等比放大"估算。
+    小于 1024 宽的当测试帧，按 1 处理。
+    """
     if frame is None:
         return 1.0
+    if scale is not None and scale > 0:
+        return float(scale)
     width = frame.shape[1]
     if width < 1024:
         return 1.0
     return width / 1366.0
 
 
-def name_crop(frame):
+def name_crop(frame, scale=None):
     """小地图上方的名字区域：**固定尺寸**，锚定面板左上角。
 
     不能用 box.w 决定宽度——小地图面板宽度每张图都不一样（165/192/223 都见过），
@@ -244,7 +250,7 @@ def name_crop(frame):
     if box.y < 60 or box.x > 400:
         return None
     # 界面按 宽/1366 等比放大：1920 下名字区是 337x62，上边距也要按比例
-    scale = _frame_scale(frame)
+    scale = _frame_scale(frame, scale)
     width = int(round(NAME_SIZE[0] * scale))
     height = int(round(NAME_SIZE[1] * scale))
     x = max(0, box.x)
@@ -461,7 +467,7 @@ class Observation:
     size: tuple = (0, 0)        # 小地图内容区 (w, h)，聚类按像素半径用
 
 
-def observe(frame):
+def observe(frame, scale=None):
     """读一帧画面 → Observation（全部坐标按小地图内容区归一化到 0~1）。"""
     if frame is None or getattr(frame, "size", 0) == 0:
         return None
@@ -480,7 +486,7 @@ def observe(frame):
 
     pos = None
     candidates = player.find_candidates(frame, inner.as_tuple(),
-                                         scale=_frame_scale(frame))
+                                         scale=_frame_scale(frame, scale))
     if candidates:
         pos = ((candidates[0].x - inner.x) / width, (candidates[0].y - inner.y) / height)
 
@@ -733,7 +739,7 @@ class MapWatcher:
         close = difflib.get_close_matches(sub, pool, n=1, cutoff=0.70)
         return close[0] if close else sub
 
-    def _resolve_name(self, frame, obs, now=None):
+    def _resolve_name(self, frame, obs, now=None, scale=None):
         """给 obs 定名字：模板匹配优先，其次 OCR + 纠错；失败留空。
 
         这是唯一的命名入口——``map_id`` 在这里只会变成真实名字或空串，
@@ -743,7 +749,7 @@ class MapWatcher:
         name = ""
         crop = None
         try:
-            crop = name_crop(frame)
+            crop = name_crop(frame, scale)
         except Exception as exc:
             self._error(f"crop: {exc}")
             self._alarm("name_crop", f"截取地图名区域抛异常：{exc}", now)
@@ -799,7 +805,7 @@ class MapWatcher:
             return ""
         return name
 
-    def step(self, frame, now=None):
+    def step(self, frame, now=None, scale=None):
         """处理一帧；地图名发生变化就返回一条过图事件，否则 None。
 
         判定只有一条：**前后两次"有名字"的观测地图名不一样 = 一次过图**。
@@ -807,7 +813,7 @@ class MapWatcher:
         """
         now = time.monotonic() if now is None else now
         try:
-            obs = observe(frame)
+            obs = observe(frame, scale=scale)
         except Exception as exc:
             self._error(f"observe: {exc}")
             self._alarm("observe", f"observe() 抛异常：{exc}", now)
@@ -844,7 +850,7 @@ class MapWatcher:
 
         # ---- 统一命名：模板 -> OCR + 纠错；失败就是空串，绝不用指纹/占位符顶替
         try:
-            self._resolve_name(frame, obs, now)
+            self._resolve_name(frame, obs, now, scale=scale)
         except Exception as exc:
             self._error(f"name: {exc}")
             obs.name = ""

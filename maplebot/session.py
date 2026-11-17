@@ -23,6 +23,7 @@ from . import ledger as ledger_module
 from . import mapwatch
 import logging
 
+from . import anchors as anchors_module
 from . import frame as frame_module
 from . import shop
 
@@ -250,6 +251,11 @@ class TradeSession:
     def __init__(self, watcher=None, ledger=None, travel=None):
         #: 按像素摘要复用上一次的读取结果（滚动/刷新会自动失效）
         self.frame_cache = trade.FrameCache()
+        # 界面标定（锚点实测出的缩放比 + 商店面板原点）；1366 不需要
+        self._calib = None
+        self._calib_size = None
+        self._calib_tried = 0.0
+        self.ui_scale = None
         self.watcher = watcher or mapwatch.MapWatcher()
         self.ledger = ledger or ledger_module.Ledger()
         self.travel = travel or advice_module.MapTravel()
@@ -302,11 +308,27 @@ class TradeSession:
         self.watcher_error = ""
         try:
             # 地图名用**原生**画面匹配（缩放会把"只差一位"的地名模糊掉）
-            self.watcher.step(frame, now=clock)
+            self.watcher.step(frame, now=clock, scale=self.ui_scale)
         except Exception as exc:
             self.watcher_error = str(exc)
-        # 商店/货舱/数字一律在 1366x768 的基准视图上读
+        # 商店/货舱/数字一律在 1366x768 的基准视图上读。
+        # 非 1366 画面先标定一次（锚点实测缩放比）：
+        #   - 界面是 1:1（大画布小界面）→ 平移对齐即可，不缩放
+        #   - 其他 → 缩回 1366（和以前一样）
         view = frame_module.canonical(frame)
+        if frame is not None and frame.shape[:2] != (768, 1366):
+            self._calibrate(frame, now)
+            if self.ui_scale is not None and \
+                    anchors_module.view_scale(self.ui_scale) == "native":
+                # 界面 1:1（带鱼屏这类）：平移对齐，不缩放
+                shop_pos = (self._calib or {}).get("shop")
+                shifted = anchors_module.shift_to_canonical(frame, shop_pos)
+                # 平移后把界面左上角对回 (0,0)，再裁成 1366x768：
+                # 这样后面所有"窗口坐标"常量和 32px 标题栏偏移都能照旧用
+                if shifted.shape[0] >= 768 and shifted.shape[1] >= 1366:
+                    view = shifted[0:768, 0:1366].copy()
+                else:
+                    view = frame_module.canonical(frame)
         previous_map = self.state.map
         self.state.map = self.current_map()
         if previous_map and self.state.map and self.state.map != previous_map:
@@ -349,6 +371,25 @@ class TradeSession:
         return self.state
 
     # ------------------------------------------------------------------
+    def _calibrate(self, frame, now):
+        """按画面尺寸标定一次界面缩放比；失败也记住，隔 30 秒再试。"""
+        size = frame.shape[:2]
+        if self._calib_size == size and self._calib is not None:
+            return
+        if self._calib_size == size and (now - self._calib_tried) < 30:
+            return
+        self._calib_tried = now
+        try:
+            result = anchors_module.calibrate(frame)
+        except Exception:
+            result = {"scale": None, "shop": None, "cargo": None, "score": 0.0}
+        self._calib = result
+        self._calib_size = size
+        self.ui_scale = result.get("scale")
+        if self.ui_scale:
+            print(f"[標定] 界面縮放 {self.ui_scale:.3f}（锚點 {result.get('shop')}，"
+                  f"得分 {result.get('score', 0):.2f}）", flush=True)
+
     def _read_shop(self, frame, now):
         try:
             visit = shop.read_visit(frame, self.state.map, cache=self.frame_cache, now=now)

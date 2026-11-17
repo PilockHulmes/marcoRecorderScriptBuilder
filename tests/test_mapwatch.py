@@ -102,7 +102,7 @@ class MapWatchTestBase(unittest.TestCase):
         self._script = list(frames)
         self._names = list(names)
 
-        def fake_observe(frame):
+        def fake_observe(frame, **kwargs):
             return self._script.pop(0) if self._script else None
 
         patcher = mock.patch.object(mapwatch, "observe", side_effect=fake_observe)
