@@ -57,6 +57,8 @@ class MapWatchTestBase(unittest.TestCase):
     """公共夹具：tmp 路径 + monkeypatch 掉观察/命名/OCR 依赖。"""
 
     def setUp(self):
+        # 名字缓存是模块级的：合成用例共用同一张裁剪图，不清会互相污染
+        mapwatch._CROP_NAMES.clear()
         self.tmp = Path(tempfile.mkdtemp(prefix="mapwatch-test-"))
         self.addCleanup(shutil.rmtree, str(self.tmp), True)
         self.visits = self.tmp / "data" / "map_visits.jsonl"
@@ -72,9 +74,10 @@ class MapWatchTestBase(unittest.TestCase):
             return "", 0.0, 0.0
 
         patches = [
-            # 名字截图区域：给一块合成图，避免依赖真实小地图
-            mock.patch.object(mapwatch, "name_crop",
-                              return_value=np.zeros((40, 160, 3), np.uint8)),
+            # 名字截图区域：给一块合成图，避免依赖真实小地图。
+            # 每帧换成不同内容——真实场景里换图时裁剪图本来就会变，
+            # 用固定图会让"同一张图 = 同一个名字"的缓存把脚本名字吃掉。
+            mock.patch.object(mapwatch, "name_crop", side_effect=self._name_crop),
             mock.patch.object(mapwatch, "match_name", side_effect=fake_match),
             # 绝不启用 PaddleOCR（连实例都不造）
             mock.patch.object(mapwatch, "read_map_name", return_value=("", "")),
@@ -87,6 +90,10 @@ class MapWatchTestBase(unittest.TestCase):
         for patcher in patches:
             patcher.start()
             self.addCleanup(patcher.stop)
+
+    def _name_crop(self, frame=None, scale=None):
+        self._crop_seq = getattr(self, "_crop_seq", 0) + 1
+        return np.full((40, 160, 3), self._crop_seq % 251, np.uint8)
 
     def make_watcher(self):
         watcher = mapwatch.MapWatcher(

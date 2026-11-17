@@ -781,6 +781,9 @@ class MapWatcher:
                 self._error(f"match_name: {exc}")
                 self._alarm("name_match", f"地图名模板匹配抛异常：{exc}", now)
                 name = ""
+            if name and _crop_key not in _CROP_NAMES:
+                # 模板命中也记进缓存：同一画面下一帧直接返回，省掉 36 次比对
+                _CROP_NAMES[_crop_key] = name
             if not name:
                 sub = ""
                 box = None
