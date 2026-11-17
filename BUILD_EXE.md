@@ -148,3 +148,23 @@ os.environ.setdefault("PADDLEOCR_HOME", str(root / ".paddleocr"))
 - **没有在真正打包出来的 exe 上测过**：种子复制、便携/兜底切换都只在源码模式
   和临时目录模拟里验证过；下次打包后要实测这三件事。
 - `gui.spec` 已经包含 `(data/trade, "data/trade")`，种子数据会进 exe。
+### 5.3 日志（2026-11-17 加入）
+
+exe 会在**自己旁边**建 `logs/`：
+
+```
+<exe 目录>\logs\assistant-YYYYMMDD-HHMMSS.log     单个 2 MB 上限，留 5 个
+不可写时退到 %LOCALAPPDATA%\MapleTrade\logs\
+```
+
+发给别人测试时，让他出问题就把**最新的那个 .log 发回来**，里面有：
+
+```
+启动环境（版本/Python/Windows/屏幕/数据目录/依赖版本）
+每 30 秒一次心跳（地图、金币、负重、缩放、帧数、失败次数、共享统计）
+所有异常（含 traceback）和所有 print 输出
+```
+
+隐私：不截屏、不读角色名、不记录账号信息（日志第一行有写）。
+
+打包时不用额外处理：`logs/` 是运行时创建的，不会进包。
