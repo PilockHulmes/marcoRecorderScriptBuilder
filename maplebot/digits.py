@@ -110,22 +110,32 @@ def _normalize(glyph, height=12):
 
 
 def _similarity(a, b):
-    """大小无关的相似度：都按高度归一化后居中排布，比 IoU。"""
+    """大小无关的相似度：按高度归一化后，**所有水平对位**取最大 IoU。
+
+    只按"居中"对位时，宽 5 的字形和宽 6 的模板会差一列：
+    例如 1920 画面缩回 1366 后，数字「7」最左一列被吃掉，
+    居中反而把缺口放到另一侧，相似度掉到 0.49（实测）；
+    逐列滑动取最大能到 0.91，正确认出。
+    """
     left = _normalize(a)
     right = _normalize(b)
     if left is None or right is None:
         return 0.0
     width = max(left.shape[1], right.shape[1])
-    def pad(img):
-        canvas = np.zeros((img.shape[0], width), dtype=bool)
-        offset = (width - img.shape[1]) // 2
-        canvas[:, offset:offset + img.shape[1]] = img
-        return canvas
-    left, right = pad(left), pad(right)
-    union = np.logical_or(left, right).sum()
-    if not union:
-        return 0.0
-    return float(np.logical_and(left, right).sum()) / float(union)
+    best = 0.0
+    for offset in range(0, width - left.shape[1] + 1):
+        canvas_left = np.zeros((left.shape[0], width), dtype=bool)
+        canvas_left[:, offset:offset + left.shape[1]] = left
+        for other in range(0, width - right.shape[1] + 1):
+            canvas_right = np.zeros((right.shape[0], width), dtype=bool)
+            canvas_right[:, other:other + right.shape[1]] = right
+            union = np.logical_or(canvas_left, canvas_right).sum()
+            if not union:
+                continue
+            score = float(np.logical_and(canvas_left, canvas_right).sum()) / float(union)
+            if score > best:
+                best = score
+    return best
 
 
 def identify(glyph, family="fat", templates=None):
