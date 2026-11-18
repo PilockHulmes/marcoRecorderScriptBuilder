@@ -607,7 +607,7 @@ def _read_row_name_local(frame, icon_box):
 
 def read_visit(frame, map_name="", templates=None, *, cache=None, now=None, learn_names=None,
                learn_icons=None, vision=None, names_path=None,
-               icon_dir=None, unknown_dir=None, index_path=None):
+               icon_dir=None, unknown_dir=None, index_path=None, native=None):
     """解析一帧画面 -> Visit（不滚动，只读当前可见的行）。
 
     学习开关默认取模块常量 :data:`LEARN_NAMES` / :data:`LEARN_ICONS`；
@@ -630,11 +630,11 @@ def read_visit(frame, map_name="", templates=None, *, cache=None, now=None, lear
     names = icon_learn.load_good_names(names_path)
 
     try:
-        visit.refresh_in = countdown_seconds(trade.read_row_countdown(frame))
+        visit.refresh_in = countdown_seconds(trade.read_row_countdown(frame, native=native))
     except Exception:
         pass
     try:
-        cargo = trade.read_cargo(frame, cache=cache)
+        cargo = trade.read_cargo(frame, cache=cache, native=native)
         coins = getattr(cargo, "coins", None)
         visit.coins = int(coins) if coins is not None else None
         visit.weight = int(getattr(cargo, "weight", 0) or 0)
@@ -664,7 +664,7 @@ def read_visit(frame, map_name="", templates=None, *, cache=None, now=None, lear
     try:
         rows = trade.read_rows(frame, cache=cache,
                                cache_tag=getattr(visit, "merchant_id", ""),
-                               deadline=deadline)
+                               deadline=deadline, native=native)
     except Exception:
         rows = []
 

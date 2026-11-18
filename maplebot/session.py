@@ -28,6 +28,7 @@ import logging
 
 from . import activity as activity_module
 from . import anchors as anchors_module
+from . import digits as digits_module
 from . import frame as frame_module
 from . import logbook
 from . import shop
@@ -345,6 +346,16 @@ class TradeSession:
                 aligned = self._align_by_cargo(frame)
                 if aligned is not None:
                     view = aligned
+        # 放大过的画面（A 套：1.4x / 1.56x）：数字从原图按原生尺度读，
+        # 不要用缩回 1366 的视图（位图字体被重采样后认错，00:57 读成 01:00）
+        native = None
+        if self.ui_scale and frame is not None:
+            # 用画面宽度反推的缩放比（1920 -> 1.4056）必须和标定结果一致才用原生模板：
+            # 16:10 那种"按高度放大"的画面两者会差 0.15 以上，不能拿 14px 模板硬套
+            frame_scale = frame.shape[1] / float(frame_module.CANONICAL_SIZE[0])
+            if (frame_scale >= digits_module.NATIVE_MIN_SCALE
+                    and abs(frame_scale - float(self.ui_scale)) <= 0.06):
+                native = (frame, float(frame_scale))
         previous_map = self.state.map
         self.state.map = self.current_map()
         if previous_map and self.state.map and self.state.map != previous_map:
@@ -368,7 +379,7 @@ class TradeSession:
             pass
         if opened:
             if not self._open or clock - self._shop_at >= self.shop_every:
-                self._read_shop(view, now)
+                self._read_shop(view, now, native=native)
                 self._shop_at = clock
             self._open = True
         else:
@@ -380,7 +391,7 @@ class TradeSession:
                 self._idle_at = clock
             if self._cargo_open(view):
                 if clock - self._cargo_at >= self.cargo_every:
-                    self._read_cargo(view, now)
+                    self._read_cargo(view, now, native=native)
                     self._cargo_at = clock
             elif clock - self._idle_at >= self.cargo_every:
                 # 商店和货舱都没开：也要给建议，否则开局/过图后整片空白
@@ -448,9 +459,10 @@ class TradeSession:
                                 anchors_module.view_scale(self.ui_scale) == "native"
                                 else "縮放" if self.ui_scale else "無"))
 
-    def _read_shop(self, frame, now):
+    def _read_shop(self, frame, now, native=None):
         try:
-            visit = shop.read_visit(frame, self.state.map, cache=self.frame_cache, now=now)
+            visit = shop.read_visit(frame, self.state.map, cache=self.frame_cache,
+                                    now=now, native=native)
         except Exception as exc:
             self.state.note = f"读商店失败：{exc}"
             self.shop_error = str(exc)
@@ -637,7 +649,7 @@ class TradeSession:
         self.state.advice = flat or ["（暫無值得跑的建議）"]
         self.state.version += 1
 
-    def _read_cargo(self, frame, now):
+    def _read_cargo(self, frame, now, native=None):
         try:
             held_items = shop.read_cargo_items(frame, with_counts=True)
             self.held_items = _as_items(held_items)
@@ -649,7 +661,8 @@ class TradeSession:
                               訊息=str(exc)[:200])
             return
         try:
-            cargo = trade.read_cargo(frame, profile="only", cache=self.frame_cache)
+            cargo = trade.read_cargo(frame, profile="only", cache=self.frame_cache,
+                                     native=native)
             # 同时更新 self.stats：update() 结尾会用 self.stats 覆盖 state.stats，
             # 只写 state 的话，单独开货舱时通栏会显示 0
             self.stats = {"coins": cargo.coins, "weight": cargo.weight,

@@ -190,6 +190,27 @@ def _box(frame, box):
     return x0, y0, x1 - x0, y1 - y0
 
 
+def _crop_at(frame, box, scale):
+    """从**原生帧**按缩放比裁一块（``box`` 仍是 1366 的窗口坐标）。
+
+    1920 这类放大过的画面：先把窗口坐标减掉边框偏移，再乘缩放比，
+    直接从原图裁——不经过"缩回 1366"那一步，位图字体才不会被重采样打散。
+    """
+    if frame is None or not scale:
+        return None
+    try:
+        ox, oy = client_offset(frame)
+        x = int(round((box[0] - ox) * scale))
+        y = int(round((box[1] - oy) * scale))
+        w = int(round(box[2] * scale))
+        h = int(round(box[3] * scale))
+        if w <= 0 or h <= 0:
+            return None
+        return frame[y:y + h, x:x + w]
+    except Exception:
+        return None
+
+
 def _crop(frame, box):
     x, y, w, h = _box(frame, box)
     if w <= 0 or h <= 0:
@@ -443,10 +464,37 @@ def find_cargo_window(frame) -> bool:
     return False
 
 
-def read_row_countdown(frame) -> str:
-    """读「商品/價格變動中止」下面的倒计时，返回 ``"01:18"``；读不到返回空串。"""
+def _countdown_text(groups):
+    """两组数字 -> ``"01:18"``；不是合法倒计时返回空串。"""
+    if len(groups) != 2:
+        return ""
+    try:
+        minutes, seconds = int(groups[0]), int(groups[1])
+    except Exception:
+        return ""
+    if 0 <= minutes <= 99 and 0 <= seconds < 60:
+        return f"{minutes:02d}:{seconds:02d}"
+    return ""
+
+
+def read_row_countdown(frame, native=None) -> str:
+    """读「商品/價格變動中止」下面的倒计时，返回 ``"01:18"``；读不到返回空串。
+
+    ``native=(原帧, 缩放比)``：给了就先从原图按原生尺度读（放大过的画面
+    用 12/14px 的位图字体，缩回 1366 会认错），读不到再走基准视图。
+    """
     if _empty(frame):
         return ""
+    if native is not None:
+        native_frame, scale = native
+        raw = _crop_at(native_frame, COUNTDOWN_BOX, scale)
+        if raw is not None:
+            groups = digits_module.read_groups(
+                raw, family=digits_module.family_for("fat", scale),
+                kind="gold", mode="gap")
+            text = _countdown_text(groups)
+            if text:
+                return text
     crop = _crop(frame, COUNTDOWN_BOX)
     if crop is None:
         return ""
@@ -484,8 +532,17 @@ def _row_present(frame, icon_box, clip_bottom=None):
     return bool(light.mean() >= ROW_PRESENT_LIGHT)
 
 
-def _read_price(frame, top, dy):
-    crop = _crop(frame, (PRICE_BOX[0], top + dy, PRICE_BOX[2], PRICE_BOX[3]))
+def _read_price(frame, top, dy, native=None):
+    box = (PRICE_BOX[0], top + dy, PRICE_BOX[2], PRICE_BOX[3])
+    if native is not None:
+        native_frame, scale = native
+        raw = _crop_at(native_frame, box, scale)
+        if raw is not None:
+            value = digits_module.read_number(
+                raw, family=digits_module.family_for("thin", scale), kind="gold")
+            if value is not None:
+                return value
+    crop = _crop(frame, box)
     if crop is None:
         return None
     value = digits_module.read_number(crop, family="thin", kind="gold")
@@ -559,7 +616,7 @@ def _icon_boxes(frame):
     return boxes
 
 
-def read_rows(frame, cache=None, cache_tag="", deadline=None) -> list[Row]:
+def read_rows(frame, cache=None, cache_tag="", deadline=None, native=None) -> list[Row]:
     """读商品列表，最多 4 条；SHOP 不在时返回空列表。
 
     第 4 行通常被视口底边裁掉，这时 ``partial=True``，也读不到价格。
@@ -599,8 +656,8 @@ def read_rows(frame, cache=None, cache_tag="", deadline=None) -> list[Row]:
         if partial:
             buy = sell = None
         else:
-            buy = _read_price(frame, top, BUY_DY)
-            sell = _read_price(frame, top, SELL_DY)
+            buy = _read_price(frame, top, BUY_DY, native=native)
+            sell = _read_price(frame, top, SELL_DY, native=native)
         rows.append(Row(icon_box=icon_box, name_ocr=name,
                         buy_price=buy, sell_price=sell, partial=partial))
     if cache_key is not None and rows:
@@ -810,7 +867,7 @@ def _finish_cargo(coins, weight, capacity=None, cache=None, cargo_key=None):
     return result
 
 
-def read_cargo(frame, profile="shop", cache=None) -> Cargo:
+def read_cargo(frame, profile="shop", cache=None, native=None) -> Cargo:
     """读 CARGO 顶部的金币 / 当前重量 / 容量。
 
     ``profile``：``shop`` = 商店开着（货舱在右边）；``only`` = 只开货舱（居中）。
@@ -833,6 +890,22 @@ def read_cargo(frame, profile="shop", cache=None) -> Cargo:
         entry = cache.get(cargo_key)
         if entry is not None:
             return entry
+    # 放大过的画面（1920）：先从原图按原生尺度读一遍，字体不会被重采样打散
+    if native is not None:
+        native_frame, scale = native
+        family = digits_module.family_for("fat", scale)
+        raw_coins = _crop_at(native_frame, coins_box, scale)
+        raw_weight = _crop_at(native_frame, weight_box, scale)
+        if raw_coins is not None and raw_weight is not None:
+            coins = digits_module.read_number(raw_coins, family=family, kind="gold")
+            groups = digits_module.read_groups(raw_weight, family=family, kind="gold")
+            weight = int(groups[0]) if groups and groups[0].isdigit() else None
+            if coins is not None and weight is not None:
+                result = Cargo(coins=coins, weight=weight, capacity=CAPACITY)
+                if cargo_key is not None:
+                    cache.put(cargo_key, result)
+                return result
+
     coins_crop = _crop(frame, coins_box)
     weight_crop = _crop(frame, weight_box)
     if coins_crop is None or weight_crop is None:

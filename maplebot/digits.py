@@ -23,6 +23,12 @@ import numpy as np
 
 ROOT = Path(__file__).resolve().parents[1]
 DIGITS_PATH = paths_module.trade_dir() / "digits.json"
+#: 原生尺度（1920 那种放大过的画面）用的模板：12px 细体 + 14px 粗体。
+#: 缩放会把 8px 位图字体打散（实测相似度掉到 0.3~0.9），所以另存一套。
+NATIVE_PATH = paths_module.trade_dir() / "digits_native.json"
+
+#: 帧的缩放比超过这个数就用原生模板（1920x1080 是 1.4056，1920x1200 是 1.5625）
+NATIVE_MIN_SCALE = 1.25
 
 #: 判定"最像"的最低相似度（IoU）。低于这个数就当认不出。
 MATCH_THRESHOLD = 0.85
@@ -37,24 +43,40 @@ _cache = {}
 
 
 def load(path=None):
-    """读取模板：{family: {digit: {size: [bitmap...]}}}。"""
+    """读取模板：{family: {digit: {size: [bitmap...]}}}。
+
+    默认把 ``digits.json``（1366 基准）和 ``digits_native.json``（原生尺度）
+    一起读进来，family 名分别是 ``thin``/``fat`` 和 ``thin_native``/``fat_native``。
+    """
     global _cache
     path = Path(path or DIGITS_PATH)
     if path in _cache:
         return _cache[path]
-    try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
-    except Exception:
-        payload = {}
+    sources = [path]
+    if path == DIGITS_PATH and NATIVE_PATH.exists() and NATIVE_PATH != path:
+        sources.append(NATIVE_PATH)
     table = {}
-    for family, digits in (payload or {}).items():
-        table[family] = {}
-        for digit, sizes in digits.items():
-            for key, bitmaps in sizes.items():
-                table[family].setdefault(digit, []).extend(
-                    np.array(b, dtype=np.uint8) for b in bitmaps)
+    for source in sources:
+        try:
+            payload = json.loads(Path(source).read_text(encoding="utf-8"))
+        except Exception:
+            payload = {}
+        for family, digits in (payload or {}).items():
+            table.setdefault(family, {})
+            for digit, sizes in digits.items():
+                for _key, bitmaps in sizes.items():
+                    table[family].setdefault(digit, []).extend(
+                        np.array(b, dtype=np.uint8) for b in bitmaps)
     _cache[path] = table
     return table
+
+
+def family_for(family, scale=None):
+    """按帧的缩放比挑模板族：放大过的画面用原生尺度那一套，其余用基准那一套。"""
+    if not scale or float(scale) < NATIVE_MIN_SCALE:
+        return family
+    native = f"{family}_native"
+    return native if native in load() else family
 
 
 def _mask(crop, kind="gold"):
