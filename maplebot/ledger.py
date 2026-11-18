@@ -43,6 +43,10 @@ KEEP_AFTER_EXPIRY = 300.0
 #: 倒计时只能一秒一秒减，正常重算不会变大；只有刷新才会跳到 3~6 分钟。
 REFRESH_MARGIN = 20.0
 
+#: 新算出的刷新时刻比当前**早**这么多秒，说明存着的那次读错了（比如把 00:59
+#: 读成 03:58）：同一轮里重算不会差这么多，直接以这次为准。
+CORRECT_MARGIN = 30.0
+
 
 def is_wall_clock(value):
     """这个时刻像不像墙钟（``time.time()``）？"""
@@ -110,6 +114,10 @@ class Ledger:
                 if not current or estimate > current + REFRESH_MARGIN:
                     # 商店刷新了：上一轮的商品全部作废
                     entry["rows"] = {}
+                    entry["deadline"] = estimate
+                elif estimate < current - CORRECT_MARGIN:
+                    # 存着的到期时刻明显偏晚（之前读错过）→ 以这次为准，
+                    # 否则那个错误会一直粘着，看板永远多显示几分钟
                     entry["deadline"] = estimate
                 # 同一轮：保留已经确定的刷新时刻。
                 # 倒计时读错（比如 3:07 读成 2:07）只会让这次的数字变小，
